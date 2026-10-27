@@ -1,9 +1,9 @@
 # 审计报告：票 02（前端 monorepo 骨架）
 
 > 审计：老登｜日期：2026-10-27｜方法：`code-review`（Spec / Standards 两轴）+ 实跑验收 + 变异
-> 被测：`022fd4e`（骨架 `1dc8f74` → 端口/绑定 `aaf077f` → 清出 `.react-router/types` `df94f80` → **F-02-1 修复 `57c226e`** → 票据/文档 `022fd4e`）
+> 被测：`10dd9bc`（前端代码 = `1588559`）：骨架 `1dc8f74` → 端口/绑定 `aaf077f` → 清出 `.react-router/types` `df94f80` → **F-02-1 修复 `57c226e`** → **F-02-3/4 修复 `1588559`** → 票据/文档 `10dd9bc`
 > 依据：[`tickets.md`](../specs/tickets.md) 票 02、[`architecture.md`](../architecture.md) §14.1/§14.2/§14.5、[`foundation.md`](../specs/foundation.md) §9 偏差记录
-> **结论：通过（复核 `022fd4e`，185 条后端 / 前端四条验收命令全绿）。** 首轮我判「需修改」的唯一必修 **F-02-1**（echo 包 `no output files` 告警）已在 `57c226e` 按包级 `turbo.json` 修好，我用 `--force` 冷缓存复核 build 与 typecheck **均零 `no output files` WARNING**；F-02-3、F-02-4 同批闭环。剩 F-02-2、F-02-5 两条**登记项**（不阻塞，见 §3、§5）。
+> **结论：通过（复核 `10dd9bc` 即前端 `1588559`；四条验收命令全绿）。** 首轮我判「需修改」的唯一必修 **F-02-1**（echo 包 `no output files` 告警）已在 `57c226e` 按包级 `turbo.json` 修好，我用 `--force` 冷缓存复核 build 与 typecheck **均零 `no output files` WARNING**；F-02-3、F-02-4 同批闭环。剩 F-02-2、F-02-5 两条**登记项**（不阻塞，见 §3、§5）。
 
 ---
 
@@ -37,7 +37,7 @@
 
 ### F-02-1 · medium（必修）· echo 包的 `no output files` 警告没消除，只是被缓存藏住了
 
-> **状态：已闭环（`57c226e`）。** 三个包各加 `packages/<pkg>/turbo.json`（`extends: ["//"]`、`tasks.build.outputs: []`，三份内容一致，md5 相同）。我在干净 worktree `022fd4e` 按 `--force` 冷缓存复核：`turbo run build --force` **零 `no output files` WARNING**、`turbo run typecheck --force`（含 `dependsOn: ^build`）**同样零 WARNING**。以下为原始发现，保留作证据。
+> **状态：已闭环（`57c226e`）。** 三个包各加 `packages/<pkg>/turbo.json`（`extends: ["//"]`、`tasks.build.outputs: []`，三份内容一致，md5 相同）。我在干净 worktree `022fd4e`（及后续 `10dd9bc`）按 `--force` 冷缓存复核：`turbo run build --force` **零 `no output files` WARNING**、`turbo run typecheck --force`（含 `dependsOn: ^build`）**同样零 WARNING**。以下为原始发现，保留作证据。
 
 - **位置**：[`turbo.json:4-7`](../../turbo.json#L4-L7)（只有全局 `build` 的 `outputs: ["build/**", "dist/**"]`）；`packages/api|realtime|ui` 的 `build` 是 `echo`，不产出任何文件。
 - **实测**（干净 worktree，非缓存路径）：
@@ -97,10 +97,10 @@
 
 ## 5. 结论
 
-**票 02：通过（复核 `022fd4e`）。**
+**票 02：通过（复核 `10dd9bc`，前端代码 = `1588559`）。**
 
 - **必须修 0 项**：F-02-1 已在 `57c226e` 闭环（包级 `turbo.json` + `outputs: []`，我用 `--force` 冷缓存验到 build/typecheck 零 `no output files` WARNING）；F-02-3（端口单处）、F-02-4（三个包被 import）同批闭环。
-- **四条验收命令复核（干净 worktree `022fd4e`）**：`pnpm install --frozen-lockfile` exit 0；`turbo run build --force` 4/4、产出 `apps/web/build/client/index.html`；`turbo run typecheck --force` 7/7；dev 在 `127.0.0.1:5199` 上 `GET /` = **200**、`<html lang="zh-CN">`（SPA 模式下静态 HTML 无 `<title>`、无正文文案属预期）。
+- **四条验收命令复核（干净 worktree `10dd9bc`，即 `1588559` 的前端代码）**：`pnpm install --frozen-lockfile` exit 0；`turbo run build --force` 4/4、产出 `apps/web/build/client/index.html`；`turbo run typecheck --force` 7/7；dev 在 `127.0.0.1:5199` 上 `GET /` = **200**、`<html lang="zh-CN">`（SPA 模式下静态 HTML 无 `<title>`、无正文文案属预期）。
 - **登记项（不阻塞）**：
   - **F-02-2**：每轮 build 仍有 5 条 React Router v8 future-flag `⚠️` 告警。**票 11 的一键脚本必须用退出码判定，不要按输出里出现 `WARNING`/`⚠️` 判失败**；要不要落 `future` 标记属行为选择，由老何定。
   - **F-02-5**：`lint` 是 echo 占位，`pnpm -w lint` 恒 0，不得当质量证据（票面 `d32eb67` 已标注同一口径）。
