@@ -19,7 +19,7 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 08 | 可观测性 + 审计 + 安全横切 | 🔧 已提交 `e8f2e2d`（雨哥；实测 229 条 = 35+30+86+68+10），待李总复测 |
 | 09 | Quartz + 健康检查 + 版本 | ⏳ 等 08 的 `Program.cs` 定稿（旺总）；已认领仅 `src/Pzd.Infrastructure/Scheduling/**`、`db/master/quartz_tables.sql`、`scripts/init-master-db.ps1`，`Program.cs`/`appsettings.json` 待 08 落地后接线 |
 | 10 | 租户隔离集成测试 | 🔧 锋哥已提 `95cfc5d`（10/10 真跑），待李总复测 |
-| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10（按退出码判定：0 通过 / 1 票面缺陷 / 2 环境问题）。**开工门禁：F-03-A10（=李总报告 F-03-A3，medium）必须先修**——web 腿也要像 API 腿一样断言「5199 的监听者属于本次进程树 + `.err` 无 `already in use`」，否则「自己前端没起来」会被别人的实例判成通过（`7c5f411` 已实测假绿一次） |
+| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10（按退出码判定：0 通过 / 1 票面缺陷 / 2 环境问题）。**开工门禁：F-03-A10 未闭环**——`7ccbbcf` 已接 web 腿血缘（正向 + 竞态反向实测过），但**「取不到监听 pid 即失败」还没做到**：`scripts/verify-apphost.ps1:379` 用 `-and` 串联，`Get-PortListenerPid` 返回空时短路落到 else 仍打 `[ok]`，须改三段式（属于→ok／不属于→1／无法确认→1） |
 
 票 07 已终审通过（`7f699c5`，185 条全绿：SharedKernel 35 + 架构 30 + Infrastructure 86 + Api 33 + 集成 1）：`40f016a`（F-07-1/2/3）、`001a731`（失败原因与重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（规则第二层）、`0c29633`（F-07-4 规则标识符级 + `Jobs/**`、`*Job.cs`）、`7f699c5`（F-07-5 重试上限只从 `Outbox:MaxAttempts` 读、终态同写 `RejectionReason` 与 `LastError`）。三条口径务必照写：**多处理器部分失败重放是明确遗留（与步骤 3 Outbox 落库同批）**、**事务只有补偿删除，不等于已回滚验证**、**拒绝 ≠ 死信队列（本轮只有终态标记）**。
 
