@@ -108,8 +108,9 @@ git log --oneline -1; git tag
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
 - [ ] `pnpm -w typecheck` 退出码 0，TS strict
 - [ ] `pnpm --filter web dev` 起服务后 `GET /` 返回 200 且不是错误页
-- [ ] **dev 端口与绑定写死、可预期**：`vite.config.ts` 固定 `server.port = 5199`（不靠默认端口漂移）并显式 `server.host`；验收与后续脚本一律用 `http://localhost:5199/`，**不要用 `127.0.0.1`**——实测本机 Vite 只绑到 `::1`，用 `127.0.0.1` 探测会得到连接失败（票 11 的一键脚本按这条写，别把 `127.0.0.1` 硬编码进前端段）
+- [ ] **dev 端口与绑定显式写死、可预期**：`vite.config.ts` 固定 `server.port = 5199` 且**显式** `server.host = "127.0.0.1"`（不靠默认端口漂移，也不留空 host）；验收与后续脚本一律探 `http://127.0.0.1:5199/`。原因：host 留空时本机 Vite 只绑 `::1`，此时探 `127.0.0.1` 会假红；**显式绑 IPv4 后 `127.0.0.1:5199` 正常返回 200**，与后端 `127.0.0.1:5080` 口径一致（此前「一律用 localhost」的写法作废）
 - [ ] 工作区包关系正确（web 依赖 ui/api/realtime 中实际需要的包），lockfile 提交
+- [ ] 产物与生成物**不入库**：`.gitignore` 覆盖 `node_modules/`、`apps/web/build/`、`.react-router/`（typegen 产物）、`*.tsbuildinfo`；已误提交的用 `git rm -r --cached` 清出（lockfile 必须入库，不要混为一谈）
 - [ ] 若 shadcn preset 拉取失败：退化为最小 React Router SPA，并在 `docs/specs/foundation.md` §9 记录偏差与剩余项
 
 **验证命令**
@@ -474,7 +475,7 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 **Status:** ready-for-agent
 
 - [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在**本机实例可用**时退出码 0，打印 4 段结果与耗时；集成测试段真跑（Total ≥ 3、Failed 0），不是全 Skip
-- [ ] 前端段探测用 `http://localhost:5199/`（固定端口，见票 02），**不得用 `127.0.0.1`**——本机 Vite 只绑 `::1`，写死 IPv4 会假红；后端段仍用 `http://127.0.0.1:5080`
+- [ ] 前端段探测用 `http://127.0.0.1:5199/`（票 02 已要求显式绑 `127.0.0.1`），后端段用 `http://127.0.0.1:5080`，两段统一 IPv4；若前端段连接失败，先查 `server.host` 是否留空（留空只绑 `::1`，会假红）
 - [ ] 无凭据时同一脚本退出码 0，集成测试段打印 Skip 原因（CI 兜底），其余段照常必过
 - [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
