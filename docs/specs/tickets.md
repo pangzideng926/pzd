@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 🔧 进行中**（`fd90640` + `007fe6d`：③② 闭环、④ 待收敛 F-03-4；AppHost 半边未提交、D1 待重判）｜08/09/10 ready-for-agent｜11 待 02–10 收口
+> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 🔧 进行中**（`007fe6d`：③② 闭环；F-03-1/2/3 待闭环；`-Mode aspire` 必须本机实测通过）｜08/09/10 ready-for-agent｜11 待 02–10 收口
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -142,7 +142,7 @@ pnpm -w typecheck
 
 **Blocked by:** 01, 02, 05（F-05-4 需在 05 的中间件上加豁免）
 
-**Status:** 🔧 进行中（`b06706f` + `fd90640` + `007fe6d`：③② 已闭环；**④ 打点重复待收敛（F-03-4）**；D1 待按李总实测重判；AppHost 半边未提交）
+**Status:** 🔧 进行中（`007fe6d`：③② 闭环；**F-03-1（high，AppHost 端点缺陷）待提交、F-03-2（medium，aspire 模式前端）待修、F-03-3（降级日志重复）待收敛**；见下节「第二步进度与偏差」与编号对照）
 
 - [ ] API 在 AppHost 中固定 `http://127.0.0.1:5080`（便于前端 proxy 与脚本验证）
 - [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**（根 `status` 与两个明细都是 **`Healthy`**，用 .NET 原生三态，**不映射 `Up/Down`**）
@@ -166,14 +166,18 @@ pnpm -w typecheck
 
 已落地：`src/Pzd.AppHost`（`AddConnectionString` 引用本机 mysql/redis、不建容器；API `port: 5080`；`AddViteApp` + `WaitFor(api)`）、`scripts/verify-apphost.ps1`（198 行，`-Mode api|aspire`，轮询就绪 + 三端点探活 + 退出后检查无残留监听 + mysql/redis 明细非 `Healthy` 即记 failure）、`MySqlHealthCheck` 改服务器级 ping（`pzd_master` 未建库不判 `Degraded`）、`Program.cs` 只挂控制台日志。
 
-- **偏差 D1（待重判；不得静默降级）**：DCP 编排在本沙箱无法启动（hosted service 启动即抛，EventLog 无写权限为直接诱因），脚本默认 `-Mode api`。**「`dotnet run --project src/Pzd.AppHost` 一条命令拉起 API + 前端」在本机未被实际验证**；需在有权限机器/CI 补跑 `-Mode aspire` 留证据，或由用户明确同意降级为「AppHost 编译通过 + `-Mode api` 等价路径」。**补验或明确同意降级之前，本票不得标通过**；报告不得写「AppHost 已验证拉起」。
-  - **D1 需改写（2026-10-27 李总实测）**：`-Mode aspire` 起不来的**直接原因是 AppHost 的 `WithHttpEndpoint(port: 5080, targetPort: 5080)`**——Aspire 不允许非容器资源 Port 与 TargetPort 相同且走代理，属**代码缺陷、不是环境限制**；去掉 targetPort 后 Aspire 能起、三个后端端点全过，只剩前端 5199 与 DCP apiserver 超时待收。旺总那半边（`scripts/verify-apphost.ps1`、`src/Pzd.AppHost/Program.cs`、`.gitignore` 的 TEMP 重定向等）提交后**按实测重判 D1 措辞**，不得继续把「环境限制」当结论。
+- **偏差 D1 已推翻（2026-10-27 李总实测，老何改写）**：原记「DCP 编排在本沙箱无法启动＝环境限制」**不成立**。真实原因是 `src/Pzd.AppHost/Program.cs:22` 的 `WithHttpEndpoint(port: 5080, targetPort: 5080, name: "http")`（`fd90640` 提交的版本仍是这一行）——Aspire 不允许非容器资源同时指定相同的 `Port` 与 `TargetPort` 并走代理，启动即抛 `InvalidOperationException`。去掉 `targetPort` 后 DCP 能起、三个后端端点全过（[`test-report-03.md`](../reports/test-report-03.md)）。→ **F-03-1（high，必修）**，属代码缺陷；票面与报告不得再写「沙箱里 DCP 起不来」。
+  - **F-03-2（medium，必修）**：端点修好后 `AddViteApp` 的前端资源 90s 内没起来（5199 连接被拒、进程快照无 vite/node 子进程，不是起得慢），aspire 模式前端首屏未通过；需查 DCP 里的 pnpm 调用与端口注入。
+  - `-Mode api` 定位改为**附加的快速回归路径**，不能替代「一条命令 `dotnet run --project src/Pzd.AppHost` 拉起 API + 前端」这条验收；`-Mode aspire` 必须在本机实测通过。孤儿 `dcp.exe`（系统 TEMP、抢占监听套接字）清理属运维动作，**不能当验收豁免**。
+  - **F-03-1 / F-03-2 未闭环前票 03 不得标通过**；若本轮确实解决不了，必须由用户明确同意降级并写进步骤 3 移交清单。
 - **偏差 D2**：API 与 AppHost 均 `ClearProviders()` 只留控制台——EventLog provider 无写权限时**写日志本身会抛异常**（实测把 `/health/ready` 降级路径变成连接中断）。票 08 接 Serilog + OTel 时必须保留「日志不得成为故障源」，不得把这两处 `ClearProviders` 当作临时脏补丁删掉。
 - **偏差 D3**：`Aspire.Hosting.NodeJs` 在 Aspire 13.x 已并入 `Aspire.Hosting.JavaScript`（旧包止于 9.5.2），用 `AddViteApp`。
 - **闭环状态（`007fe6d` 后老何实测复核）**：
   - **③ 已闭环**：同一复现条件（`ConnectionStrings__redis=host=`、mysql 未配置）现在 `/health/ready` = **200**、根 `Degraded`、redis 明细 `Degraded`（描述 `redis 连接串没有可用 host。`）。`Parse` 已进 `try`、空 host 先校验、`catch` 兜所有非取消异常。新增 `RedisHealthCheckTests` 覆盖空 host / 缺连接串 / 空 host 时仍 200，`Pzd.Api.UnitTests` **43** 条全绿（我实跑）。
   - **② 已闭环**：`HealthAndVersionApiTests` 里 `Assert.Contains(status, ["Healthy","Degraded"])` 已删，改为断言 200 + 免租户 + `status` 非空 + `mysql`/`redis` 明细各有 `status` 与 `description`；`Healthy` 只由脚本断言，分工不再重叠。
-  - **④ 未达标（新增 **F-03-4**，必修小项）**：文本与出处都有了（`grep -rn "Degraded mode" src/` 命中 `MySqlHealthCheck` 2 处、`RedisHealthCheck` 3 处、`Program.cs` 1 处，启动实测确有两条），但**打重了**——探活类内部各打一条，`Program.cs` 启动循环对同一资源再打一条，**启动期每个不可用资源 2 条**；而且每次 `/health/ready` 轮询都会再打一遍（我实测：启动 4 条 + 3 次轮询后共 **10** 条）。票面写的是「启动期每个不可用资源一条」。→ 保留启动期那一条（`Program.cs` 循环），探活内的降级日志降为 `LogDebug`；改完贴「空 host 启动 → 恰好 2 条（mysql/redis 各一），再轮询 3 次仍是 2 条」的 grep 计数。
+  - **④ 未达标（F-03-3，必修小项）**：文本与出处都有了（`grep -rn "Degraded mode" src/` 命中 `MySqlHealthCheck` 2 处、`RedisHealthCheck` 3 处、`Program.cs` 1 处，启动实测确有两条），但**打重了**——探活类内部各打一条，`Program.cs` 启动循环对同一资源再打一条，**启动期每个不可用资源 2 条**；而且每次 `/health/ready` 轮询都会再打一遍（我实测：启动 4 条 + 3 次轮询后共 **10** 条）。票面写的是「启动期每个不可用资源一条」。→ 保留启动期那一条（`Program.cs` 循环），探活内的降级日志降为 `LogDebug`；改完贴「空 host 启动 → 恰好 2 条（mysql/redis 各一），再轮询 3 次仍是 2 条」的 grep 计数。
+
+**票 03 编号对照（防漂号，后续引用以此为准）**：**F-03-1** = AppHost `port`/`targetPort` 同值致 `-Mode aspire` 启动即抛（high，李总，必修）；**F-03-2** = aspire 模式前端 5199 未起（medium，李总，必修）；**F-03-3** = 启动期降级日志重复打点（medium，老何，必修）。`8034643` 里曾把 F-03-3 误编号为「F-03-4」，**F-03-4 作废**，本票不再新增 F-03-x。
 
 **验证命令**（票 03）
 
