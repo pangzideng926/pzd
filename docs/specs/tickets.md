@@ -282,14 +282,23 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **文件路径**
 
-- `src/Pzd.SharedKernel/Abstractions/IUnitOfWork.cs`
-- `src/Pzd.Infrastructure/Persistence/UnitOfWork.cs`、`IOutboxStore.cs`、`InMemoryOutboxStore.cs`、`OutboxMessage.cs`、`OutboxDispatcher.cs`、`OutboxDispatcherHostedService.cs`、`DomainEventDispatcher.cs`
+- `src/Pzd.SharedKernel/Abstractions/IUnitOfWork.cs`、`IDomainEventDispatcher.cs`
+- `src/Pzd.Infrastructure/Persistence/UnitOfWork.cs`（含 `IUnitOfWorkTransactionFactory` / `InMemoryUnitOfWorkTransactionFactory`）、`IOutboxStore.cs`、`InMemoryOutboxStore.cs`、`OutboxMessage.cs`、`OutboxDispatcher.cs`（含 `IOutboxMessageHandler`）、`OutboxDispatcherHostedService.cs`、`DomainEventDispatcher.cs`
 - `src/Pzd.Api/Program.cs`（注册 UoW 与后台投递）
 - `tests/Pzd.Infrastructure.UnitTests/Persistence/UnitOfWorkTests.cs`、`OutboxTests.cs`
+- `tests/Pzd.ArchitectureTests/ArchRules.cs`（F-05-8 规则）、`TenantConnectionRuleTests.cs`
 
 **Blocked by:** 05, 06
 
-**Status:** ready-for-agent（测试先行）
+**Status:** 🔧 已实现待复测（`d9919ab`，152 条全绿：35 + 71 + 26 + 19 + 1）
+
+**实现偏差与口径（2026-10-27，`d9919ab`，已由老何回填）**
+
+- 事务工厂 `IUnitOfWorkTransactionFactory` 与内存实现、消费者抽象 `IOutboxMessageHandler` **内联在** `UnitOfWork.cs` / `OutboxDispatcher.cs`，未单开文件；文件名差异不影响契约。
+- F-05-8 的代码检查落在 `ArchRules.cs`（`ParameterlessTenantConnectionViolations` 扫 `src/Pzd.*`），守护用例在新增的 `TenantConnectionRuleTests.cs`，用合成源码证明规则有效——票面原清单未列，属必要补充。
+- 本轮**不注册任何 `IOutboxMessageHandler`**（真实消费者随 Platform/Identity 模块来）；`OutboxDispatcher` 为 Scoped，由后台服务每轮建作用域解析。
+- 本轮事务**不真正回滚**，用补偿删除模拟；落库事务留步骤 3（与「Outbox/审计/Quartz 落库表」同批）。
+- 全内存，不引入 MySQL 依赖、无跨库事务。
 
 - [ ] 提交顺序被断言：领域事件分发 → 写 Outbox → 事务提交（用假 store / 假发布器记录调用序列）
 - [ ] 领域事件处理器抛异常 → UoW 不提交、Outbox 无残留消息
