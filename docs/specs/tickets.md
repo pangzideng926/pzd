@@ -591,6 +591,8 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 
 ## 交接检查单（每张票完成时贴出）
 
+**并行规则**：任何跨职责文件，即使只加一行版本号，也必须先在群里声明并与当前负责人协调后再改；不得顺带提交他人的在途改动，`Directory.Packages.props` 从当前 HEAD 起由雨哥统一负责。
+
 **复测环境注意**：干净 worktree 自行执行 `pnpm install --frozen-lockfile`；不通过目录联结借用主仓 node_modules（老登实测触发 `ERR_PNPM_UNSAFE_TASK_RUN_STATE_PATH`）。安装/启动环境失败必须单列，不能当产品缺陷或通过证据；不得删除联结指向的主仓依赖。
 
 **当前接力**：08 由雨哥负责；09 由旺总在 08 的 API Program.cs 定稿并交接写入权后接手，且原有 03/04 验收前置仍须满足；10 由锋哥负责测试目录。该安排是共享文件写入顺序，不把 09 改派雨哥。
