@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -42,7 +43,11 @@ public class OutboxTests
 
         await store.AddAsync(pending, CancellationToken);
         await store.AddAsync(rejected, CancellationToken);
-        await store.RejectAsync(rejected.Id, "Tenant.Disabled: 租户已停用。", CancellationToken);
+        await store.RejectAsync(
+            rejected.Id,
+            "Tenant.Disabled: 租户已停用。",
+            "Tenant.Disabled: 租户已停用。",
+            CancellationToken);
 
         var batch = await store.DequeueBatchAsync(10, CancellationToken);
 
@@ -178,29 +183,79 @@ public class OutboxTests
     }
 
     [Fact]
-    public async Task A_poison_message_is_rejected_after_the_maximum_attempts()
+    public async Task A_poison_message_is_rejected_after_the_configured_maximum_attempts()
     {
         var store = new InMemoryOutboxStore();
         var message = NewMessage(tenantId: 1);
         await store.AddAsync(message, CancellationToken);
 
         var consumer = new AlwaysFailingConsumer();
-        var dispatcher = CreateDispatcher(store, new TenantContext(), new RecordingTenantDbProvider(), consumer);
 
-        for (var attempt = 0; attempt < OutboxDispatcher.MaxAttempts; attempt++)
+        // F-07-5：上限来自配置，用例注入 2，断言不依赖任何常量值。
+        var dispatcher = CreateDispatcher(
+            store,
+            new TenantContext(),
+            new RecordingTenantDbProvider(),
+            consumer,
+            maxAttempts: 2);
+
+        for (var attempt = 0; attempt < 2; attempt++)
         {
             await dispatcher.DispatchPendingAsync(CancellationToken);
         }
 
-        Assert.Equal(OutboxDispatcher.MaxAttempts, consumer.Calls);
+        Assert.Equal(2, consumer.Calls);
 
+        // 终态拒绝：RejectionReason 与 LastError 同时写入，消息保留、不再出队。
         var rejected = Assert.Single(store.Messages);
         Assert.Contains("RetryLimitExceeded", rejected.RejectionReason);
+        Assert.Contains("poison message", rejected.LastError);
 
-        // 被拒绝后不再出队，也就不再消耗后续消息的投递机会。
         Assert.Empty(await store.DequeueBatchAsync(10, CancellationToken));
         await dispatcher.DispatchPendingAsync(CancellationToken);
-        Assert.Equal(OutboxDispatcher.MaxAttempts, consumer.Calls);
+        Assert.Equal(2, consumer.Calls);
+    }
+
+    [Fact]
+    public async Task A_rejected_message_does_not_starve_the_healthy_message_behind_it()
+    {
+        var store = new InMemoryOutboxStore();
+        var poison = NewMessage(tenantId: 1, "Poison");
+        var healthy = NewMessage(tenantId: 1, "Healthy");
+        await store.AddAsync(poison, CancellationToken);
+        await store.AddAsync(healthy, CancellationToken);
+
+        var consumer = new SelectiveConsumer("Poison");
+
+        // 上限配成 1：毒消息第一次失败即进入终态，同批后续消息必须继续处理。
+        var dispatcher = CreateDispatcher(
+            store,
+            new TenantContext(),
+            new RecordingTenantDbProvider(),
+            consumer,
+            maxAttempts: 1);
+
+        var processed = await dispatcher.DispatchPendingAsync(CancellationToken);
+
+        Assert.Equal(1, processed);
+        Assert.Equal(["Healthy"], consumer.HandledEventTypes);
+
+        var rejected = Assert.Single(store.Messages);
+        Assert.Equal(poison.Id, rejected.Id);
+        Assert.Contains("RetryLimitExceeded", rejected.RejectionReason);
+        Assert.Contains("consumer failed", rejected.LastError);
+    }
+
+    [Fact]
+    public void The_dispatcher_exposes_no_hardcoded_attempt_limit()
+    {
+        // F-07-5：上限只能来自 OutboxOptions（配置），不得再出现常量字段作为判断依据。
+        var attemptLimitFields = typeof(OutboxDispatcher)
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            .Where(field => field.Name.Contains("MaxAttempts", StringComparison.Ordinal))
+            .Select(field => field.Name);
+
+        Assert.Empty(attemptLimitFields);
     }
 
     [Fact]
@@ -214,6 +269,7 @@ public class OutboxTests
             store,
             new RecordingTenantDbProvider(),
             new TenantContext(),
+            new OutboxOptions(),
             [],
             logger);
 
@@ -275,6 +331,7 @@ public class OutboxTests
 
         services.AddLogging();
         services.AddSingleton(store);
+        services.AddSingleton(new OutboxOptions());
         services.AddSingleton<ITenantContext>(new TenantContext());
         services.AddSingleton<ITenantDbProvider>(new RecordingTenantDbProvider());
         services.AddSingleton(consumer);
@@ -287,19 +344,28 @@ public class OutboxTests
         IOutboxStore store,
         ITenantContext context,
         ITenantDbProvider provider,
-        IOutboxMessageHandler consumer) =>
-        CreateDispatcher(store, context, provider, consumer, out _);
+        IOutboxMessageHandler consumer,
+        int? maxAttempts = null) =>
+        CreateDispatcher(store, context, provider, consumer, out _, maxAttempts);
 
     private static OutboxDispatcher CreateDispatcher(
         IOutboxStore store,
         ITenantContext context,
         ITenantDbProvider provider,
         IOutboxMessageHandler consumer,
-        out RecordingLogger<OutboxDispatcher> logger)
+        out RecordingLogger<OutboxDispatcher> logger,
+        int? maxAttempts = null)
     {
         logger = new RecordingLogger<OutboxDispatcher>();
 
-        return new OutboxDispatcher(store, provider, context, [consumer], logger);
+        var options = new OutboxOptions();
+
+        if (maxAttempts is not null)
+        {
+            options.MaxAttempts = maxAttempts.Value;
+        }
+
+        return new OutboxDispatcher(store, provider, context, options, [consumer], logger);
     }
 
     private static OutboxMessage NewMessage(long tenantId, string eventType = "FakeEvent") => new()

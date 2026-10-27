@@ -31,6 +31,9 @@ builder.Services.AddScoped<ITenantContext, TenantContext>();
 builder.Services.AddScoped<ITenantDbProvider, TenantDbProvider>();
 
 // 票 07：UoW + Outbox。本轮全内存实现，步骤 3 换成租户库事务与 outbox 表。
+// F-07-5：重试上限只从配置读（`Outbox:MaxAttempts`，默认 5），启动期校验，非法值直接启动失败。
+var outboxOptions = OutboxOptions.Load(builder.Configuration);
+builder.Services.AddSingleton(outboxOptions);
 builder.Services.AddSingleton<IOutboxStore, InMemoryOutboxStore>();
 builder.Services.AddSingleton<IUnitOfWorkTransactionFactory, InMemoryUnitOfWorkTransactionFactory>();
 builder.Services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();

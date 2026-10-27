@@ -21,6 +21,13 @@ public interface IOutboxStore
     /// <summary>投递失败：累加尝试次数并记录原因，消息保留待重试。</summary>
     Task RecordFailureAsync(Guid messageId, string reason, CancellationToken cancellationToken = default);
 
-    /// <summary>拒绝投递（租户停用/过期）：记录原因，之后不再返回给消费者。</summary>
-    Task RejectAsync(Guid messageId, string reason, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 拒绝投递（终态，如租户停用/过期、重试超上限）：同时记录拒绝原因与最后一次失败原因，
+    /// 之后不再返回给消费者；消息本身保留，不等于死信队列。
+    /// </summary>
+    Task RejectAsync(
+        Guid messageId,
+        string reason,
+        string lastError,
+        CancellationToken cancellationToken = default);
 }

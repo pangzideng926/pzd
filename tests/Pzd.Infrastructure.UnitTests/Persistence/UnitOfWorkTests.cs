@@ -274,7 +274,11 @@ public class UnitOfWorkTests
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task RejectAsync(Guid messageId, string reason, CancellationToken cancellationToken = default) =>
+        public Task RejectAsync(
+            Guid messageId,
+            string reason,
+            string lastError,
+            CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 

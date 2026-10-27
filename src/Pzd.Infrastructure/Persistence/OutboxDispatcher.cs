@@ -17,18 +17,21 @@ public interface IOutboxMessageHandler
 /// 停用或过期的租户消息被拒绝并记录理由，不再投递。消费前先 <see cref="ITenantContext.Set"/>。
 /// </para>
 /// <para>幂等：已处理的消息 Id 记录在存储的已处理集合里，重复投递不再产生副作用。</para>
+/// <para>
+/// F-07-5：重试上限只来自 <see cref="OutboxOptions"/>（配置 <c>Outbox:MaxAttempts</c>），类里没有常量；
+/// 达上限的消息进入终态「已拒绝」，同时写 <see cref="OutboxMessage.RejectionReason"/> 与
+/// <see cref="OutboxMessage.LastError"/>，消息保留（**不是**死信队列），同批后续消息继续处理。
+/// </para>
 /// </summary>
 public sealed class OutboxDispatcher
 {
     /// <summary>单轮最多处理的消息条数。</summary>
     public const int DefaultBatchSize = 50;
 
-    /// <summary>最大投递尝试次数：超过后拒绝该消息，避免坏消息无限重试饿死后续消息。</summary>
-    public const int MaxAttempts = 5;
-
     private readonly IOutboxStore _outbox;
     private readonly ITenantDbProvider _dbProvider;
     private readonly ITenantContext _tenantContext;
+    private readonly OutboxOptions _options;
     private readonly IReadOnlyList<IOutboxMessageHandler> _handlers;
     private readonly ILogger<OutboxDispatcher> _logger;
 
@@ -36,12 +39,24 @@ public sealed class OutboxDispatcher
         IOutboxStore outbox,
         ITenantDbProvider dbProvider,
         ITenantContext tenantContext,
+        OutboxOptions options,
         IEnumerable<IOutboxMessageHandler> handlers,
         ILogger<OutboxDispatcher> logger)
     {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.MaxAttempts < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                options.MaxAttempts,
+                "Outbox 最大投递尝试次数必须大于 0（配置 Outbox:MaxAttempts）。");
+        }
+
         _outbox = outbox;
         _dbProvider = dbProvider;
         _tenantContext = tenantContext;
+        _options = options;
         _handlers = handlers.ToArray();
         _logger = logger;
     }
@@ -94,6 +109,8 @@ public sealed class OutboxDispatcher
             }
             catch (TenantNotResolvedException exception)
             {
+                var reason = $"{exception.Error.Code}: {exception.Error.Message}";
+
                 _logger.LogWarning(
                     "Outbox 消息被拒绝：{MessageId}，租户 {TenantId} 不可用（{Code}）。",
                     message.Id,
@@ -101,24 +118,26 @@ public sealed class OutboxDispatcher
                     exception.Error.Code);
 
                 await _outbox
-                    .RejectAsync(message.Id, $"{exception.Error.Code}: {exception.Error.Message}", cancellationToken)
+                    .RejectAsync(message.Id, reason, reason, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception exception)
             {
-                if (message.Attempts + 1 >= MaxAttempts)
+                if (message.Attempts + 1 >= _options.MaxAttempts)
                 {
                     _logger.LogError(
                         exception,
                         "Outbox 消息超过最大重试次数（{MaxAttempts}），已拒绝：{MessageId}（租户 {TenantId}）。",
-                        MaxAttempts,
+                        _options.MaxAttempts,
                         message.Id,
                         message.TenantId);
 
+                    // 终态：拒绝原因与最后一次失败原因都落下来，消息保留（拒绝 ≠ 死信队列）。
                     await _outbox
                         .RejectAsync(
                             message.Id,
                             $"RetryLimitExceeded: {exception.Message}",
+                            exception.Message,
                             cancellationToken)
                         .ConfigureAwait(false);
 

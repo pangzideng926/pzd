@@ -96,7 +96,11 @@ public sealed class InMemoryOutboxStore : IOutboxStore
         return Task.CompletedTask;
     }
 
-    public Task RejectAsync(Guid messageId, string reason, CancellationToken cancellationToken = default)
+    public Task RejectAsync(
+        Guid messageId,
+        string reason,
+        string lastError,
+        CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
@@ -105,6 +109,7 @@ public sealed class InMemoryOutboxStore : IOutboxStore
             if (message is not null)
             {
                 message.RejectionReason = reason;
+                message.LastError = lastError;
             }
         }
 
