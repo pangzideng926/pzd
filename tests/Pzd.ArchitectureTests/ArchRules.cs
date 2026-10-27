@@ -183,7 +183,8 @@ internal static class ArchRules
     /// <summary>
     /// F-05-8 规则本体（纯函数版本，反向用例用合成源码验证）。两层判定，认的是「调用形状」而不是名字：
     /// <list type="number">
-    /// <item>后台路径出现请求路径专用 API <c>GetCurrentConnectionScopeAsync</c>；</item>
+    /// <item>后台路径出现 <c>GetCurrentConnectionScopeAsync</c> <b>标识符</b>即违规——不看括号、不看点号、
+    /// 不做空白归一化（换行/空格断开、方法组引用都算；宁可误报注释也不漏）；</item>
     /// <item>任何源码里出现<b>零实参</b>的 <c>GetConnectionScopeAsync()</c> 调用——若将来有人重新加回
     /// 无参重载，这条仍会报（不依赖新名字，也不依赖实参叫 ct 还是 ct2）。</item>
     /// </list>
@@ -202,7 +203,7 @@ internal static class ArchRules
     }
 
     private static bool RequestPathApiInBackground(string path, string content) =>
-        IsBackgroundPath(path) && content.Contains(RequestPathConnectionApi, StringComparison.Ordinal);
+        IsBackgroundPath(path) && content.Contains(RequestPathConnectionIdentifier, StringComparison.Ordinal);
 
     /// <summary>零实参调用：<c>.GetConnectionScopeAsync()</c> / <c>.GetConnectionScopeAsync( )</c>；方法声明不算（无点号）。</summary>
     private static bool ZeroArgumentTenantConnectionCall(string content) =>
@@ -212,17 +213,19 @@ internal static class ArchRules
         @"\.\s*GetConnectionScopeAsync\s*\(\s*\)",
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>后台路径判定：Persistence 目录，或文件名以 HostedService / Dispatcher 结尾。</summary>
+    /// <summary>后台路径判定：Persistence / Jobs 目录，或文件名以 Job / HostedService / Dispatcher 结尾。</summary>
     internal static bool IsBackgroundPath(string path)
     {
         var normalized = path.Replace('\\', '/');
 
         return normalized.Contains("/Persistence/", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("/Jobs/", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("Job.cs", StringComparison.OrdinalIgnoreCase)
             || normalized.EndsWith("HostedService.cs", StringComparison.OrdinalIgnoreCase)
             || normalized.EndsWith("Dispatcher.cs", StringComparison.OrdinalIgnoreCase);
     }
 
-    private const string RequestPathConnectionApi = ".GetCurrentConnectionScopeAsync(";
+    private const string RequestPathConnectionIdentifier = "GetCurrentConnectionScopeAsync";
 
     /// <summary>仓库根目录：从测试输出目录向上查找 Pzd.slnx。</summary>
     internal static string FindRepositoryRoot()
