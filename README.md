@@ -14,11 +14,11 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
-| 07 | UoW + Outbox + 领域事件 | 🔧 返工中（`0da4a18`，173 条；剩票面 F-07-4 规则收紧） |
+| 07 | UoW + Outbox + 领域事件 | 🔧 返工完成（`7f699c5`，185 条），待终审 |
 | 08–10 | 可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10 |
 
-票 07 返工：`40f016a`（F-07-1 规则改认形状、F-07-2 分发器用例、补偿顺序）、`001a731`（失败原因与最大重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（F-05-8 规则补第二层：零实参旧名调用也报），当前 173 条全绿。还剩票面 **F-07-4（规则收紧）** 与 **F-07-5（重试上限改为可配置、终态写 `LastError`）**：前者把后台路径改为标识符级禁用（容忍空白、方法组引用同算）、清单并入 `Jobs/**` 与 `*Job.cs`，并补三条反向用例；两者修完由老登终审后接 08/09/10。173 条是 `001a731` 的实测快照，F-07-4 落地会再增约三条反向用例，以最终 hash 为准。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+票 07 返工已全部提交：`40f016a`（F-07-1 规则改认形状、F-07-2 分发器用例、补偿顺序）、`001a731`（失败原因与重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（规则第二层：零实参旧名调用也报）、`0c29633`（F-07-4 规则收紧为标识符级并覆盖 `Jobs/**`、`*Job.cs`，三条反向用例各恰好 1 条违规）、`7f699c5`（F-07-5：重试上限只从 `Outbox:MaxAttempts` 读，默认 5，终态同时写 `RejectionReason` 与 `LastError`，毒消息不饿死同批）。当前 185 条全绿（我于 2026-10-27 在 `7f699c5` 实测），等老登终审后接 08/09/10。**拒绝 ≠ 死信队列**：本轮只有终态标记，死信表 + 人工重放属步骤 3。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
@@ -69,7 +69,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 25 + 79 + 33 + 1 = **173 条全绿**，2026-10-27 于 `001a731` 实测）：
+五个测试工程（当前 35 + 30 + 86 + 33 + 1 = **185 条全绿**，2026-10-27 于 `7f699c5` 实测；顺序同上，即 SharedKernel 35、架构 30、Infrastructure 86、Api 33、集成 1）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
