@@ -30,6 +30,22 @@ import { renderToPipeableStream } from "react-dom/server";
 /** 流超时：超过这段时间仍未 flush 完就中止渲染，避免请求永久挂起。 */
 export const streamTimeout = 5_000;
 
+/**
+ * 诊断锚点（F-03-A5）：DCP 下 web 在开始监听前就崩了，日志里只剩 6 秒后的 TDZ。
+ * 这两行把「崩在哪一步」变成三种互斥落点，跑一次 aspire 就能分辨：
+ *
+ * - 两行都没有 → 失败在 import / 模块图阶段（加载器、导出条件、外部化），不是请求路径；
+ * - 只有第一行   → 抛点在 handleRequest 函数体内、`renderToPipeableStream` 调用之前；
+ * - 两行都有     → 才是调用本身同步抛出（我复现的 `jsxDEV is not a function` 属于这类）。
+ *
+ * 第二行只在首个文档请求打一次，避免每个请求刷屏；这是诊断锚点，不是遥测。
+ */
+declare const process: { env: Record<string, string | undefined> };
+
+console.log(`[pzd-web] entry loaded（NODE_ENV=${process.env.NODE_ENV ?? "未设置"}）`);
+
+let loggedFirstDocumentRender = false;
+
 export default function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -58,6 +74,11 @@ export default function handleRequest(
     let abort: (() => void) | undefined;
 
     let stream: PipeableStream;
+
+    if (!loggedFirstDocumentRender) {
+      loggedFirstDocumentRender = true;
+      console.log("[pzd-web] 首次文档渲染：即将调用 renderToPipeableStream");
+    }
 
     try {
       stream = renderToPipeableStream(<ServerRouter context={routerContext} url={request.url} />, {
