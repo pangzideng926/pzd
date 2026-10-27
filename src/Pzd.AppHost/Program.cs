@@ -31,13 +31,24 @@ var api = builder
     // when both TargetPort and Port are specified with the same value."）。
     .WithHttpEndpoint(port: 5080, name: "http");
 
+// 前端目录按仓库结构算绝对路径：AddViteApp 的相对路径是相对 **AppHost 工程目录**（src/Pzd.AppHost）
+// 解析的，写 "../apps/web" 会指到 src/apps/web（不存在），于是 web 资源瞬间失败、连 node 进程都不产生
+// （F-03-2）。用绝对路径 + 启动期校验，路径错了立刻报得出来，而不是等到 90 秒超时。
+var webDirectory = Path.GetFullPath(
+    Path.Combine(builder.Environment.ContentRootPath, "..", "..", "apps", "web"));
+
+if (!Directory.Exists(webDirectory))
+{
+    throw new DirectoryNotFoundException($"找不到前端目录：{webDirectory}");
+}
+
 // 前端 dev server：monorepo 用 pnpm，端口由 vite.config.ts 固定 5199（strictPort）。
 // 这里只声明「对外就是 5199」并关掉代理：不关的话 Aspire 会给它另分配一个动态端口再转发，
 // 5199 就永远没有监听者，脚本与票面探测点全部失效；关掉代理后 Vite 自己按 vite.config.ts
 // 绑 127.0.0.1:5199，端口仍然只有一处定义。
 // WaitFor 让前端等 API 起来再跑，避免 proxy 先接到 ECONNREFUSED。
 builder
-    .AddViteApp("web", "../apps/web", "dev")
+    .AddViteApp("web", webDirectory, "dev")
     .WithPnpm(install: false)
     .WithReference(api)
     .WaitFor(api)
