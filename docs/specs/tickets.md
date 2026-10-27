@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜02/03 未开工｜05–10、12 ready-for-agent
+> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 🔧 开工中（旺总）｜02/03 未开工｜06–10 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -216,8 +216,8 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
 - [ ] `TenantDbProvider`：不存在连接时加锁双检、只 `AddConnection` 一次、返回 `GetConnectionScope(tid)`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
 - [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
-- [ ] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（老登 §2.2；本票搭好机制，模块出现后自动生效）
-- [ ] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（老登 §2.4）
+- [ ] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（交接记录「规则③检查范围」项；本票搭好机制，模块出现后自动生效）
+- [ ] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（交接记录「F7 补测条件」项）
 - [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）在无实例/无凭据时也绿（单测不依赖数据库）
 
 **验证命令**
@@ -251,7 +251,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] FluentValidation 失败 → 400，`errors` 键为 camelCase，与前端字段名一致
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
-- [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（老登 §2.4）
+- [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（交接记录「F7 补测条件」项）
 
 **验证命令**
 
@@ -450,15 +450,20 @@ pwsh -NoProfile -File scripts/verify.ps1
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent（测试先行；来源：老登交接 §2.1）
+**Status:** ✅ 通过（审计：[`review-12.md`](../reports/review-12.md)；实现 commit `1463e9e`，51 条测试全绿）
 
-- [ ] 构造后修改传入字典（增 / 改 / 删键）不影响 `Error.Metadata`
-- [ ] `Error.Metadata` 是只读快照：底层为 `ReadOnlyDictionary<string, object?>`（或等价的只读实现），强转写入抛 `NotSupportedException`
-- [ ] 键比较为 `StringComparer.Ordinal`（大小写不同的键视为不同键）
-- [ ] `EmptyMetadata` 不可被改写（强转写入抛异常），且保持单例、不因空元数据重复分配
-- [ ] 现有 SharedKernel 单测全绿（当前 31 条）+ 新增用例，贴 `=== TEST EXECUTION SUMMARY ===`
-- [ ] 不改变 `Error.Equals` / `Code` / `ErrorType` 语义与错误码校验
-- [ ] 不改架构测试与其它工程
+- [x] 构造后修改传入字典（增 / 改 / 删键）不影响 `Error.Metadata`
+- [x] `Error.Metadata` 是只读快照：底层为 `ReadOnlyDictionary<string, object?>`（或等价的只读实现），强转写入抛 `NotSupportedException`
+- [x] 键比较为 `StringComparer.Ordinal`（大小写不同的键视为不同键）
+- [x] `EmptyMetadata` 不可被改写（强转写入抛异常），且保持单例、不因空元数据重复分配
+- [x] 现有 SharedKernel 单测全绿（当前 35 条）+ 新增用例，贴 `=== TEST EXECUTION SUMMARY ===`
+- [x] 不改变 `Error.Equals` / `Code` / `ErrorType` 语义与错误码校验
+- [x] 不改架构测试与其它工程
+
+**边界说明（low，审计 §2.4，不阻塞）**
+
+- 只做**字典结构快照**：metadata 的值若是可变对象（`List<T>`、嵌套字典），仍会随外部修改变化；`Metadata` 的 XML 注释需写明「仅结构快照，值请使用不可变类型」（旺总随票 05 顺手补，不做 `object?` 深拷贝）。
+- 可选补测：`Clear()` 与 `ICollection<KeyValuePair>.Add` 两路读写守卫；`ReadOnlyDictionary` 同样抛 `NotSupportedException`，不影响当前正确性。
 
 **验证命令**
 
