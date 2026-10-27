@@ -144,19 +144,22 @@ public class TenantIsolationTests
     }
 
     [IntegrationFact]
-    public async Task Test_databases_are_pzd_it_prefixed_and_include_this_runs_pair()
+    public async Task This_runs_test_databases_are_present_and_no_system_schema_is_listed()
     {
         _fixture.EnsureReady();
 
         var databases = TestSchema.ListTestDatabases(_fixture.Settings!.AdminConnectionString, CancellationToken);
 
-        // F-10-A1：这里只断言「只碰 pzd_it_ 前缀 + 本次两个库在 + 不含 pzd_master」。
-        // 「本次运行不残留」由 MySqlFixture 清理后逐库复查（见 MySqlFixture.CleanupAsync），
-        // 不再用 Assert.Equal(2, databases.Count)——那条会把别人的 pzd_it_* 库算成本次失败，
-        // 多人并行或票 11 一键验收时必然误红。
-        Assert.All(databases, database => Assert.StartsWith("pzd_it_", database, StringComparison.Ordinal));
+        // F-10-A1（审计口径）：这里只证明「本次两个测试库确实建出来了」。
+        // - 删掉 Assert.Equal(2, databases.Count)：它把别人的 pzd_it_* 库算成本次失败，
+        //   既有库模式 + 机器上残留默认名库时必然误红，票 11 一键验收会被它卡死。
+        // - 也不再补 StartsWith("pzd_it_") 之类：查询本身就是 LIKE 'pzd_it_%'，恒为真。
+        // 「本次运行不残留」分两层：进程内由 MySqlFixture.CleanupAsync 对本次建过的库复查；
+        // 进程外由票 11 的 verify.ps1 跑前/跑后各取一次 pzd_it_% 快照比对（能抓到崩溃残留）。
         Assert.Contains(_fixture.Settings.DatabaseA, databases);
         Assert.Contains(_fixture.Settings.DatabaseB, databases);
+
+        // 防御性保留（按审计清单要求）：LIKE 'pzd_it_%' 已把它排除，这里只作显式声明。
         Assert.DoesNotContain("pzd_master", databases);
     }
 
