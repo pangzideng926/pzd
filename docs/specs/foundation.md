@@ -284,4 +284,5 @@
 - **票 06 终审通过（2026-10-27，`abde749`）**：全仓 **156** 条全绿（35 + 71 + 30 + 19 + 1），见 [`review-06.md`](../reports/review-06.md)。三项实现：F-06-1 `3ff40ef`、F-06-2 `6e20aaf`（`ProblemDetailsWriter` 为唯一 ProblemDetails 构造实现，中间件与 `ToHttpResult` 共用）、F-06-3 `abde749`（`CommonErrors` 新增 `Auth.Unauthorized` / `Auth.Forbidden`）。
   - `Auth.*` 文案以 `CommonErrors` 代码为单一来源；票面原写的两句已对齐为「未登录或会话已过期。」/「没有权限访问该资源。」（仅文案，不改行为）。
   - 剩 3 条 low 不阻塞：`ToCamelCaseKeys` 仅识别两种泛型字典形态（`ReadOnlyDictionary` 静默不转换）——**票 07 收口后由旺总顺手带一笔并补只读字典 / List 值字典两条用例**；`Auth.*` 文案与票面不一致（本轮已对齐）；`6e20aaf` 提交信息把 F-06-2 写成 F-06-1（历史记录，不回改）。
+  - **camelCase 落点定在出口，不换成序列化层 `DictionaryKeyPolicy`（老何定）**：`errors` 是嵌在 ProblemDetails 里的字典，而 `DictionaryKeyPolicy` 是全局 JSON 选项，会连带改变任何被序列化的字典键（`metadata`、审计、步骤 3 的 DTO 字典），口径不可控。出口转换的作用域只有 `errors` 一处，且与 `Error.Code` 的 kebab 转换同处 `ProblemDetailsWriter`，易于测试。实现上按「非泛型 `IDictionary` 重建 + `StringComparer.Ordinal` 去重（后写覆盖先写）」处理任意字典形态，不接受按泛型类型枚举白名单。步骤 3 接 FluentValidation 时仍需确认产出形状并保持同一断言（PascalCase 入 → `userName`）。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
