@@ -3,7 +3,7 @@
 > 来源：Chief 实测 `127.0.0.1:3306` / `127.0.0.1:6379`（`local.env`，不入库）；时区与驱动部分由旺总用 `MySqlConnector 2.6.2` 实测
 > 适用：票 03（AppHost 引用本机实例）、票 09（AdoJobStore / readiness）、票 10（租户隔离集成测试）
 > 状态：开发约定；票 10 的验收项以 `docs/specs/tickets.md` 为准，本条只补测试实现约束
-> 修订：2026-10-27 修正时区做法（原写 `ServerTimeZone=UTC`，MySqlConnector 2.6.2 不支持该关键字）
+> 修订：2026-10-27 修正时区做法（原写 `ServerTimeZone=UTC`，MySqlConnector 2.6.2 不支持该关键字）；同日补票 10 fixture 的连接管理要点
 
 ## 实例事实
 
@@ -34,3 +34,10 @@
 
 - 租户库命名沿用 `pzd_it_a` / `pzd_it_b`（票 10 的 fixture 自动创建与清理）；本机具备建库权限，主路径直接跑真实 MySQL，不需要「无权限」降级分支。
 - 若 `local.env` 缺失或实例不可达，票 10 仍按动态 Skip 处理（CI 兜底），Skip 原因写入测试输出。
+
+## 票 10 fixture 实现要点（2026-10-27 补充）
+
+- **显式设置 `ConnectionConfig.IsAutoCloseConnection = false`**。实测 `SqlSugarCore 5.1.4.221`：`new ConnectionConfig().IsAutoCloseConnection` 与 `new SqlSugarClient(config)` 下都是 `False`（默认不是 `true`，与常见文档表述不一致），但仍要显式写死——默认值随版本变化，且一旦为 `true`，每次操作开关连接，会话级 `SET time_zone` 会在下一次操作前丢失。
+- **`SET` 与断言必须落在同一条物理连接上**：`Open` 后执行 `SET time_zone='+00:00'`，`SELECT @@session.time_zone` 与业务查询都用同一条连接（`db.Ado.Connection`）。
+- **保留连接池时**：`ConnectionReset` 默认 `true`，池复用会重置会话状态（实测同池第二条连接变回 `SYSTEM`），所以不能在 fixture 初始化阶段只 SET 一次，必须挂在「取连接」这一步。
+- 断言值用显式 UTC 转换或 `CONVERT_TZ`，不要用「插入 `DateTime.UtcNow` 读回相等」这种吃服务器默认时区的写法。
