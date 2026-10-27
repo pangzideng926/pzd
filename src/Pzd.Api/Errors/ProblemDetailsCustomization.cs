@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Pzd.SharedKernel.Results;
 
@@ -32,11 +33,27 @@ public static class ProblemDetailsCustomization
 
         if (error.Metadata.TryGetValue("errors", out var errors) && errors is not null)
         {
-            problem.Extensions["errors"] = errors;
+            // FluentValidation 的 key 是 PascalCase 属性名；对前端契约统一转 camelCase（AC4 / F-06-1）。
+            problem.Extensions["errors"] = ToCamelCaseKeys(errors);
         }
 
         return problem;
     }
+
+    /// <summary>把错误字典的键转成 camelCase；只处理字典形态，其它值原样返回。</summary>
+    private static object? ToCamelCaseKeys(object? errors) => errors switch
+    {
+        null => null,
+        IDictionary<string, object?> map => map.ToDictionary(
+            pair => JsonNamingPolicy.CamelCase.ConvertName(pair.Key),
+            pair => pair.Value,
+            StringComparer.Ordinal),
+        IDictionary<string, string[]> map => map.ToDictionary(
+            pair => JsonNamingPolicy.CamelCase.ConvertName(pair.Key),
+            pair => pair.Value,
+            StringComparer.Ordinal),
+        _ => errors,
+    };
 
     /// <summary>供 <c>AddProblemDetails</c> 的 CustomizeProblemDetails 使用：补齐 code/traceId。</summary>
     public static void Customize(ProblemDetailsContext context)

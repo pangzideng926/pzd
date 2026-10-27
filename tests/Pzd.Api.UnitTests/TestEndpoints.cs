@@ -51,6 +51,10 @@ internal sealed class TestEndpointsStartupFilter : IStartupFilter
         _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, "unknown test scenario"),
     };
 
+    /// <summary>
+    /// 模拟 FluentValidation 的实际输出：错误字典的 key 是 PascalCase 属性名（如 <c>UserName</c>），
+    /// 响应里必须被转成 camelCase——用例刻意喂 PascalCase，避免「用例自己喂期望输入」（F-06-1）。
+    /// </summary>
     private static Error BuildValidationError() => new(
         "Identity.User.NameDuplicated",
         ErrorType.Validation,
@@ -59,7 +63,7 @@ internal sealed class TestEndpointsStartupFilter : IStartupFilter
         {
             ["errors"] = new Dictionary<string, string[]>(StringComparer.Ordinal)
             {
-                ["userName"] = ["用户名已存在"],
+                ["UserName"] = ["用户名已存在"],
             },
         });
 }

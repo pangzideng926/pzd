@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Pzd.Api.Errors;
 using Pzd.Api.UnitTests.Tenancy;
 
 namespace Pzd.Api.UnitTests.Errors;
@@ -54,17 +56,47 @@ public class ErrorMappingTests
     }
 
     [Fact]
-    public async Task Validation_failure_carries_the_errors_dictionary_with_camel_case_keys()
+    public async Task Validation_failure_turns_PascalCase_keys_into_camel_case()
     {
         await using var factory = new PzdApiFactory();
         using var client = factory.CreateClient();
 
         using var response = await GetScenarioAsync(client, "validation");
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var json = JsonDocument.Parse(body);
 
         var errors = json.RootElement.GetProperty("errors");
 
+        Assert.True(errors.TryGetProperty("userName", out _), body);
+        Assert.False(errors.TryGetProperty("UserName", out _), body);
         Assert.Equal(["用户名已存在"], errors.GetProperty("userName").EnumerateArray().Select(item => item.GetString()));
+    }
+
+    [Fact]
+    public void TraceId_prefers_the_running_activity_id()
+    {
+        using var activity = new System.Diagnostics.Activity("test").Start();
+        var context = new DefaultHttpContext();
+
+        Assert.Equal(activity.Id, TraceIds.Current(context));
+    }
+
+    [Fact]
+    public void TraceId_falls_back_to_the_request_identifier_without_an_activity()
+    {
+        var previous = System.Diagnostics.Activity.Current;
+        System.Diagnostics.Activity.Current = null;
+
+        try
+        {
+            var context = new DefaultHttpContext { TraceIdentifier = "fallback-trace" };
+
+            Assert.Equal("fallback-trace", TraceIds.Current(context));
+        }
+        finally
+        {
+            System.Diagnostics.Activity.Current = previous;
+        }
     }
 
     [Fact]
@@ -106,6 +138,8 @@ public class ErrorMappingTests
         var root = json.RootElement;
 
         Assert.Equal("Http.NotFound", root.GetProperty("code").GetString());
+        Assert.Equal("https://pzd/errors/http.not-found", root.GetProperty("type").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("title").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("traceId").GetString()));
         Assert.Equal(root.GetProperty("traceId").GetString(), response.Headers.GetValues("X-Trace-Id").Single());
     }
@@ -124,6 +158,8 @@ public class ErrorMappingTests
         var root = json.RootElement;
 
         Assert.Equal("Http.MethodNotAllowed", root.GetProperty("code").GetString());
+        Assert.Equal("https://pzd/errors/http.method-not-allowed", root.GetProperty("type").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("title").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("traceId").GetString()));
     }
 
