@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -118,18 +119,30 @@ public static class ProblemDetailsWriter
                 return builder.ToString();
             }));
 
-    /// <summary>把错误字典的键转成 camelCase；只处理字典形态，其它值原样返回。</summary>
-    private static object? ToCamelCaseKeys(object? errors) => errors switch
+    /// <summary>
+    /// 把错误字典的键转成 camelCase：用非泛型 <see cref="IDictionary"/> 重建，覆盖
+    /// <c>Dictionary&lt;string, string[]&gt;</c>、<c>ReadOnlyDictionary</c>、<c>Dictionary&lt;string, List&lt;string&gt;&gt;</c>
+    /// 等任意字典形态；camelCase 后撞键按「后写覆盖」去重，不抛异常。非字典值原样返回。
+    /// </summary>
+    private static object? ToCamelCaseKeys(object? errors)
     {
-        null => null,
-        IDictionary<string, object?> map => map.ToDictionary(
-            pair => JsonNamingPolicy.CamelCase.ConvertName(pair.Key),
-            pair => pair.Value,
-            StringComparer.Ordinal),
-        IDictionary<string, string[]> map => map.ToDictionary(
-            pair => JsonNamingPolicy.CamelCase.ConvertName(pair.Key),
-            pair => pair.Value,
-            StringComparer.Ordinal),
-        _ => errors,
-    };
+        if (errors is not IDictionary dictionary)
+        {
+            return errors;
+        }
+
+        var converted = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            if (entry.Key is not string key)
+            {
+                return errors;
+            }
+
+            converted[JsonNamingPolicy.CamelCase.ConvertName(key)] = entry.Value;
+        }
+
+        return converted;
+    }
 }

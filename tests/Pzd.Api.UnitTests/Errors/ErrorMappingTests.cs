@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Pzd.Infrastructure.Errors;
+using Pzd.SharedKernel.Results;
 using Pzd.Api.UnitTests.Tenancy;
 
 namespace Pzd.Api.UnitTests.Errors;
@@ -192,6 +193,69 @@ public class ErrorMappingTests
         var traceId = root.GetProperty("traceId").GetString();
         Assert.False(string.IsNullOrWhiteSpace(traceId));
         Assert.Equal(traceId, response.Headers.GetValues("X-Trace-Id").Single());
+    }
+
+    [Fact]
+    public void Errors_dictionary_with_list_values_is_converted_to_camel_case()
+    {
+        var error = new Error(
+            "Identity.User.Invalid",
+            ErrorType.Validation,
+            "校验失败",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["errors"] = new Dictionary<string, List<string>>(StringComparer.Ordinal)
+                {
+                    ["UserName"] = ["用户名已存在"],
+                },
+            });
+
+        var problem = ProblemDetailsWriter.Create(error, 400, new DefaultHttpContext());
+        var errors = Assert.IsAssignableFrom<IDictionary<string, object?>>(problem.Extensions["errors"]);
+
+        Assert.True(errors.ContainsKey("userName"));
+        Assert.False(errors.ContainsKey("UserName"));
+    }
+
+    [Fact]
+    public void Errors_keys_that_collide_after_camel_casing_are_deduplicated()
+    {
+        var error = new Error(
+            "Identity.User.Invalid",
+            ErrorType.Validation,
+            "校验失败",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["errors"] = new Dictionary<string, string[]>(StringComparer.Ordinal)
+                {
+                    ["UserName"] = ["A"],
+                    ["userName"] = ["B"],
+                },
+            });
+
+        var problem = ProblemDetailsWriter.Create(error, 400, new DefaultHttpContext());
+        var errors = Assert.IsAssignableFrom<IDictionary<string, object?>>(problem.Extensions["errors"]);
+
+        Assert.Equal(["B"], Assert.IsType<string[]>(errors["userName"]));
+    }
+
+    [Fact]
+    public void Read_only_dictionary_errors_are_converted_to_camel_case()
+    {
+        var inner = new Dictionary<string, string[]>(StringComparer.Ordinal) { ["UserName"] = ["A"] };
+        var error = new Error(
+            "Identity.User.Invalid",
+            ErrorType.Validation,
+            "校验失败",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["errors"] = new System.Collections.ObjectModel.ReadOnlyDictionary<string, string[]>(inner),
+            });
+
+        var problem = ProblemDetailsWriter.Create(error, 400, new DefaultHttpContext());
+        var errors = Assert.IsAssignableFrom<IDictionary<string, object?>>(problem.Extensions["errors"]);
+
+        Assert.True(errors.ContainsKey("userName"));
     }
 
     private static Task<HttpResponseMessage> GetScenarioAsync(HttpClient client, string scenario) =>
