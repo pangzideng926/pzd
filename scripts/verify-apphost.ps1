@@ -66,7 +66,10 @@ function Get-Env([string]$name) {
 # -NoCredentials 时两个都不拼：否则 redis 会靠默认值拼出 127.0.0.1:6379，
 # 本机 Memurai 在跑就会变成「redis=Healthy / mysql=Degraded」的混合态，验不出整条降级路径。
 if ($NoCredentials) {
-    Write-Host "[info] -NoCredentials：跳过硬编码默认值，mysql/redis 连接串都留空。" -ForegroundColor DarkGray
+    # 票 09 的 master 连接串也要清：否则残留的环境变量会让 Quartz 走 AdoJobStore，
+    # 与「无实例 → Degraded」这条验收自相矛盾。
+    $env:ConnectionStrings__master = $null
+    Write-Host "[info] -NoCredentials：跳过硬编码默认值，mysql/redis/master 连接串都留空。" -ForegroundColor DarkGray
 }
 elseif (-not (Get-Env "ConnectionStrings__mysql")) {
     $hostName = if (Get-Env "PZD_MYSQL_HOST") { Get-Env "PZD_MYSQL_HOST" } else { "127.0.0.1" }
@@ -76,10 +79,18 @@ elseif (-not (Get-Env "ConnectionStrings__mysql")) {
     $master = if (Get-Env "PZD_MYSQL_MASTER_DB") { Get-Env "PZD_MYSQL_MASTER_DB" } else { "pzd_master" }
 
     if ($password) {
-        [Environment]::SetEnvironmentVariable(
-            "ConnectionStrings__mysql",
-            "Server=$hostName;Port=$port;User ID=$user;Password=$password;Database=$master;",
-            "Process")
+        $mysqlConnection = "Server=$hostName;Port=$port;User ID=$user;Password=$password;Database=$master;"
+        [Environment]::SetEnvironmentVariable("ConnectionStrings__mysql", $mysqlConnection, "Process")
+
+        # 票 09：Quartz 主路径用同一份凭据连 master 库（MySQL AdoJobStore）。
+        # 不注入这条，API 就只能走降级内存存储——一键脚本永远验不到「重启后任务仍在」。
+        # AllowUserVariables 是 AdoJobStore 初始化/建表语句需要的；密码只在进程环境里，不打印。
+        if (-not (Get-Env "ConnectionStrings__master")) {
+            [Environment]::SetEnvironmentVariable(
+                "ConnectionStrings__master",
+                "$mysqlConnection AllowUserVariables=true",
+                "Process")
+        }
     }
 }
 
