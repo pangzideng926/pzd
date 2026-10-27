@@ -142,7 +142,7 @@ pnpm -w typecheck
 
 **Blocked by:** 01, 02, 05（F-05-4 需在 05 的中间件上加豁免）
 
-**Status:** 🔧 代码已入库、api 两条路径已验、aspire 待用户终端证明。基线 `7c5f411` 含 F-03-1 修复及 `007fe6d` / `0746b4a` / `d17df6c`；api Healthy 与 NoCredentials→Degraded 两路径 exit 0 为旺总报告、Chief 确认的开发证据，李总复测与老登审计仍在进行。F-03-2 前端首屏及 F-03-3 日志计数等待独立结论；agent 会话 ACL 阻塞不等于普通终端失败。票 03 未关闭，不降低 aspire 验收标准。
+**Status:** 🔧 代码已入库、api 两条路径已有开发证据；aspire 等待可运行会话按 `f2d49b8` 完整复测（不限定用户终端），见下方 D1 最新更新。基线 `7c5f411` 含 F-03-1 修复及 `007fe6d` / `0746b4a` / `d17df6c`；api Healthy 与 NoCredentials→Degraded 两路径 exit 0 为旺总报告、Chief 确认的开发证据，李总复测与老登审计仍在进行。F-03-2 前端首屏及 F-03-3 日志计数等待独立结论；agent 会话 ACL 阻塞不等于普通终端失败。票 03 未关闭，不降低 aspire 验收标准。
 
 **当前复测清单（2026-10-27）**：在 `7c5f411` 或代码等价基线上核验后端三端点、5199 首屏、退出后无残留监听；缺资源启动 Warning 数等于不可用资源数，轮询三次不增，框架健康检查 Warn 为 0。旧基线 api 模式结论不能自动覆盖新提交的脚本清理/重试与降级分支；有变更的分支须补测。脚本只能清理可证明属于本次运行的资源，不得以机器上全部 dcp 进程作为安全清理范围。
 
@@ -169,7 +169,8 @@ pnpm -w typecheck
 已落地：`src/Pzd.AppHost`（`AddConnectionString` 引用本机 mysql/redis、不建容器；API `port: 5080`；`AddViteApp` + `WaitFor(api)`）、`scripts/verify-apphost.ps1`（198 行，`-Mode api|aspire`，轮询就绪 + 三端点探活 + 退出后检查无残留监听 + mysql/redis 明细非 `Healthy` 即记 failure）、`MySqlHealthCheck` 改服务器级 ping（`pzd_master` 未建库不判 `Degraded`）、`Program.cs` 只挂控制台日志。
 
 - **D1 当前口径（2026-10-27 17:01，取代此前“D1 已推翻”结论）**：F-03-1 端点代码缺陷已由 `7c5f411` 修复；另有本机 agent 会话 DCP ACL/令牌权限阻塞。依据 Chief 16:59 实跑报告，`SetSecurityInfo/CreateWindowsDirectory` 抛 `UnauthorizedAccessException`，资源未启动且 5080/5199 无监听。此前“DCP 已能启动”的证据缺少响应进程归属核对，现撤回；残留 API 导致假绿只是待核查解释。状态为**待用户普通终端证明**，api 路径可独立评审，不替代 aspire。普通终端也失败不自动降级，任何验收降级须用户明确批准。具体缺失特权的机制尚未单独验证，不凭权限列表下定论。
-  - **F-03-2（原 medium，待复测定位）**：旧测试观察到 90s 内 5199 无监听、无 vite/node 子进程，前端首屏尚未验证通过。现有 DCP ACL 阻塞，不能认定是独立前端代码缺陷；先在用户普通终端证实本次 DCP/资源启动，再检查 pnpm、端口注入与首屏。
+  - **D1 最新更新（优先于上段历史口径）**：老登报告 `-Mode aspire -SkipWeb` exit 0、DCP 拉起 API，同轮 SetSecurityInfo 报错未阻止编排。因此不同会话结果不同，不再认定所有 agent 会话不可验证，也不限定只能由用户普通终端举证。等待可运行会话提供固定 hash、DCP 资源/进程归属、前端首屏及退出清理的完整证据；SkipWeb 不算完整通过。
+  - **F-03-2（修复候选 `f2d49b8`，待复测）**：旺总与李总定位旧 `../apps/web` 指向不存在的 `src/apps/web`；旺总已报告提交绝对路径计算与存在性校验，配合 `e645123` 的端口修复。李总须验证本次 web 进程的 5199 SPA 首屏，不能只看端口 200；pnpm.cmd 启动问题仍为假设，不能预判为根因。
   - `-Mode api` 定位改为**附加的快速回归路径**，不能替代「一条命令 `dotnet run --project src/Pzd.AppHost` 拉起 API + 前端」这条验收；`-Mode aspire` 必须在本机实测通过。孤儿 `dcp.exe`（系统 TEMP、抢占监听套接字）清理属运维动作，**不能当验收豁免**。
   - **F-03-1 / F-03-2 未闭环前票 03 不得标通过**；若本轮确实解决不了，必须由用户明确同意降级并写进步骤 3 移交清单。
 - **偏差 D2**：API 与 AppHost 均 `ClearProviders()` 只留控制台——EventLog provider 无写权限时**写日志本身会抛异常**（实测把 `/health/ready` 降级路径变成连接中断）。票 08 接 Serilog + OTel 时必须保留「日志不得成为故障源」，不得把这两处 `ClearProviders` 当作临时脏补丁删掉。
