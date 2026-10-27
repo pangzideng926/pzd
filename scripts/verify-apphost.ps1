@@ -108,6 +108,13 @@ Write-Host "期望 /health/ready 模式：$effectiveExpect" -ForegroundColor Cya
 $logDir = Join-Path $repoRoot "artifacts"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
+# F-03-A11：本次运行的唯一标记。子进程（dotnet run / AppHost）继承进程环境变量，
+# AppHost 再把 PZD_RUN_ID 透传给 api 资源，API 从 /api/version 的 runId 原样回显。
+# 它只在本次进程树里有，同一 hash 的残留实例不会有——这是脚本判定「200 归属」的唯一依据。
+$runId = [guid]::NewGuid().ToString("N")
+[Environment]::SetEnvironmentVariable("PZD_RUN_ID", $runId, "Process")
+Write-Host "本次运行标记 runId=$runId" -ForegroundColor Cyan
+
 function Stop-ProcessTree {
     param([int]$ProcessId)
 
@@ -305,19 +312,24 @@ try {
     if ($live) {
         Write-Host "[ok] /health/live 200（免租户）"
 
-        # F-03-A1：200 必须来自本次启动的进程树，否则判失败（残留实例顶端口时最容易踩）。
-        # F-03-A12（老登）：API 腿是每一轮的主判据，取不到监听 pid 也必须判失败。
-        # 原写法 `if ($listenerPid -and -not 血缘)` 在 pid 为空时短路进 else，打印
-        # 「由本次启动的进程树监听（pid ）」并 exit 0——主动断言一个查不到的假事实。
-        $listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
-        if (-not $listenerPid) {
-            $failures.Add("$($ApiBaseUrl) 取不到监听者 pid，无法确认 200 是否来自本次实例（宿主 pid $($hostProcess.Id)）")
-        }
-        elseif (-not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
-            $failures.Add("$($ApiBaseUrl) 的监听者 pid $listenerPid 不属于本次启动的进程树（宿主 pid $($hostProcess.Id)），200 不是本次实例给的")
+        # F-03-A1/A12：api 模式下 200 必须来自本次启动的进程树（残留实例顶端口时最容易踩；
+        # 取不到监听 pid 也要判失败，不能让 `-and` 短路到 else 打印一个查不到的假事实）。
+        # aspire 模式下 5080 由 DCP 代理持有，父链到不了本次宿主——那是「证据取错对象」（A11），
+        # 所以 aspire 不走进程树，改由 /api/version 回显的本次运行标记判定（见下方 runId 断言）。
+        if ($Mode -eq "api") {
+            $listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
+            if (-not $listenerPid) {
+                $failures.Add("$($ApiBaseUrl) 取不到监听者 pid，无法确认 200 是否来自本次实例（宿主 pid $($hostProcess.Id)）")
+            }
+            elseif (-not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
+                $failures.Add("$($ApiBaseUrl) 的监听者 pid $listenerPid 不属于本次启动的进程树（宿主 pid $($hostProcess.Id)），200 不是本次实例给的")
+            }
+            else {
+                Write-Host "[ok] $ApiBaseUrl 由本次启动的进程树监听（pid $listenerPid）"
+            }
         }
         else {
-            Write-Host "[ok] $ApiBaseUrl 由本次启动的进程树监听（pid $listenerPid）"
+            Write-Host "[note] aspire 模式：5080 由 DCP 代理持有，归属改用 /api/version 的 runId 判定（A11）。" -ForegroundColor DarkGray
         }
 
     $ready = Invoke-WebRequest -Uri "$ApiBaseUrl/health/ready" -TimeoutSec 10 -SkipHttpErrorCheck
@@ -365,6 +377,19 @@ try {
     if ([string]::IsNullOrWhiteSpace($versionBody.buildId)) { $failures.Add("/api/version 缺 buildId") }
     if (-not $versionBody.buildTime) { $failures.Add("/api/version 缺 buildTime") }
     if ($failures.Count -eq 0) { Write-Host "[ok] /api/version $($versionBody.version)+$($versionBody.buildId)" }
+
+    # F-03-A11：归属证据。runId 由本脚本在启动前生成并注入进程环境，API 原样从 /api/version 回显；
+    # 一比对就能区分「本次启动的进程」与「同一 hash 的残留实例」（后者拿不到这个值）。
+    # 老何的口径：buildId 只证明版本相同，不能当归属；取不到证据也必须判失败。
+    if ([string]::IsNullOrWhiteSpace($versionBody.runId)) {
+        $failures.Add("/api/version 没有 runId：API 没收到本次运行的 PZD_RUN_ID，无法证明应答来自本次启动（F-03-A11）")
+    }
+    elseif ($versionBody.runId -ne $runId) {
+        $failures.Add("/api/version 的 runId '$($versionBody.runId)' 与本次运行的 '$runId' 不符：5080 上是别的实例（同 hash 的残留也会这样）")
+    }
+    else {
+        Write-Host "[ok] /api/version runId 与本次运行一致（$runId）：应答来自本次启动的进程"
+    }
 
     # 豁免之外仍要有租户：无租户访问 / 必须 400 Tenant.NotFound。
     $rootProbe = Invoke-WebRequest -Uri "$ApiBaseUrl/" -TimeoutSec 10 -SkipHttpErrorCheck

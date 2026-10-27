@@ -31,6 +31,17 @@ var api = builder
     // when both TargetPort and Port are specified with the same value."）。
     .WithHttpEndpoint(port: 5080, name: "http");
 
+// F-03-A11：把「本次运行唯一标记」透传给 API 资源。aspire 模式下 5080 由 DCP 的代理持有，
+// 父链到不了本次宿主（dcp.exe → dcp.exe → 已退出），所以归属不能靠进程树判；
+// 由启动方注入 PZD_RUN_ID，API 原样从 /api/version 回显，脚本比对即可证明「应答的是本次启动的进程」。
+// 同 hash 的残留实例拿不到这个值，所以它比 buildId 更硬（buildId 只能证明版本相同）。
+var runId = Environment.GetEnvironmentVariable("PZD_RUN_ID");
+
+if (!string.IsNullOrWhiteSpace(runId))
+{
+    api = api.WithEnvironment("PZD_RUN_ID", runId);
+}
+
 // 前端目录按仓库结构算绝对路径：AddViteApp 的相对路径是相对 **AppHost 工程目录**（src/Pzd.AppHost）
 // 解析的，写 "../apps/web" 会指到 src/apps/web（不存在），于是 web 资源瞬间失败、连 node 进程都不产生
 // （F-03-2）。用绝对路径 + 启动期校验，路径错了立刻报得出来，而不是等到 90 秒超时。
