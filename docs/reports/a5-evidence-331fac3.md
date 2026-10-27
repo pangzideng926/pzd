@@ -13,10 +13,23 @@
 | 运行方式 | `pwsh -NoProfile -File scripts/verify-apphost.ps1 -Mode aspire`（**DCP 真实编排**，不是手动 `pnpm dev`） |
 | runId | `fbf41a8096254c91bbdb2df31b8f4839` |
 | 运行时间 | 2026-10-27 23:52:24 起（+08:00；日志内为 UTC 15:52） |
-| hash 与进程 | cart `Pzd.AppHost` 61936 / `dcp.exe` 49688 / vite 56392；证据取完后停掉 |
+| hash 与进程 | `Pzd.AppHost` 61936 / `dcp.exe` 49688 / vite 56392；证据取完后停掉 |
 | 性质 | **手工删行的对照件**，不是仓库里的一条提交；引用时必须写明这一点 |
 
-## 2. 证据一：vite 进程自己打出的 `NODE_ENV`（进程级）
+## 2. 证据强度分级（别把四个来源写成同一种）
+
+| # | 来源 | 类型 | 强度 |
+| --- | --- | --- | --- |
+| 1 | `web-stdout.log:17` | vite **进程内** `process.env.NODE_ENV` 打印的字符串 | **最硬**——进程自己说的，不是反推、不是声明 |
+| 2 | `verify-apphost.log:39` | AppHost 侧资源快照（`Running`、103 项） | 中等——是资源声明快照，**不能单独当进程环境**，但与本条同值可互证 |
+| 3 | `web-stderr.log:2` | 同一进程同一请求的真错误原文（同步抛出） | 硬——抛出点在调用点，且与 #1 相隔 **106ms** |
+| 4 | `GET / → 500` + `X-Pzd-Run-Id` 一致 | HTTP 面回包 | 硬——证明应答来自本轮启动的进程，不是残留实例 |
+
+**读法**：先立 #1（进程级字符串），再用 #2 同值互证，用 #3 说明后果，用 #4 排除「打到了别人的实例」。**不要**从 #2 单独推「环境变量进了进程」——快照语义不支持这个结论，这也是先前那条纪律的由来。
+
+
+
+## 3. 证据一（最硬）：vite 进程自己打出的 `NODE_ENV`
 
 来源：DCP 对 web 资源 stdout 的捕获（`..._out`），复制件 `web-stdout.log`：
 
@@ -27,7 +40,7 @@
 
 第 17 行来自 [`apps/web/app/entry.server.tsx`](../../apps/web/app/entry.server.tsx) `:45` 的锚点，读的是 **vite 进程的 `process.env`**，所以这是**进程真实值**，不是资源声明快照。
 
-## 3. 证据二：同一次请求的真错误（同步抛出，未被 abort TDZ 掩盖）
+## 4. 证据二：同一次请求的真错误（同步抛出，未被 abort TDZ 掩盖）
 
 来源：同一目录的 `..._err`，复制件 `web-stderr.log`：
 
@@ -37,9 +50,9 @@
 3 2026-10-27T15:52:27.765Z     at eval (E:/pzd-a5pre/apps/web/app/entry.server.tsx:39:113)
 ```
 
-与证据一相隔 **0.1 秒**，同一进程、同一请求；抛出点在调用点本身（不是 6 秒后的 TDZ `ReferenceError`）。
+与证据一相隔 **106ms**（`15:52:27.658` → `15:52:27.764`），同一进程、同一请求；抛出点在调用点本身（不是 6 秒后的 TDZ `ReferenceError`）。
 
-## 4. 证据三：资源声明快照侧（辅助，不单独作为结论）
+## 5. 证据三：资源声明快照侧（辅助，不单独作为结论）
 
 来源：`artifacts/verify-apphost.log` 复制件 `verify-apphost.log`：
 
@@ -54,7 +67,7 @@
 
 `0 项` 在 `Running` **之前**、`103 项` 在 `Running` 之后——这就是「`0 项` 是时序没到、不是没传」的同一份实证。注意 `[pzd-diag]` 是 **AppHost 自己的 `console.log`**，可见性跟 web 资源 stdout 是两条独立通道，不能互相证明。
 
-## 5. 证据四：HTTP 面（GET，不是 HEAD）
+## 6. 证据四：HTTP 面（GET，不是 HEAD）
 
 ```
 GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
@@ -65,19 +78,38 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 **探活纪律**：`entry.server.tsx:57` 对 `HEAD` 在渲染前短路返回初始 200，所以**HEAD 恒 200**，任何探活只能用 GET 的状态码。
 
-## 6. 结论
+## 7. 证据五：TDZ 已经终结（反证计数，老卫独立数过）
+
+同目录 `web-stderr.log` 有 **10401 行 / 1.6MB**，几乎全是重复错误栈。按关键词计数：
+
+| 关键词 | 命中 |
+| --- | --- |
+| `Cannot access`（TDZ 的报错形态） | **0** |
+| `ReferenceError` | **0** |
+| `jsxDEV` | **1040** |
+| `同步抛出` | **520** |
+| 文件总行数 | 10401 |
+
+读法：**520 次真错误、0 次 TDZ**。也就是说在真实 DCP 编排下，自定义 entry 每次都在调用点把真错误打出来并回 500，**没有任何一次退化成「6 秒后 `Cannot access 'abort' before initialization` 带崩进程」**。1.6MB 是「每个请求几段栈 × 520 次」的结果，不是异常膨胀以外的第二种问题。
+
+## 8. 结论
 
 DCP/supervisor 向 web 资源注入 `NODE_ENV=production`；未钉住时 vite 进程拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
 
+**四条证据链上的分工（按 §2 的强度）**：① 进程级字符串 `NODE_ENV=production`（最硬）→ ② 快照同值（互证）→ ③ 同一请求 106ms 后 `jsxDEV is not a function`（后果）→ ④ `GET /` 500 且归属头与本轮 runId 一致（排除残留实例）。
+
 对照另一侧由李总在含钉住行的树上跑出（`5682cd0` 干净副本）：进程级 `NODE_ENV=development`、`GET /` 200、`X-Pzd-Run-Id` 与 runId 一致、全链路 `EXIT=0`。**两边唯一差异就是那一行 `WithEnvironment`。**
 
-## 7. 不能写的话
+**两条边界（引用时不能省）**：① 这一侧是 `331fac3` **手工删掉钉住行的对照件**（不是某个 un-pinned 提交，也不是 `git revert`）；② **两侧来自两次不同的运行**（`331fac3` 删行 vs `5682cd0` 含钉住），是「同一改动差异、不同运行现场」的对照，不是同一次运行里的 A/B 开关。
+
+## 9. 不能写的话
 
 - 不能写「**aspire 下看不到 `[pzd-web]` 就等于模块图失败**」：web 资源的 stdout/stderr 落在 `.aspire-tmp/aspire-dcp*/<guid>_out` / `_err`，不在 `artifacts/verify-apphost.log`。读法 `grep -a -r "pzd-web\|pzd/entry.server" .aspire-tmp`。
 - 不能写「**已有进程级 `NODE_ENV` 的文件探针证据**」：本包是 DCP 会话目录的 `_out`/`_err`，`331fac3` 上还没有 `writeFileSync` 探针（那是 `cd17520`）。
 - 不能写「**`bf08bd4` 上失败也回 500**」：`bf08bd4` 上同一变异测得 200，回 500 是 `db17a9b`（含 `4485ca0`）的行为，**按 hash 分家**。
 - 不能把本包当成「仓库里的一次可复现运行」：它来自人工删行的对照件，复现需重建同一改动。
+- 不能把 `Cannot access` 计数为 0 读成「**TDZ 在全部场景都消失了**」：这只覆盖「该调用点同步抛出 → 失败回 500」这一类，且是 `331fac3` 的自定义 entry；别的失败形态（`onShellError`、卡死超时）各有各的实测，见交接 §5。
 
-## 8. 复制件位置（非权威，目录可能已被清理）
+## 10. 复制件位置（非权威，目录可能已被清理）
 
 本文件内容抄自 `C:\tmp\a5-ab-331fac3-nopin\`（`web-stdout.log` 1.8KB、`web-stderr.log` 1.6MB、`verify-apphost.log` 4.7KB、`verify-apphost.log.err` 103B、`README-证据说明.txt`）。**该目录随时可能被删；以本文件正文为准。**
