@@ -1,6 +1,6 @@
 # PZD 工程底座与横切能力 — 规格（§18 步骤 1–2）
 
-> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/12 审计通过；票 05 已开工（多租户内核）；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
+> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/12 审计通过；票 05 实现完成待测（`057f64a`）；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
 > 上游：[`docs/architecture.md`](../architecture.md)（已确认），本规格只覆盖 §18 步骤 1「工程底座」与步骤 2「横切能力」
 > 票：[`docs/specs/tickets.md`](./tickets.md)
 > 依据方法论：to-spec / to-tickets（Matt Pocock），测试接缝取最高层
@@ -91,7 +91,7 @@
   - 匿名：子域名或 `X-Tenant` 头（仅匿名端点可用），二者同时存在时子域名优先。
   - 无法解析且端点要求租户 → 400/403 ProblemDetails（错误码 `Tenant.NotFound`）。
   - `ITenantStore` 校验状态与到期：停用 → 403 `Tenant.Disabled`，过期 → 403 `Tenant.Expired`；每次请求都校验（不缓存「已通过」结论超过请求生命周期）。
-- `ITenantDbProvider`：按 `TenantId` 惰性获取连接，加锁双检后 `AddConnection`，并只对该连接配置 AOP / 过滤器；返回 `GetConnectionScope(tid)`；禁止全局 `ChangeDatabase`。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
+- `ITenantDbProvider`：按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、只查一次 `ITenantStore`；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
 - `master` 连接始终存在（`ConfigId = "master"`）；租户库表仍保留 `TenantId` 与全局 QueryFilter（纵深防御）。
 
 ### 4.4 异常处理与 Result
@@ -245,7 +245,7 @@
   - **F6 版本口径**：HEAD `1bdc680` 实测 `0.1.1-alpha.0.1+1bdc680`；票 01 / 票 09 的版本期望改为**以 git tag 为基准**，不硬编码 `0.1.0`（tag 提交上才是 `0.1.0`）。
   - **F7 归属决定**：`Domain → Infrastructure` 规则并入票 04 的规则 ③ 禁止列表（不单开票、不延后到步骤 3）；旺总本轮返工范围 = F1 / F2 / F5 / F4 + F7。
   - 凭据红线见 §4.12；仓库推送到 `github.com/pangzideng926/pzd` 前按 §4.12 做推送安全检查。
-  - `docs/reports/` 两份审计/测试报告当前未跟踪，待返工收尾与测试复核后一并提交（提交内容不得含密码或连接串秘密）。
+  - `docs/reports/` 已随 `2c2f58c` 入库（测试/审计/交接报告）；后续报告提交同样不得含密码或连接串秘密。
 - **收口记录（2026-10-27，票 01/04 审计通过后）**：
   - 票 01 / 票 04 审计结论均为**通过**（[`review-01-04-final.md`](../reports/review-01-04-final.md)），票面状态与顶部进度已回填；返工范围 F1/F2/F5/F4/F7 全部经变异复核。
   - **F8 落票**：新增票 12「`Error.Metadata` 只读快照」（`Error.cs:33`），要求构造时复制 `ReadOnlyDictionary`（Ordinal）并补「构造后改原字典不影响 Error」用例；`EmptyMetadata` 不可强转改写。
@@ -255,5 +255,10 @@
 - **票 12 收尾（2026-10-27）**：
   - 票 12（F8）审计**通过**（[`review-12.md`](../reports/review-12.md)，实现 `1463e9e`）；基线 51 条测试全绿（35 + 13 + 1 + 1 + 1），四个变异各自独立变红，F8 关闭。
   - 遗留 low（不阻塞）：`Error.Metadata` 只做**结构快照**，值为可变对象时仍会跟随变化——`Metadata` 的 XML 注释补「仅结构快照，值请使用不可变类型」（旺总随票 05 补）；可选补 `Clear()` / `ICollection.Add` 两路守卫。
-  - 规则③的模块程序集范围（交接 §2.1）确认**由票 05 承接**：`ProductAssemblies` 改为「底座程序集 + `DiscoverModules()`」，并在票 05 补 `FakeInfrastructureDependency` 反例（恰好 2 条违规）；票 06 补 `FakeApiDependency`（恰好 3 条）。
+  - 规则③的模块程序集范围（交接记录「规则③检查范围」项）确认**由票 05 承接**：`ProductAssemblies` 改为「底座程序集 + `DiscoverModules()`」，并在票 05 补 `FakeInfrastructureDependency` 反例（恰好 2 条违规）；票 06 补 `FakeApiDependency`（恰好 3 条）。
+- **票 05 实现偏差（2026-10-27，`057f64a`）**：
+  - `SqlSugarScope.AddConnection` 在 async 上下文里**上下文私有**（加完回到调用方即丢，`Task.Yield()` 可复现），原设计「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：只建一次、只查一次 store、不 `ChangeDatabase`、不跨租户；`ITenantDbProvider` 为 async API。票 05 票面与 §4.3 已回填。
+  - 票 05 新增文件：`TenantConnectionCache.cs`、`TenantConfiguration.cs`、`SystemClock.cs`、`src/Pzd.Api/appsettings.json`（无真实密码）；Infrastructure 加 `FrameworkReference Microsoft.AspNetCore.App`、`SqlSugarCore`、`InternalsVisibleTo`；测试包加 `Microsoft.AspNetCore.Mvc.Testing`。均属实现必需，审计不应判超范围。
+  - 本轮**所有端点都要求租户**；登录类端点（`AllowAnonymousTenant`）与匿名租户解析的完整策略留步骤 3。
+  - 票 05 交付时全仓 90 条全绿（35 + 15 + 30 + 9 + 1），待李总复测、老登审计后再回填终态。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

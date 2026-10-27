@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 🔧 开工中（旺总）｜02/03 未开工｜06–10 ready-for-agent
+> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 🔧 实现完成待测（`057f64a`，90 条全绿）｜02/03 未开工｜06–10 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -193,12 +193,14 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 
 # 05: 多租户内核 + 单测
 
-**What to build:** 请求进入后能解析出可信租户上下文（登录 claim 优先，匿名头/子域次之），停用/过期立即 403；业务代码通过 Scoped 的 `ITenantDbProvider` 按需取租户连接，绝不串库。全部用单测证明，不依赖数据库。
+**What to build:** 请求进入后能解析出可信租户上下文（登录 claim 优先，匿名头/子域次之），停用/过期立即 403；业务代码通过 Scoped 的 `ITenantDbProvider` 按需取租户连接，**每租户独立 `SqlSugarScope` + 双检缓存**，绝不串库。全部用单测证明，不依赖数据库。
+
+**实现偏差（票 05 实测回填）**：`SqlSugarScope.AddConnection` 在 async 上下文里是**上下文私有**的（加完回到调用方即丢，`Task.Yield()` 即复现），因此原票面「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建一个独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：每租户只建一次、只查一次 `ITenantStore`、不 `ChangeDatabase`、不跨租户。另：新增 `TenantConnectionCache.cs`、`TenantConfiguration.cs`、`SystemClock.cs`、`appsettings.json`（无真实凭据）；provider 为 async API；本轮所有端点都要求租户（登录类 `AllowAnonymousTenant` 留步骤 3）。
 
 **文件路径**
 
 - `src/Pzd.SharedKernel/Abstractions/ITenantContext.cs`（若 04 未建）
-- `src/Pzd.Infrastructure/Tenancy/TenantContext.cs`、`TenantResolutionMiddleware.cs`、`ITenantStore.cs`、`InMemoryTenantStore.cs`、`TenantInfo.cs`、`ITenantDbProvider.cs`、`TenantDbProvider.cs`、`TenantErrors.cs`
+- `src/Pzd.Infrastructure/Tenancy/TenantContext.cs`、`TenantResolutionMiddleware.cs`、`ITenantStore.cs`、`InMemoryTenantStore.cs`、`TenantInfo.cs`、`ITenantDbProvider.cs`、`TenantDbProvider.cs`、`TenantErrors.cs`、`TenantConnectionCache.cs`、`TenantConfiguration.cs`、`src/Pzd.Infrastructure/SystemClock.cs`
 - `src/Pzd.Api/Program.cs`（注册 `UseAuthentication` → `TenantResolutionMiddleware` → `UseAuthorization`）
 - `src/Pzd.Api/appsettings.json`（`Tenants:*` 测试用租户配置，或内存 Store 由 DI 注入）
 - `tests/Pzd.Infrastructure.UnitTests/Tenancy/*.cs`
@@ -206,7 +208,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent（测试先行）
+**Status:** 🔧 实现完成，待李总复测（commit `057f64a`，全仓 90 条全绿：35+15+30+9+1）
 
 - [ ] 已登录且 claim `tid` 存在：路由/端点拿到该租户，`X-Tenant` 头被忽略（有测试证明"忽略"）
 - [ ] 匿名 + `X-Tenant`：解析成功；匿名 + 子域名：解析成功；两者同时存在时子域名优先
@@ -214,7 +216,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - [ ] 租户停用 → 403 + `code = Tenant.Disabled`；租户过期 → 403 + `code = Tenant.Expired`（精确断言响应体）
 - [ ] 每个请求都重新校验状态（`ITenantStore` 被再次调用，缓存不跨请求）
 - [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
-- [ ] `TenantDbProvider`：不存在连接时加锁双检、只 `AddConnection` 一次、返回 `GetConnectionScope(tid)`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
+- [ ] `TenantDbProvider`：每租户懒建**独立 `SqlSugarScope`**（构造期配置跨 async 上下文可见）+ 双检缓存——同一租户只建一次、只查一次 `ITenantStore`；禁止全局单例 `AddConnection(tid)` / `ChangeDatabase`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
 - [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
 - [ ] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（交接记录「规则③检查范围」项；本票搭好机制，模块出现后自动生效）
 - [ ] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（交接记录「F7 补测条件」项）
