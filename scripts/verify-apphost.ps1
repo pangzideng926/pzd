@@ -402,16 +402,35 @@ try {
     # aspire 模式下 API 的 stdout 由 DCP 接管，不会落到 AppHost 的日志文件里，
     # 所以警告文本这条证据由 `-Mode api` 取证；这里只做状态断言。
     if ($effectiveExpect -eq "Degraded") {
+        # 必须**按资源名分别匹配**，不能只数字数（老登、雨哥都提过这个坑）：
+        # 现在同一个 `Degraded mode:` 前缀下有三条——MySQL、Redis、Quartz，
+        # 而 `-NoCredentials` 恰好三条都会打。只 grep 前缀的话，MySQL/Redis 两条
+        # 哪天不再输出，Quartz 那条照样让这里判绿，④ 就成了假证据。
+        $expectedResources = @("MySQL", "Redis")
+        $missingResources = @()
+
+        foreach ($resource in $expectedResources) {
+            $pattern = "Degraded mode: $resource unavailable"
+
+            if (-not (Select-String -Path $logPath -Pattern $pattern -SimpleMatch -ErrorAction SilentlyContinue)) {
+                $missingResources += $resource
+            }
+        }
+
         $degradedLines = Select-String -Path $logPath -Pattern "Degraded mode:" -SimpleMatch -ErrorAction SilentlyContinue
+
         if ($degradedLines) {
             Write-Host "---- 启动期降级日志（$($degradedLines.Count) 行）----" -ForegroundColor Yellow
             $degradedLines | ForEach-Object { Write-Host "  $($_.Line.Trim())" }
         }
-        elseif ($Mode -eq "api") {
-            $failures.Add("启动日志里没有 'Degraded mode:' 警告行（$logPath），④ 缺证据")
-        }
-        else {
-            Write-Host "[note] aspire 模式下 API 日志由 DCP 接管；降级警告原文用 -Mode api -NoCredentials 取证。" -ForegroundColor DarkGray
+
+        if ($missingResources.Count -gt 0) {
+            if ($Mode -eq "api") {
+                $failures.Add("启动日志缺少按资源名的降级行：$($missingResources -join '、')（判据是 'Degraded mode: <资源名> unavailable'，只出现活动资源名以外的行不算证据；$logPath）")
+            }
+            else {
+                Write-Host "[note] aspire 模式下 API 日志由 DCP 接管；降级警告原文用 -Mode api -NoCredentials 取证。" -ForegroundColor DarkGray
+            }
         }
     }
 
