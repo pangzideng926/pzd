@@ -253,7 +253,7 @@ Write-Host "构建 $target（-warnaserror）"
 & dotnet build $target -warnaserror --nologo -v q | Out-Null
 if ($LASTEXITCODE -ne 0) {
     # 构建失败是本票缺陷（产品/代码问题），按老何的三档归 1，不占环境预检的 2。
-    Write-Host "[fail] 构建失败（$target）：先修编译再验票。" -ForegroundColor Red
+    Write-Host "[build] 构建失败（$target）：先修编译再验票。" -ForegroundColor Red
     exit 1
 }
 
