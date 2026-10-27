@@ -264,6 +264,14 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] **F-06-1 · errors 透传 + camelCase**：Validation 类型 Result（本轮由测试端点手工构造）→ 400，`errors` 原样透传并把 key 转 camelCase；**用例必须以 PascalCase 键入参**并断言响应里出现 `userName`，不得把 `UserName` 原样透传。**本轮不验证 FluentValidation 管道**（见文末「步骤 3 移交清单」）
 - [ ] **F-06-2** 租户 400/403（[`TenantResolutionMiddleware`](src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs#L121) 手写路径）同样带 `traceId` 与响应头 `X-Trace-Id`；kebab 转换只有一份实现（中间件与 `ToHttpResult` 共用）；403 用例断言 `traceId` 非空
 - [ ] **F-06-3** 框架裸 401/403（status code pages 路径）返回 ProblemDetails：`code = Auth.Unauthorized` / `Auth.Forbidden`、`status` 401/403、带 `traceId`，**不得**出现 `System.Unexpected` /「服务器内部错误」
+
+**F-06-3 口径（老何定，2026-10-27；旺总按此实现，不必再确认）**
+
+- **只动「空 body 的状态码」这一条路径**：`UsePzdStatusCodePages` 的 switch + `CommonErrors` 新增两条错误码。**404/405 保持原样不动**（`Http.NotFound` / `Http.MethodNotAllowed` 的 code 与 `type` 均不得变化，补一条防回归断言）。
+- 新增：`CommonErrors.Unauthorized = ("Auth.Unauthorized", ErrorType.Unauthorized, "未认证或认证已失效。")`、`CommonErrors.Forbidden = ("Auth.Forbidden", ErrorType.Forbidden, "没有权限执行该操作。")`；`status` 取该次响应状态码本身。
+- `type` 必须**精确**等于 `https://pzd/errors/auth.unauthorized` / `https://pzd/errors/auth.forbidden`，复用现有同一份 kebab 转换（不新增第二份转换函数；`Auth.Unauthorized` 段内已无大写，重复转换不改变值，但实现上仍只允许一处）。
+- `traceId` 与响应头 `X-Trace-Id` 同源，与其他错误出口一致；`HasStarted` 时不得覆盖已写 body（现有 guard 保留，补一条用例）。
+- **不属于本条**：真正产生 401/403 的授权中间件、权限码、`.RequirePermission` 属步骤 3（移交清单第 4 项）。本条只保证「没有任何 body 的 401/403」落成正确 ProblemDetails，避免步骤 3 一上授权就出现 `System.Unexpected`。
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
 - [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（交接记录「F7 补测条件」项）
@@ -291,6 +299,12 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 **Blocked by:** 05, 06
 
 **Status:** 🔧 已实现待复测（`d9919ab`，152 条全绿：35 + 71 + 26 + 19 + 1）
+
+**复测追加必修（李总 `test-report-07.md`，老何定级为本轮必修）**
+
+- **F-07-1（medium → 必修）**：F-05-8 的代码检查现在认的是 token 变量名白名单，改名即绕过（`var ct2 = cancellationToken; await db.GetConnectionScopeAsync(ct2);` → 19 条全绿）。**规则必须对「无参调用 + 任意实参名」都成立**，不接受靠变量名枚举。实现方向由旺总定，票面只约束结果：① 把无参重载改名成不叫 `GetConnectionScopeAsync` 的形态，让规则按 API 形状识别；或 ② 反转匹配，只放行显式传 `tenantId` 的调用。**必须补一条「改名 token + 无参裸取」的反向用例**，证明这条规则不是空跑。
+- **F-07-2（medium → 必修）**：`DomainEventDispatcher` 零覆盖——把 `MakeGenericType(domainEvent.GetType())` 改成 `typeof(IDomainEvent)` 后 152 条仍全绿。补 3 条：同一事件实例分发、两个处理器按 DI 注册顺序、无处理器也返回成功；并保证泛型类型参数来自事件**运行时类型**（破坏它必须变红）。
+- **low（本轮顺手）**：补偿删除的顺序必须先删后回滚（当前顺序语义错，属本票实现内）；**零处理器静默消费**与**失败原因落库**留步骤 3 落库时一并处理（并入移交清单第 6 项）。
 
 **实现偏差与口径（2026-10-27，`d9919ab`，已由老何回填）**
 
@@ -508,7 +522,7 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 3. **登录类端点租户策略**：`AllowAnonymousTenant` 的完整匿名解析（子域 / `X-Tenant`）、登录端点豁免与限流。
 4. **权限码与授权**：`IAuthorizationPolicyProvider`、`.RequirePermission`、401/403 由授权中间件产生（依赖 F-06-3 已修）。
 5. **Platform / Identity 模块**：租户开通流程、登录、`/api/me`（§18 步骤 3）。
-6. **Outbox / 审计 / Quartz 的落库表**：`db/tenant` 迁移执行器与 `schema_versions`（假设 A6 的延后项）。
+6. **Outbox / 审计 / Quartz 的落库表**：`db/tenant` 迁移执行器与 `schema_versions`（假设 A6 的延后项）；与之一并：Outbox **投递失败原因落库**、**零处理器消费要告警而非静默**（票 07 两条 low，内存实现期不阻塞）。
 
 ---
 
