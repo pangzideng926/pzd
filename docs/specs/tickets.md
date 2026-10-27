@@ -230,6 +230,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - `Tenants` 为空：允许启动，请求返回 400（不在启动期 fail-fast）；`Tenants:0:ExpiresAt` 为 `null` = 永不过期，为空字符串 = 配置错误、启动失败。此口径写进票面，README 由老卫同步。
 - 本票遗留的前置项不属 05 未完成：**F-05-4** 已落票 03/09 + foundation §4.3；**F-05-8** 已落票 07 验收。
 - 跨票补丁（老登 F-06-1）：租户 400/403 的 `traceId` / `X-Trace-Id` 与 kebab 去重由**票 06 收口**，票 05 不重开。
+- 编号歧义说明：李总的「F-06-1」指 errors camelCase，老登的「F-06-1」指 traceId；票面统一按内容称呼（traceId / errors / 401-403），复审时勿按编号对。
 
 **验证命令**
 
