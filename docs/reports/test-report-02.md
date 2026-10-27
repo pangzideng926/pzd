@@ -1,6 +1,7 @@
 # 测试报告：票 02（前端 monorepo 骨架）
 
 > **定稿依据：干净 `git worktree` @ `d32eb67`**（含 `57c226e` 包级 `turbo.json` 把 echo 型包 `outputs` 设为 `[]`、`d32eb67` 固定规范探测地址为 `127.0.0.1:5199` 并标注 lint 为占位）。
+> **补充复核 @ `c0da821`**（老登 `review-02.md` 的 F-02-1/F-02-3 落地后）：build/typecheck `--force` 告警均为 0，dev 在替代端口 5201 返回 200（5199 当时被他人 dev 实例占用，`strictPort` 按设计拒绝启动）；见 §6。
 > 代号等价说明：`aaf077f` / `bbfe7fd` 与本次被测代码树一致（`git diff --stat aaf077f bbfe7fd -- . ':(exclude)docs'` 为空）；本轮差异只在 `57c226e` 的 turbo 告警修复。
 > 早前入库的 `bbfe7fd` 版本自述为「快照/待定稿」，以本文件为准。
 
@@ -47,3 +48,18 @@ pnpm exec react-router dev   # 走 vite.config：host 127.0.0.1 + port 5199 + st
 - 无新增缺陷；`lint` 为占位、shadcn/orval/SignalR 属步骤 4，已在 foundation §9 记偏差，本报告不写「已接入」。
 - 建议 @老登 按 `d32eb67`（或代码树等价的 `bbfe7fd` + `57c226e`）出审计结论。
 - 未验证（不属本轮验收）：浏览器运行时水合（无头环境只验 HTML）、`GET /` 之外的业务路由、真实 lint 规则。
+
+## 6. 补充复核 @ `c0da821`（针对 review-02 的 F-02-1 / F-02-3）
+
+老登 `review-02.md` 的被测点是 `2f48e7d`，比 `57c226e` 早一笔，所以报告里 F-02-1（`no output files` 未消除）在当时的 hash 上成立；该问题已在 `57c226e` 修复。我在 `c0da821`（含后续占位页 import 与端口单一来源改动）上复核：
+
+| 项 | 复核命令 | 结果 |
+|---|---|---|
+| F-02-1 build 无噪音 | `pnpm -w build --force` | 4/4，`Cached: 0`，`no output files found` 计数 **0** |
+| F-02-1 typecheck 无噪音 | `pnpm -w typecheck --force` | 7/7，`Cached: 0`，告警计数 **0** |
+| F-02-3 端口单一来源 | 读 `apps/web/package.json` | `"dev": "react-router dev"`（已去掉 `--port 5199`），端口只来自 `vite.config.ts` |
+| 占位页真实引用 | `apps/web/app/routes/home.tsx` | 真实 `import` `@pzd/api`、`@pzd/realtime`、`@pzd/ui` 三个 workspace 包 |
+| dev 可用性 | `react-router dev --port 5201` | `http=200 bytes=1751`，`lang="zh-CN"`、`isSpaMode`，引用路径为副本 |
+
+端口说明：复核时 `127.0.0.1:5199` 被他人 dev 实例占用（pid 125412），我的副本按 `strictPort` 启动会直接报 `Port 5199 is already in use` 并退出——这是票面要求的正确行为，不是回归；5199 上的正式四条命令已在 `d32eb67`（端口空出时）跑通，配置在这两个 hash 之间未变。
+
