@@ -1,15 +1,18 @@
 # PZD 底座 — 票（§18 步骤 1–2）
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
-> 状态：执行中（2026-10-27）｜共 11 张｜先做无阻塞的 01、04，02/03 可并行
-> 进度：01 ✅ 已交付（`e0ec679`，待测）｜04 ✅ 已交付（`50ac4ec`，待测）｜其余 ready-for-agent
+> 状态：执行中（2026-10-27 第二轮）｜共 11 张
+> 进度：01 ✅ 审计通过｜04 🔧 返工中（F1/F2/F5/F4/F7）｜02/03 未开工｜05–10 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
 > **环境适配（2026-10-27 实测，票 01/04 回填）**
 > ① 测试运行器改为 `xunit.v3.mtp-v2`（Microsoft.Testing.Platform），`global.json` 含 `"test": { "runner": "Microsoft.Testing.Platform" }`，测试工程统一在 `tests/Directory.Build.props` 配置，不再引用 `Microsoft.NET.Test.Sdk`（xUnit v3 + VSTest 在 .NET 10 SDK 已不兼容）。
 > ② `E:\pzd` 被标了 Low Mandatory Level，MTP `dotnet test` 的命名管道握手失败（报 handshake failure，非测试失败）：**工作区内**用 `dotnet run --project tests/<工程>/<工程>.csproj`（同一批测试、同一退出码）；普通目录 / CI 用 `dotnet test Pzd.slnx` 等价（`E:\pzd-copy` 实测 39 passed、退出码 0）。
-> ③ 版本号查询必须带 Build target：`dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version` → `0.1.0`；不加 `-t:Build` 只得 MSBuild 求值默认值 `1.0.0`。
+> ③ 版本号查询必须带 Build target：`dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version`；不加 `-t:Build` 只得 MSBuild 求值默认值 `1.0.0`。
+> ④ **本机实例可用**：MySQL80 `8.0.46` @ `127.0.0.1:3306`（root 需密码）、Redis/Memurai @ `6379`（无密码，PONG），无 Docker。票 03/09/10 的主路径改为连接本机实例，容器编排退出本轮验收。
+> ⑤ **凭据红线**：密码/连接串只经环境变量（`ConnectionStrings__mysql`、`ConnectionStrings__redis`、`PZD_TEST_MYSQL`）或 `local.env`（必须被 `.gitignore` 忽略）注入；仓库、日志、测试报告、群消息零密码（规格 §4.12）。
+> ⑥ **版本口径（F6）**：期望值以 git tag 为基准，不硬编码 `0.1.0`——tag 提交上是 `0.1.0`，tag 之后是 `0.1.1-alpha.0.<height>+<sha>`（HEAD `1bdc680` 实测 `0.1.1-alpha.0.1`）；`/api/version` 与 msbuild 版本一致即可。
 > 下文各票里的 `dotnet test` 命令，在工作区内一律按 ② 替换为等价 `dotnet run --project` 形式；这不降低验收标准。
 
 ## 依赖图
@@ -20,9 +23,9 @@
 │  ├─ 05 多租户内核 + 单测 ──┬─ 07 UoW + Outbox + 领域事件
 │  ├─ 06 异常处理 + Result→HTTP ─┘  08 可观测性 + 审计 + 安全横切（←06）
 │  ├─ 09 Quartz + 健康检查 + 版本
-│  └─ 10 Testcontainers 优雅跳过 + 租户隔离集成测试
+│  └─ 10 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip）
 ├─ 02 前端 monorepo 骨架
-└─ 03 Aspire 编排与一键启动（←01,02）
+└─ 03 Aspire 编排与一键启动（引用本机实例，←01,02）
 11 CLAUDE.md + 一键验收脚本（←02,03,05,06,07,08,09,10）
 ```
 
@@ -30,14 +33,14 @@
 |---|---|---|---|
 | 01 | 仓库与 .NET 骨架 | 无 | `dotnet build Pzd.slnx -warnaserror` |
 | 02 | 前端 monorepo 骨架 | 01 | `pnpm install --frozen-lockfile && pnpm -w build` |
-| 03 | Aspire 编排与一键启动 | 01, 02 | `pwsh -NoProfile -File scripts/verify-apphost.ps1` |
+| 03 | Aspire 编排与一键启动（引用本机实例） | 01, 02 | `pwsh -NoProfile -File scripts/verify-apphost.ps1`（需 env 连接串） |
 | 04 | SharedKernel + 架构测试基线 | 01 | `dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj` |
 | 05 | 多租户内核 + 单测 | 04 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
 | 06 | 异常处理 + Result→HTTP | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
 | 07 | UoW + Outbox + 领域事件 | 05, 06 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
 | 08 | 可观测性 + 审计 + 安全横切 | 06 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
-| 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
-| 10 | Testcontainers 跳过 + 租户隔离集成测试 | 05 | `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` |
+| 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` + 启动验证 |
+| 10 | 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip） | 05 | `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` |
 | 11 | CLAUDE.md + 一键验收脚本 | 02,03,05,06,07,08,09,10 | `pwsh -NoProfile -File scripts/verify.ps1` |
 
 ---
@@ -64,7 +67,7 @@
 - [ ] `git tag` 含 `v0.1.0`（MinVer 可产出 `0.1.0`）
 - [ ] `dotnet build Pzd.slnx -warnaserror` 退出码 0，无警告
 - [ ] 5 个测试工程各自 `dotnet run --project tests/<工程>/<工程>.csproj` 退出码 0（5 个 smoke test 全绿）；普通目录 `dotnet test Pzd.slnx` 等价通过（工作区 Low IL 限制见顶部环境适配 ②）
-- [ ] `dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version` 输出 `0.1.0`（必须带 `-t:Build`，否则得 `1.0.0`）
+- [ ] 版本以 git tag 为基准（F6）：`v0.1.0` tag 提交上 `dotnet msbuild ... -t:Build -getProperty:Version` = `0.1.0`；tag 之后的 HEAD 为 `0.1.1-alpha.0.<height>+<sha>`（实测 `1bdc680` → `0.1.1-alpha.0.1`）；命令必须带 `-t:Build`，票面不把单一版本值写成唯一期望
 - [ ] 所有 NuGet 版本只出现在 `Directory.Packages.props`，csproj 用 `Version` 省略写法
 - [ ] 本票不含 AppHost / 前端 / 任何业务类型
 
@@ -116,33 +119,35 @@ pnpm -w typecheck
 
 ---
 
-# 03: Aspire 编排与一键启动
+# 03: Aspire 编排与一键启动（引用本机实例）
 
-**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server；无 Docker / 无 MySQL / 无 Redis 时 API 以降级模式启动并打印明确 Warning，`/health`、`/api/version` 可访问，Ctrl+C 优雅退出；有 Docker 时额外拉起 MySQL 与 Redis。
+**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server，并连上本机 MySQL 8.0.46 与 Redis(Memurai)；`/health/ready` 为 Healthy 且 mysql/redis 明细 Up，`/api/version` 可访问，Ctrl+C 优雅退出。凭据只从环境变量 / `local.env` 注入，仓库零密码；实例或凭据缺失时降级启动并打印 Warning（CI 兜底）。容器编排退出本轮验收。
 
 **文件路径**
 
 - `src/Pzd.AppHost/Pzd.AppHost.csproj`（Aspire AppHost SDK + `Aspire.Hosting.AppHost`）
-- `src/Pzd.AppHost/Program.cs`、`appsettings.json`、`appsettings.Development.json`、`Properties/launchSettings.json`
-- `src/Pzd.Api/appsettings.Development.json`（`ConnectionStrings:master` / `redis` 缺省为空）
+- `src/Pzd.AppHost/Program.cs`（以 `AddConnectionString` 引用本机实例并注入 API，**不建容器**）、`appsettings.json`、`Properties/launchSettings.json`
+- `src/Pzd.Api/appsettings.Development.json`（`ConnectionStrings:master` / `redis` 键缺省为空，不写真实值）
 - `src/Pzd.Api/Program.cs`（接受配置注入；**本票不实现**租户/异常/日志，仅启动骨架）
-- `scripts/verify-apphost.ps1`（后台启动 AppHost → 轮询 `/health` → 断言 200 → 关闭进程）
+- `scripts/verify-apphost.ps1`（读 env 连接串 → 后台启动 AppHost → 轮询 `/health/ready` 断言 Healthy → 取 `/api/version` → 关闭进程；无 env 时断言降级 200）
 
 **Blocked by:** 01, 02
 
 **Status:** ready-for-agent
 
 - [ ] API 在 AppHost 中固定 `http://127.0.0.1:5080`（便于前端 proxy 与脚本验证）
-- [ ] 无 Docker 且无连接串：启动成功，日志含 `Degraded mode: MySQL/Redis unavailable`，`/health` 返回 200 且 readiness 明细标 Degraded
-- [ ] 提供 `ConnectionStrings__mysql` / `ConnectionStrings__redis` 时：注册为外部资源并等待可用，不因缺 Docker 失败
-- [ ] Docker 可用时：`AddMySql` / `AddRedis` 容器资源被拉入并注入连接串（本机无 Docker，允许以「配置分支 + 单元测试/日志断言」验证，实际容器启动记入交接说明）
-- [ ] `GET /api/version` 返回 `version`、`buildId`、`buildTime`
-- [ ] `scripts/verify-apphost.ps1` 在无 Docker 机器上退出码 0
+- [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**，明细 mysql=Up、redis=Up
+- [ ] 凭据只来自环境变量 / `local.env`：仓库内 `git grep` 无密码，`local.env` 已被 `.gitignore` 忽略
+- [ ] 实例或凭据缺失：降级启动，日志含 `Degraded mode: MySQL/Redis unavailable`，`/health/ready` 200 + Degraded，`/health/live` 200
+- [ ] `GET /api/version` 返回 `version`、`buildId`、`buildTime`，version 与 `dotnet msbuild -t:Build -getProperty:Version` 一致（以 tag 为基准，F6）
+- [ ] 不注册 MySQL / Redis 容器资源（无 Docker，容器编排不在本轮验收）
+- [ ] `scripts/verify-apphost.ps1` 在本机退出码 0，并贴出 Healthy（有 env）/ Degraded（无 env）证据
 - [ ] Ctrl+C / 停止父进程后子进程退出，无残留监听端口
 
 **验证命令**
 
 ```powershell
+# 连接串由 local.env（gitignored）或当前会话环境变量提供；仓库与命令示例中不出现真实密码
 pwsh -NoProfile -File scripts/verify-apphost.ps1
 ```
 
@@ -150,27 +155,29 @@ pwsh -NoProfile -File scripts/verify-apphost.ps1
 
 # 04: SharedKernel + 架构测试基线
 
-**What to build:** 领域层最小原语可用（Entity / AggregateRoot / ValueObject / DomainEvent / Result / Error），且架构测试能自动拦截分层违规并带一条反向用例证明规则有效；后续所有模块直接复用。
+**What to build:** 领域层最小原语可用（Entity / AggregateRoot / ValueObject / DomainEvent / Result / Error），且架构测试能自动拦截分层违规并带反向用例证明规则有效；后续所有模块直接复用。本轮按审计报告 §4 返工：F1 四条规则抽成共享断言方法（生产测试与反向用例跑同一方法，断言恰好 1 条违规）、F2 模块发现改读 `src/Pzd.*/*.csproj` 的 `ProjectReference`、F5 规则④允许集加入「其他模块的 `*.Contracts`」并补正向用例、F7 规则③禁止列表并入 `Pzd.Infrastructure` / `Pzd.Api`、F4 补跨类型同 Id 用例（`Order`/`Invoice` 同 Id 不相等）。**只改测试资产，不动实现**。
 
 **文件路径**
 
 - `src/Pzd.SharedKernel/Domain/Entity.cs`、`AggregateRoot.cs`、`ValueObject.cs`、`IDomainEvent.cs`、`IDomainEventCollector.cs`
 - `src/Pzd.SharedKernel/Results/Result.cs`、`Result{T}.cs`、`Error.cs`、`ErrorType.cs`
 - `src/Pzd.SharedKernel/Abstractions/IClock.cs`、`ICurrentUser.cs`、`ITenantContext.cs`（接口放 SharedKernel，实现放 05）
-- `tests/Pzd.SharedKernel.UnitTests/Results/*.cs`、`Domain/*.cs`
-- `tests/Pzd.ArchitectureTests/DependencyRulesTests.cs`、`ReverseCaseTests.cs`、`ArchitectureTestAssembly.cs`（反向用例用的违规类型）、`Pzd.ArchitectureTests.csproj`（反向用例对 `SqlSugarCore` 的真实引用；显式提版 `Pkcs 10.0.14` 以过 `-warnaserror`）
+- `tests/Pzd.SharedKernel.UnitTests/Results/*.cs`、`Domain/*.cs`（F4 的 `Order`/`Invoice` 同 Id 用例）
+- `tests/Pzd.ArchitectureTests/ArchRules.cs`（四条规则的共享断言方法，F1）、`DependencyRulesTests.cs`、`ReverseCaseTests.cs`、`ArchitectureTestAssembly.cs`（反向用例用的违规类型）、`Pzd.ArchitectureTests.csproj`（反向用例对 `SqlSugarCore` 的真实引用；显式提版 `Pkcs 10.0.14` 以过 `-warnaserror`）
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent（建议测试先行：先写 Result / 架构规则测试再补实现）
+**Status:** ready-for-agent（返工中：F1/F2/F5/F4/F7；测试先行）
 
 - [ ] `Result.Success` / `Result.Failure(Error)` 不可同时成立；`Result<T>` 泛型转换正确
 - [ ] `Error` 按 Code 相等，含 `Type` / `Metadata`；错误码格式 `模块.实体.原因` 有测试
-- [ ] `AggregateRoot` 收集领域事件且 `ClearEvents()` 后为空；`ValueObject` 按值相等
+- [ ] `AggregateRoot` 收集领域事件且 `ClearEvents()` 后为空；`ValueObject` 按值相等；**F4**：不同实体类型同 Id 不相等（`Order`/`Invoice`）
 - [ ] `ITenantContext.TenantId` 为 `long`（与雪花主键一致）；`IClock`、`ICurrentUser` 接口就位
-- [ ] 架构规则 4 条：① SharedKernel 不引用 Infrastructure/Api；② Infrastructure 不引用 Api；③ `*.Domain` 命名空间不引用 SqlSugar / ASP.NET Core；④ 模块间只能引用 `*.Contracts`（模块为空时允许空集）
-- [ ] 反向用例：测试程序集内构造 `Pzd.SharedKernel.Domain.Fake` 类型引用 `SqlSugar`，规则必须报违规（测试断言"检测到 1 处违规"），证明规则非空跑
-- [ ] `dotnet run --project tests/Pzd.SharedKernel.UnitTests/...`（29 passed）与 `tests/Pzd.ArchitectureTests/...`（7 passed）均退出码 0
+- [ ] 架构规则 4 条，均通过**共享断言方法**（F1）：① SharedKernel 不引用 Infrastructure/Api；② Infrastructure 不引用 Api；③ `*.Domain` 不引用 `SqlSugar` / `Microsoft.AspNetCore` / `Pzd.Infrastructure` / `Pzd.Api`（F7）；④ 模块间只能引用对方 `*.Contracts`，允许集包含「其他模块的 `*.Contracts`」（F5，模块为空时允许空集）
+- [ ] **F2**：模块发现遍历 `src/Pzd.*/*.csproj` 的 `ProjectReference`，不扫输出目录 DLL；两模块未接测试引用时也能检出违规
+- [ ] **F5 正向用例**：`Pzd.Platform -> Pzd.Identity.Contracts` 判为合法（不误报）；反向用例仍断言恰好 1 条违规
+- [ ] 反向用例：测试程序集内构造 `Pzd.SharedKernel.Domain.Fake` 类型引用 `SqlSugar`，规则必须报违规，证明规则非空跑
+- [ ] `dotnet run --project tests/Pzd.SharedKernel.UnitTests/...` 与 `tests/Pzd.ArchitectureTests/...` 均退出码 0，贴出 `TEST EXECUTION SUMMARY`
 - [ ] 若 NetArchTest 对 net10 不兼容，改用 ArchUnitNET 并保持规则语义与反向用例
 
 **验证命令**
@@ -207,7 +214,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
 - [ ] `TenantDbProvider`：不存在连接时加锁双检、只 `AddConnection` 一次、返回 `GetConnectionScope(tid)`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
 - [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
-- [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）无 Docker 也绿
+- [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）在无实例/无凭据时也绿（单测不依赖数据库）
 
 **验证命令**
 
@@ -315,67 +322,79 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 ---
 
-# 09: Quartz + 健康检查 + 版本端点
+# 09: Quartz + 健康检查 + 版本端点（接本机 MySQL）
 
-**What to build:** 调度器以内存存储先跑通一个示例任务（可停用、有下次执行时间），后续换 MySQL AdoJobStore 只改注册；`/health` 分离存活/就绪且无 DB 时降级而非不健康；`/api/version` 返回 MinVer 版本、buildId、构建时间。
+**What to build:** Quartz 主路径用 **MySQL AdoJobStore**（表在 `pzd_master`），`HeartbeatJob` 注册后可在库中查到、重启后仍在；`/health` 分离存活/就绪，本机实例可用时 readiness 为 Healthy（mysql/redis 明细 Up）；`/api/version` 返回以 git tag 为基准的版本、buildId、构建时间。
 
 **文件路径**
 
 - `src/Pzd.Infrastructure/Jobs/QuartzRegistration.cs`、`HeartbeatJob.cs`、`JobDefinitionAttribute.cs`、`JobExecutionLogger.cs`
+- `db/master/quartz_tables.sql`（Quartz 官方 `tables_mysql_innodb.sql`，`pzd_master` 内建 `qrtz_*` 表）
+- `scripts/init-master-db.ps1`（读 env 凭据 → 幂等创建 `pzd_master` → 执行 `quartz_tables.sql`）
 - `src/Pzd.Api/Endpoints/VersionEndpoint.cs`、`HealthSetup.cs`
-- `src/Pzd.Api/Program.cs`（Quartz / health / version 注册）
+- `src/Pzd.Api/Program.cs`（Quartz / health / version 注册；连接串来自 env）
 - `src/Pzd.Api/Properties/AssemblyInfo.cs` 或 props（`buildId` / `buildTime` 由构建注入）
 - `tests/Pzd.Api.UnitTests/Endpoints/VersionEndpointTests.cs`、`HealthEndpointTests.cs`、`tests/Pzd.Infrastructure.UnitTests/Jobs/QuartzRegistrationTests.cs`
 
-**Blocked by:** 04
+**Blocked by:** 04（连接串注入方式复用票 03，实施顺序建议在 03 之后）
 
 **Status:** ready-for-agent
 
-- [ ] Quartz 以内存存储启动，`HeartbeatJob` 按注册 cron（`Asia/Shanghai`）存在，`[DisallowConcurrentExecution]`
-- [ ] 提供 master 连接串时切到 MySQL AdoJobStore + 集群配置（本机无 DB，允许以单元测试断言配置分支，实跑记入交接）
-- [ ] `/health/live` 永远 200；`/health/ready` 无 DB/Redis 时 200 + `Degraded` + 每项检查明细；不因缺资源变 Unhealthy
-- [ ] `/api/version` 返回 `version`（MinVer）、`buildId`（git sha）、`buildTime`（ISO 8601），字段名与架构 §15.1 一致
-- [ ] 版本号与 `dotnet msbuild ... -getProperty:Version` 一致（有测试断言或启动验证）
+- [ ] 提供 master 连接串：启动 **MySQL AdoJobStore**（`SchedulerName = "pzd"` + 集群配置），`pzd_master` 内 `qrtz_*` 表存在
+- [ ] `HeartbeatJob` 按注册 cron（`Asia/Shanghai`，`[DisallowConcurrentExecution]`）注册，下次执行时间可查
+- [ ] **重启 API 后任务仍在**（查 `qrtz_job_details` 或 scheduler API，贴输出作为持久化证据）
+- [ ] 无连接串：内存存储 + Warning（CI 兜底），启动不失败
+- [ ] `/health/live` 永远 200；`/health/ready` 本机实例可用时 Healthy，明细 mysql=Up、redis=Up；无实例时 200 + Degraded，不因缺资源变 Unhealthy
+- [ ] `/api/version` 返回 `version`（MinVer，tag 基准，不硬编码）、`buildId`（git sha）、`buildTime`（ISO 8601），字段与架构 §15.1 一致
+- [ ] version 与 `dotnet msbuild ... -t:Build -getProperty:Version` 一致（当前 HEAD 期望 `0.1.1-alpha.0.1`，tag 提交上为 `0.1.0`）
+- [ ] `scripts/init-master-db.ps1` 幂等，只创建 `pzd_master` 与 `qrtz_*` 表，不碰其他库；密码不出现在脚本与输出
 - [ ] 本票不做 `version.json`、前端刷新提示、`X-Min-Client-Build`
 
 **验证命令**
 
 ```powershell
+# 凭据来自 local.env / 环境变量，命令与输出不出现密码
+pwsh -NoProfile -File scripts/init-master-db.ps1
 dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 dotnet run --project src/Pzd.AppHost
-# 另开终端：curl http://127.0.0.1:5080/health/live ; curl http://127.0.0.1:5080/api/version
+# 另开终端：curl http://127.0.0.1:5080/health/live ; /health/ready ; /api/version
+# 重启 AppHost 后再查 qrtz_job_details，确认 HeartbeatJob 仍在
 ```
 
 ---
 
-# 10: Testcontainers 优雅跳过 + 租户隔离集成测试
+# 10: 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip）
 
-**What to build:** 无 Docker 的机器上集成测试明确 Skipped 且测试命令退出码 0，不阻塞验收；有 Docker 时用两个真实 MySQL 租户库验证跨租户隔离、QueryFilter 与停用租户 403。
+**What to build:** 连本机 MySQL 8.0.46，用 `pzd_it_a` / `pzd_it_b` 两个真实租户库验证跨租户隔离、QueryFilter 与停用租户 403；凭据/实例不可用时动态 Skip 且退出码 0（CI 兜底）。Docker / Testcontainers 不再是主路径。
 
 **文件路径**
 
-- `tests/Pzd.IntegrationTests/DockerFactAttribute.cs`（探测 Docker 端点，缺失时 `Skip = "Docker unavailable: …"`）
-- `tests/Pzd.IntegrationTests/MySqlFixture.cs`（Testcontainers `MySqlBuilder`，单次容器、两库）
+- `tests/Pzd.IntegrationTests/MySqlFixture.cs`（读 `PZD_TEST_MYSQL` / `ConnectionStrings__mysql`，探测 `SELECT VERSION()`、`CREATE/DROP DATABASE` 权限）
+- `tests/Pzd.IntegrationTests/IntegrationFactAttribute.cs`（动态 Skip 原因：`MySQL credentials not configured` / `MySQL unreachable` / `no CREATE DATABASE privilege`）
+- `tests/Pzd.IntegrationTests/TestSchema.cs`（测试用最小表结构，只作用于 `pzd_it_*` 前缀库）
 - `tests/Pzd.IntegrationTests/TenantIsolationTests.cs`、`TenantStatusTests.cs`
-- `tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（`Testcontainers.MySql`）
+- `tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（`MySqlConnector`；Testcontainers 可从主路径移除）
 - `src/Pzd.Infrastructure/Tenancy/TenantDbProvider.cs`（如需最小支撑改动）
 
 **Blocked by:** 05
 
 **Status:** ready-for-agent
 
-- [ ] 无 Docker：`dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` 退出码 0，输出中含 Skip 与原因（`Docker unavailable`），测试报告状态为 Skipped 而非 Passed
-- [ ] 跳过机制是**动态探测**（`DockerFactAttribute`），不是写死 `Skip="…"`
-- [ ] 有 Docker：创建 `pzd_t_a` / `pzd_t_b` 两库 → 各插一行同结构数据 → A 租户查询只返回 A 数据，B 同样；`QueryFilter` 生效
-- [ ] 有 Docker：租户停用后请求得到 403 `Tenant.Disabled`（走 HTTP 接缝）
-- [ ] 集成测试套件不依赖具体端口/机器路径，容器自动清理
-- [ ] 不把集成测试加入 `scripts/verify.ps1` 的必过集合（只作为可选阶段，见 11）
+- [ ] 本机凭据可用：真跑并全绿，贴 `TEST EXECUTION SUMMARY` 与 `SELECT VERSION()`（期望 `8.0.46`）；自动建/清 `pzd_it_a`、`pzd_it_b`
+- [ ] A/B 两库插同结构数据 → A 租户查询只返回 A，B 只返回 B；`QueryFilter` 生效
+- [ ] 停用租户经 HTTP 接缝返回 403 `Tenant.Disabled`
+- [ ] 无 `CREATE/DROP DATABASE` 权限：改用 `PZD_TEST_MYSQL_DB_A/B` 指定的既有库并**仍真跑**；两者都不可用时 Skip 原因必须为 `no CREATE DATABASE privilege`
+- [ ] 无凭据 / MySQL 不可达：动态 Skip（原因明确），退出码 0，状态 **Skipped 而非 Passed**；跳过机制是动态探测，不写死 `Skip="…"`
+- [ ] 幂等与安全：重复运行不残留库/数据；只操作 `pzd_it_` 前缀库，断言不触碰 `pzd_master` 等非测试库
+- [ ] 密码不落日志、测试报告、异常消息（`git grep` 无残留）
+- [ ] 本机实例可用时，集成测试是 `scripts/verify.ps1` 的必过段（不再"允许全 Skip"）；CI 无实例才允许 Skip 通过
 
 **验证命令**
 
 ```powershell
+# 凭据来自 local.env / 环境变量，不贴群
 dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
-# 期望本机：退出码 0，Skipped ≥ 2，原因含 Docker unavailable
+# 期望本机：Total ≥ 3、Failed 0；无凭据时 Skipped ≥ 2、退出码 0
 # 普通目录（非 Low IL）等价：dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 ```
 
@@ -383,26 +402,28 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 
 # 11: CLAUDE.md + 一键验收脚本 + 收尾
 
-**What to build:** 一条命令给出「底座完成」的唯一证据；AI 协作者拿到约定即按统一风格写代码；规格状态回填。
+**What to build:** 一条命令给出「底座完成」的唯一证据；AI 协作者拿到约定即按统一风格写代码；凭据与推送安全有检查；规格状态回填。
 
 **文件路径**
 
 - `CLAUDE.md`（命名、分层、错误码、权限码、测试、Conventional Commits、AI 协作规则）
-- `scripts/verify.ps1`（build → architecture tests → 单测 → 集成测试（允许全 Skip）→ 汇总；任一段失败即非 0；运行器按顶部环境适配 ①② 选择：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`）
-- `README.md`（如何起、如何验、环境前提：.NET 10 / Node 24 / pnpm、Docker 可选）
+- `scripts/verify.ps1`（build → architecture tests → 单测 → 集成测试 → 汇总；任一段失败即非 0；运行器按顶部环境适配 ①② 选择：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；集成测试段在本机实例可用时必须真跑，无凭据时 Skip 兜底）
+- `README.md`（如何起、如何验、环境前提：.NET 10 / Node 24 / pnpm / 本机 MySQL 8.0.46 与 Redis 6379；凭据用 `local.env`（gitignored）或环境变量，示例不含真实密码）
+- `.gitignore`（补齐 `node_modules/`、`.turbo/`、`*.user`、`artifacts/`、**`local.env`**）
 - `docs/specs/foundation.md`（状态改为「已验收（日期）」+ 偏差回填）
-- `.gitignore`（补齐 `node_modules/`、`.turbo/`、`*.user`、`artifacts/`）
 
 **Blocked by:** 02, 03, 05, 06, 07, 08, 09, 10
 
 **Status:** ready-for-agent
 
-- [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在无 Docker 机器上退出码 0，打印 4 段结果与耗时
+- [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在**本机实例可用**时退出码 0，打印 4 段结果与耗时；集成测试段真跑（Total ≥ 3、Failed 0），不是全 Skip
+- [ ] 无凭据时同一脚本退出码 0，集成测试段打印 Skip 原因（CI 兜底），其余段照常必过
 - [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
-- [ ] `CLAUDE.md` 覆盖：工程结构、分层依赖、命名、Result/ProblemDetails、权限码格式、测试分层与 Skip 规则、提交规范
-- [ ] `README.md` 的一键命令与脚本实际一致（经实测）
-- [ ] 规格 §9 记录本轮偏差（如未做 Aspire 容器实跑、NetArchTest 替换、shadcn 退化）
+- [ ] `CLAUDE.md` 覆盖：工程结构、分层依赖、命名、Result/ProblemDetails、权限码格式、测试分层与 Skip 规则、提交规范、凭据红线（§4.12）
+- [ ] `README.md` 的一键命令与脚本实际一致（经实测）；环境前提与 `local.env` 变量名写清楚，不含真实密码
+- [ ] `.gitignore` 含 `local.env`；推送到 `github.com/pangzideng926/pzd` 前 `git grep` 无密码/连接串残留，`docs/reports/` 报告不含凭据
+- [ ] 规格 §9 记录本轮偏差（如容器编排移出本轮、NetArchTest 替换、shadcn 退化、版本口径 F6）
 - [ ] 无业务模块、无登录实现（审计确认范围守卫）
 
 **验证命令**
@@ -417,6 +438,7 @@ pwsh -NoProfile -File scripts/verify.ps1
 
 1. 验证命令 + 真实输出摘要（不是"应该通过"）
 2. 测试类票贴 `=== TEST EXECUTION SUMMARY ===` 行（`dotnet run --project` 形式）；若用 `dotnet test`，注明运行目录不是 Low IL（如 `E:\pzd-copy`）
-3. 改动文件清单（与票内路径对照，超出范围需说明）
-4. 未完成项/偏离项（若无写「无」）
-5. 下一票可开始（依赖已满足）
+3. 涉及真实实例的票（03/09/10）贴 MySQL `SELECT VERSION()`、用到的库名、Healthy / Skip 原因；输出与报告不得含密码
+4. 改动文件清单（与票内路径对照，超出范围需说明）
+5. 未完成项/偏离项（若无写「无」）
+6. 下一票可开始（依赖已满足）
