@@ -17,6 +17,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole();
 
+// 框架的 DefaultHealthCheckService 每次探到 Degraded 都会打一条 Warn
+// （"Health check redis with status Degraded completed with status Degraded…"）。
+// 探针被 5s 轮询时这条会把日志刷满，而它不是业务事件、也没有额外信息：
+// 降级事实由启动期那条 Degraded mode Warn 与 /health/ready 响应体表达，这里把它压到 Error（F-03-4）。
+builder.Logging.AddFilter("Microsoft.Extensions.Diagnostics.HealthChecks", LogLevel.Error);
+
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddPzdProblemDetails();
