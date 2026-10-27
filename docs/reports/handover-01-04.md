@@ -71,7 +71,7 @@
 
 ## 3. 下一步顺序
 
-1. **老登 / 李总**：票 **02** 已提交 `aaf077f`（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、`host: "127.0.0.1"` + `port: 5199`）；老登出审计结论，李总按 hash 在干净副本复跑四条命令后把 [`test-report-02.md`](test-report-02.md) 定稿（我入库的是入库前的快照版）。[`test-report-02.md`](test-report-02.md) 记录三条 low：turbo 对 echo 型包报 `no output files`（票面 `b761c94` 已要求 `outputs: []`）、`react-router dev` 默认只绑 `localhost`（票面已要求显式 `server.host`）、端口曾写死 5173（已改 5199）。
+1. **老登 / 李总 / 旺总**：票 **02** 已提交 `aaf077f`（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、`host: "127.0.0.1"` + `port: 5199`），[`test-report-02.md`](test-report-02.md) 已按该 hash 在干净 worktree 定稿。**四条验收全过**（install/build/typecheck/dev 200、构建不污染工作区），但票面 `b761c94` 的「build 无噪音」**未满足**：`--force` 实建后仍有 3 条 `no output files`（`@pzd/api|realtime|ui#build`），修法是给这三个 echo 包各加 `"turbo": { "tasks": { "build": { "outputs": [] } } }`，改完只需复核这一条。老登审计以修完的 hash 为准。
 2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
 3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
 4. **已定收尾小项（不阻塞、不重开票，票面 `f8b886c`）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 要删掉，让「缺键走 `OutboxOptions.DefaultMaxAttempts`」成为唯一路径；删后跑一次 `Pzd.Infrastructure.UnitTests` 确认「缺键回默认 5」用例仍绿即可，**不需要新 hash 终审**。README 已补 `Outbox:MaxAttempts`（缺省 5）。
