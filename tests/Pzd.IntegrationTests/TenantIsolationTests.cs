@@ -65,6 +65,18 @@ public class TenantIsolationTests
         Assert.Equal([11L], rowsA.Select(row => row.Id));
         Assert.Equal([21L], rowsB.Select(row => row.Id));
 
+        // 对照（票 10）：不经过 QueryFilter 的裸 SQL 必须看得见脏行，
+        // 否则「过滤后只剩本租户」可能只是数据没插进去的假绿。
+        var rawA = await TestSchema.ReadRowsAsync(_fixture.DatabaseAConnectionString, CancellationToken)
+            .ConfigureAwait(false);
+        var rawB = await TestSchema.ReadRowsAsync(_fixture.DatabaseBConnectionString, CancellationToken)
+            .ConfigureAwait(false);
+
+        Assert.Equal([10L, 11L], rawA.Select(row => row.Id));
+        Assert.Equal([20L, 21L], rawB.Select(row => row.Id));
+        Assert.Contains(rawA, row => row.Id == 10 && row.TenantId == MySqlFixture.TenantBId);
+        Assert.Contains(rawB, row => row.Id == 20 && row.TenantId == MySqlFixture.TenantAId);
+
         // 物理行确实存在：过滤发生在查询层，不是数据没插进去。
         Assert.Equal(2, await TestSchema.CountAllRowsAsync(_fixture.DatabaseAConnectionString, CancellationToken)
             .ConfigureAwait(false));

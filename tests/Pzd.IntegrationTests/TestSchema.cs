@@ -138,6 +138,28 @@ internal static partial class TestSchema
         return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
     }
 
+    /// <summary>裸 SQL 读取（不经过 SqlSugar QueryFilter）：作为「脏行确实存在」的对照证据。</summary>
+    public static async Task<IReadOnlyList<(long Id, long TenantId)>> ReadRowsAsync(
+        string databaseConnectionString,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = new MySqlConnection(databaseConnectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT `Id`, `TenantId` FROM `{TableName}` ORDER BY `Id`;";
+
+        var rows = new List<(long Id, long TenantId)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            rows.Add((reader.GetInt64(0), reader.GetInt64(1)));
+        }
+
+        return rows;
+    }
+
     public static async Task<bool> TableExistsAsync(string databaseConnectionString, CancellationToken cancellationToken)
     {
         await using var connection = new MySqlConnection(databaseConnectionString);
