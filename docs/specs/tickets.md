@@ -102,7 +102,7 @@ git log --oneline -1; git tag
 
 **Blocked by:** 01
 
-**Status:** 🔧 开工中（前端 monorepo 骨架，旺总；`apps/`、`packages/`、`pnpm-workspace.yaml`、`turbo.json`、`tsconfig.base.json` 已在工作区）
+**Status:** 🔧 实现完成待测试/审计（`aaf077f`；dev `127.0.0.1:5199`、显式 host、`.react-router/` 已清出索引；shadcn 退化路径已记 foundation §9；**待补：`turbo.json` 的 `outputs: []` 消除 3 条 `no output files`**）
 
 - [ ] `pnpm install --frozen-lockfile` 退出码 0
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
