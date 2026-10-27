@@ -272,9 +272,23 @@ try {
     else { Write-Host "[ok] / 无租户仍 400" }
 
     if (-not $SkipWeb) {
-        $web = Wait-ForUrl "http://127.0.0.1:5199/" $TimeoutSeconds
-        if ($web.Content -notmatch 'lang="zh-CN"') { $failures.Add("前端首屏缺 SPA 标记，可能不是 React Router 外壳") }
-        else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳" }
+        try {
+            $web = Wait-ForUrl "http://127.0.0.1:5199/" $TimeoutSeconds
+            if ($web.Content -notmatch 'lang="zh-CN"') { $failures.Add("前端首屏缺 SPA 标记，可能不是 React Router 外壳") }
+            else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳" }
+        }
+        catch {
+            # 前端起不来时直接把 web/vite/pnpm 相关行打出来：宿主日志是排查 web 资源的唯一入口，
+            # 否则每次都要等人手翻 artifacts。
+            $failures.Add($_.Exception.Message)
+            if (Test-Path $logPath) {
+                Write-Host "---- 宿主日志里与前端相关的行（web/vite/pnpm）----" -ForegroundColor Yellow
+                $lines = Select-String -Path $logPath -Pattern "web", "vite", "pnpm", "EACCES", "ENOENT" -SimpleMatch -ErrorAction SilentlyContinue
+                if ($lines) { $lines | Select-Object -Last 15 | ForEach-Object { Write-Host "  $($_.Line.Trim())" } }
+                else { Write-Host "  （没有匹配行，宿主日志末尾见下）" -ForegroundColor DarkGray }
+                Get-Content $logPath -Tail 10 | ForEach-Object { Write-Host "  $($_.Trim())" }
+            }
+        }
     }
     }
 }
