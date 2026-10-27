@@ -28,6 +28,16 @@ internal sealed record MySqlProbe(
 /// </summary>
 internal static class MySqlAvailability
 {
+    /// <summary>票 10 允许的三种 Skip 原因；验收要求原因只能是这三种之一，其他位置一律引用常量，不再手写字面量。</summary>
+    public const string CredentialsSkipReason = "MySQL credentials not configured";
+
+    public const string UnreachableSkipReason = "MySQL unreachable";
+
+    public const string PrivilegeSkipReason = "no CREATE DATABASE privilege";
+
+    public static IReadOnlyList<string> SkipReasons { get; } =
+        [CredentialsSkipReason, UnreachableSkipReason, PrivilegeSkipReason];
+
     private const string PrivilegeProbeDatabase = "pzd_it_privprobe";
 
     private static readonly Lazy<MySqlProbe> CachedProbe = new(ProbeCore, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -40,7 +50,7 @@ internal static class MySqlAvailability
 
         if (settings is null)
         {
-            return MySqlProbe.Unavailable("MySQL credentials not configured");
+            return MySqlProbe.Unavailable(CredentialsSkipReason);
         }
 
         string version;
@@ -56,7 +66,7 @@ internal static class MySqlAvailability
         }
         catch (Exception exception) when (IsConnectivityFailure(exception))
         {
-            return MySqlProbe.Unavailable("MySQL unreachable");
+            return MySqlProbe.Unavailable(UnreachableSkipReason);
         }
 
         if (settings.HasExplicitFallbackDatabases && BothFallbackDatabasesExist(settings))
@@ -64,7 +74,7 @@ internal static class MySqlAvailability
             return new MySqlProbe(settings, version, MySqlDatabaseMode.Existing, null);
         }
 
-        return MySqlProbe.Unavailable("no CREATE DATABASE privilege");
+        return MySqlProbe.Unavailable(PrivilegeSkipReason);
     }
 
     private static string ReadServerVersion(MySqlTestSettings settings)
@@ -95,12 +105,18 @@ internal static class MySqlAvailability
 
             return true;
         }
-        catch (Exception exception) when (exception is MySqlException or InvalidOperationException or TimeoutException)
+        catch (MySqlException exception) when (IsPermissionFailure(exception))
         {
+            // 只有「账号缺权限」才归为无建库权限（F-10-A2）；连接断开/超时等故障不吞，
+            // 让它冒泡到 ProbeCore 的连通性判断，得到 MySQL unreachable，而不是误导成权限问题。
             TryDropProbeDatabase(settings);
             return false;
         }
     }
+
+    /// <summary>MySQL 权限类错误码：1044 库访问被拒、1045 登录被拒、1142 表权限被拒、1227 特定权限被拒（deny CREATE）。</summary>
+    private static bool IsPermissionFailure(MySqlException exception) =>
+        (int)exception.ErrorCode is 1044 or 1045 or 1142 or 1227;
 
     private static void TryDropProbeDatabase(MySqlTestSettings settings)
     {

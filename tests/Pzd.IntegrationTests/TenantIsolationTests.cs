@@ -128,20 +128,35 @@ public class TenantIsolationTests
 
         foreach (var forbidden in new[] { "pzd_master", "mysql", "information_schema", "pzd_t_a", "pzd_it_a; DROP DATABASE x", "" })
         {
-            Assert.Throws<InvalidOperationException>(() => TestSchema.EnsureSafeDatabaseName(forbidden));
+            // F-10-A3：不只断类型，还要断「因为库名不安全被拒」，否则别的异常也会让这条假绿。
+            var exception = Assert.Throws<InvalidOperationException>(() => TestSchema.EnsureSafeDatabaseName(forbidden));
+            Assert.Contains("pzd_it_", exception.Message, StringComparison.Ordinal);
         }
     }
 
+    [Fact]
+    public void Skip_reasons_are_exactly_the_three_the_ticket_allows()
+    {
+        // F-10-A5：票面验收要求 Skip 原因只能是这三种之一，用一条断言锁住措辞，防止改一处漏一处。
+        Assert.Equal(
+            ["MySQL credentials not configured", "MySQL unreachable", "no CREATE DATABASE privilege"],
+            MySqlAvailability.SkipReasons);
+    }
+
     [IntegrationFact]
-    public async Task Only_this_runs_pzd_it_databases_are_left_on_the_server()
+    public async Task Test_databases_are_pzd_it_prefixed_and_include_this_runs_pair()
     {
         _fixture.EnsureReady();
 
         var databases = TestSchema.ListTestDatabases(_fixture.Settings!.AdminConnectionString, CancellationToken);
 
+        // F-10-A1：这里只断言「只碰 pzd_it_ 前缀 + 本次两个库在 + 不含 pzd_master」。
+        // 「本次运行不残留」由 MySqlFixture 清理后逐库复查（见 MySqlFixture.CleanupAsync），
+        // 不再用 Assert.Equal(2, databases.Count)——那条会把别人的 pzd_it_* 库算成本次失败，
+        // 多人并行或票 11 一键验收时必然误红。
+        Assert.All(databases, database => Assert.StartsWith("pzd_it_", database, StringComparison.Ordinal));
         Assert.Contains(_fixture.Settings.DatabaseA, databases);
         Assert.Contains(_fixture.Settings.DatabaseB, databases);
-        Assert.Equal(2, databases.Count);
         Assert.DoesNotContain("pzd_master", databases);
     }
 

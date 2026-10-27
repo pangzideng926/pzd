@@ -83,7 +83,7 @@ public sealed class MySqlFixture : IAsyncLifetime
         catch (Exception exception) when (MySqlAvailability.IsConnectivityFailure(exception))
         {
             // 探测通过后实例掉线：保持可读的 Skip，而不是把整批用例判红（CI 兜底）。
-            UnavailableReason = "MySQL unreachable";
+            UnavailableReason = MySqlAvailability.UnreachableSkipReason;
             await CleanupAsync().ConfigureAwait(false);
         }
     }
@@ -134,12 +134,14 @@ public sealed class MySqlFixture : IAsyncLifetime
         }
 
         var cancellationToken = CancellationToken.None;
+        var droppedDatabases = new List<string>();
 
         if (_createdDatabaseA)
         {
             await TestSchema.DropDatabaseAsync(Settings.AdminConnectionString, Settings.DatabaseA, cancellationToken)
                 .ConfigureAwait(false);
             _createdDatabaseA = false;
+            droppedDatabases.Add(Settings.DatabaseA);
         }
         else if (DatabaseAConnectionString.Length > 0)
         {
@@ -152,6 +154,7 @@ public sealed class MySqlFixture : IAsyncLifetime
             await TestSchema.DropDatabaseAsync(Settings.AdminConnectionString, Settings.DatabaseB, cancellationToken)
                 .ConfigureAwait(false);
             _createdDatabaseB = false;
+            droppedDatabases.Add(Settings.DatabaseB);
         }
         else if (DatabaseBConnectionString.Length > 0)
         {
@@ -160,6 +163,18 @@ public sealed class MySqlFixture : IAsyncLifetime
 
         DatabaseAConnectionString = string.Empty;
         DatabaseBConnectionString = string.Empty;
+
+        // 票 10「不残留」的真正证据（F-10-A1）：本次运行建的库在清理后必须真的不存在了。
+        // 这条不再靠「本机恰好只有两个 pzd_it_* 库」的计数断言（那种断言在多人并行时会误红）。
+        foreach (var database in droppedDatabases)
+        {
+            if (await TestSchema.DatabaseExistsAsync(
+                    Settings.AdminConnectionString, database, cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"残留：{database} 在 fixture 清理后仍存在，票 10 要求运行结束不留测试库。");
+            }
+        }
     }
 }
 
