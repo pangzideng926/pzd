@@ -300,4 +300,7 @@
   - **实现期两个 RR7 坑（老何补记，后续票直接照做）**：① `@react-router/node` **必须放 `dependencies`**——RR7 的 `resolveEntryFiles` 只读该字段，放 `devDependencies` 会持续报 "Could not determine server runtime"，同时需要 `isbot`；② `apps/web/tsconfig.json` 必须含 `rootDirs: [".", "./.react-router/types"]`，否则 typegen 生成的相对导入解析失败、`typecheck` 直接报错。
   - **dev 绑定口径**（票 02 验收 + `c3d69f1`）：`server.host = "127.0.0.1"` + `server.port = 5199` + `strictPort: true`，验收与脚本一律探 `http://127.0.0.1:5199/`，与后端 `5080` 统一 IPv4。**`host` 留空时本机 Node 只绑 `::1`**，此时探 IPv4 得 `000` 是绑定差异、不是服务没起来；此前「一律用 localhost」的写法作废。
   - **未落地的一条小验收**（`b761c94`）：`turbo` 对 echo 型包（`packages/api|realtime|ui`）仍报 3 条 `no output files`，需在 `turbo.json` 把这类 task 的 `outputs` 设为 `[]`；补完重跑 `pnpm -w build` 确认无告警即可，**不重开票**，但票 02 关闭前必须落地（票 11 的脚本要读这段输出）。
+  - **票 02 终审通过（2026-10-27，复核 `57c226e`）**：见 [`review-02.md`](../reports/review-02.md)。F-02-1（echo 型包 `turbo.json` 的 `outputs: []`，`--force` 冷缓存零 `no output files`）、F-02-3（端口只在 `vite.config.ts` 一处）、F-02-4（`home.tsx` 真实 import 三个 workspace 占位包）已闭环；`install` / `build --force` / `typecheck --force` / dev 200 四条实跑通过。
+  - **登记项（不阻塞关闭，票 11 必须按此执行）**：F-02-2——每轮 build 有 5 条 React Router v8 future-flag 告警，脚本**按退出码判定、不得匹配 `WARNING`/`⚠️` 字样**；F-02-5——`lint` 仍是 echo 占位、恒 0，不得当质量证据。
+  - 冷启动实测（供票 11 定超时）：暖环境首个 200 约 1.5 秒，干净副本（无 Vite 依赖缓存）约 8 秒；就绪判定须「200 且 body 含 `lang="zh-CN"`」，只探端口会把未就绪误判为就绪。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

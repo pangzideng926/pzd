@@ -102,7 +102,7 @@ git log --oneline -1; git tag
 
 **Blocked by:** 01
 
-**Status:** 🔧 实现完成待审计（代码基线 `aaf077f`；`57c226e` 补包级 `turbo.json` 后 `build --force` 零告警，验收清单已齐；shadcn 退化路径见 foundation §9，`lint` 为占位不作质量证据）
+**Status:** ✅ 通过（终审：[`review-02.md`](../reports/review-02.md)，复核 `57c226e`（跑在 `022fd4e` 的干净 worktree 上）：`install` exit 0、`build --force` 4/4 `Cached: 0` 零 `no output files`、`typecheck --force` 7/7 零 WARNING、dev `127.0.0.1:5199` `GET /` 200 且 `lang="zh-CN"`；F-02-1/3/4 已闭环，F-02-2（RR v8 future flag 告警）与 F-02-5（`lint` 占位）登记不阻塞）
 
 - [ ] `pnpm install --frozen-lockfile` 退出码 0
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
@@ -480,7 +480,8 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 
 - [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在**本机实例可用**时退出码 0，打印 4 段结果与耗时；集成测试段真跑（Total ≥ 3、Failed 0），不是全 Skip
 - [ ] 前端段探测用 `http://127.0.0.1:5199/`（票 02 已要求显式绑 `127.0.0.1`），后端段用 `http://127.0.0.1:5080`，两段统一 IPv4；若前端段连接失败，先查 `server.host` 是否留空（留空只绑 `::1`，会假红）
-- [ ] **等待必须轮询、不得固定 sleep**：`react-router dev` 冷启动要 15–20 秒（typegen + Vite 初始化），后端 Aspire/API 起步也非瞬时——脚本用「每 1 秒重试、总超时 60 秒」这类轮询等 200，**不许** `sleep 5` 后一次性 curl（会偶发假红，也是上一轮 5199 端口占用的同类误判来源）
+- [ ] **等待必须轮询、不得固定 sleep**：`react-router dev` 冷启动实测约 8 秒（无 Vite 依赖缓存的干净副本）、暖环境约 1.5 秒，后端 Aspire/API 起步也非瞬时——脚本按「间隔 0.5–1 秒、总超时 60 秒」轮询，**不许** `sleep 5` 后一次性 curl（会偶发假红，也是 5199 被占用那类误判的来源）
+- [ ] **就绪判定不能只看端口监听**：必须匹配「HTTP 200 **且** body 含 `lang="zh-CN"`」——Vite 首个请求可能触发依赖预构建，TCP 通了但首响应慢，只探端口会把「没就绪」判成「就绪」
 - [ ] 无凭据时同一脚本退出码 0，集成测试段打印 Skip 原因（CI 兜底），其余段照常必过
 - [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
