@@ -1,10 +1,12 @@
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // `types` 里只有 vite/client（没有 @types/node）：vite 配置本身就跑在 Node 里，
 // 取值没问题，只是类型不自带，这里显式声明一下。
-declare const process: { env: Record<string, string | undefined> };
+declare const process: { env: Record<string, string | undefined>; cwd: () => string };
 
 /**
  * F-03-A11：本次运行的唯一标记，由启动方注入 `PZD_RUN_ID`，dev server 原样作为响应头回显。
@@ -27,6 +29,24 @@ const runId = process.env.PZD_RUN_ID?.trim() ?? "";
  * 这一行是 vite 进程自己的值，单一变量、不含任何秘密，符合「不做整包打印」的约束。
  */
 console.log(`[pzd-web] NODE_ENV=${process.env.NODE_ENV ?? "<未设置>"}`);
+
+/**
+ * 上面那行只能打进 vite 进程自己的 stdout；aspire 模式下 stdout 由 DCP 接管，
+ * 不会落到 AppHost 日志或 `artifacts/` 里（脚本只在 `-Mode api` 时才重定向前端输出）。
+ * 所以同一份值再写一条到文件，保证「谁跑都能读」。写失败一律吞掉——诊断不能影响启动。
+ */
+try {
+  // vite 以 apps/web 为工作目录启动（AppHost 的 AddViteApp 与手动 `pnpm dev` 都如此），
+  // 所以仓库根是 cwd/../..，诊断文件落到 artifacts/（已 gitignore）。
+  const logDir = join(process.cwd(), "..", "..", "artifacts");
+  mkdirSync(logDir, { recursive: true });
+  appendFileSync(
+    join(logDir, "pzd-web-env.log"),
+    `${new Date().toISOString()} cwd=${process.cwd()} NODE_ENV=${process.env.NODE_ENV ?? "<未设置>"} PZD_RUN_ID=${runId || "<未设置>"}\n`,
+  );
+} catch {
+  // 诊断锚点失败不影响启动。
+}
 
 /**
  * 把标记加在**每一个** dev server 响应上。
