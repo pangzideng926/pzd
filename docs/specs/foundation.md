@@ -292,4 +292,8 @@
   - `Auth.*` 文案以 `CommonErrors` 代码为单一来源；票面原写的两句已对齐为「未登录或会话已过期。」/「没有权限访问该资源。」（仅文案，不改行为）。
   - 剩 3 条 low 不阻塞：`ToCamelCaseKeys` 仅识别两种泛型字典形态——**已随 `837117f` 修复**（非泛型 `IDictionary` 重建 + `Ordinal` 去重，补只读字典 / `List` 值字典用例）；`Auth.*` 文案与票面不一致（`71529fd` 已对齐）；`6e20aaf` 提交信息把 F-06-2 写成 F-06-1（历史记录，不回改）。
   - **camelCase 落点定在出口，不换成序列化层 `DictionaryKeyPolicy`（老何定）**：`errors` 是嵌在 ProblemDetails 里的字典，而 `DictionaryKeyPolicy` 是全局 JSON 选项，会连带改变任何被序列化的字典键（`metadata`、审计、步骤 3 的 DTO 字典），口径不可控。出口转换的作用域只有 `errors` 一处，且与 `Error.Code` 的 kebab 转换同处 `ProblemDetailsWriter`，易于测试。实现上按「非泛型 `IDictionary` 重建 + `StringComparer.Ordinal` 去重（后写覆盖先写）」处理任意字典形态，不接受按泛型类型枚举白名单。步骤 3 接 FluentValidation 时仍需确认产出形状并保持同一断言（PascalCase 入 → `userName`）。
+- **票 07 终审通过（2026-10-27，`7f699c5`）**：全仓 **185** 条全绿（35 + 30 + 86 + 33 + 1），见 [`review-07.md`](../reports/review-07.md)。实现分布：F-07-1/2/3 `40f016a`、low 四条 `001a731`、F-07-4 `0c29633`、F-07-5 `7f699c5`。
+  - **编号教训**（本轮编号漂了三套：老登首轮报告 / 票面 / 老登终审），已收敛为票面口径并写进票 07「编号对照」：F-07-4 规则收紧、F-07-5 上限配置化 + 终态 `LastError`，其余按描述对应「low 四条」。**后续票一旦重编号，票面必须同时给出对照表**，否则复审必然错位。
+  - 重试语义：上限来自 `Outbox:MaxAttempts`（`DefaultMaxAttempts` 单处来源，用例注入小值而非依赖常量）；达上限进入终态拒绝，同时写 `RejectionReason` 与 `LastError`，消息保留、同批后续继续消费；**拒绝 ≠ 死信队列**，死信表与人工重放属步骤 3。
+  - 事务仍为**补偿删除**，不等于已回滚验证；多处理器部分失败重放为**明确遗留**（按处理器维度记进度，与 Outbox 落库同批）。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

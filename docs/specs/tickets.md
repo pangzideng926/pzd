@@ -102,7 +102,7 @@ git log --oneline -1; git tag
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** 🔧 开工中（前端 monorepo 骨架，旺总；`apps/`、`packages/`、`pnpm-workspace.yaml`、`turbo.json`、`tsconfig.base.json` 已在工作区）
 
 - [ ] `pnpm install --frozen-lockfile` 退出码 0
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
@@ -299,7 +299,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **Blocked by:** 05, 06
 
-**Status:** 🔧 返工中（`0da4a18` 已含 F-07-1/2/3 + low 四条 + 零实参第二层，173 条；**仍差 F-07-4 规则收紧、F-07-5 上限配置化**）
+**Status:** ✅ 通过（终审：[`review-07.md`](../reports/review-07.md)，实现 commit `7f699c5`，全仓 **185** 条全绿：35 + 30 + 86 + 33 + 1；F-07-1/2/3 `40f016a`、low 四条 `001a731`、F-07-4 `0c29633`、F-07-5 `7f699c5`）
 
 **复测追加必修（李总 `test-report-07.md`，老何定级为本轮必修）**
 
