@@ -359,3 +359,79 @@ REAL_EXIT=0
 `562fd88` 只补了「取不到 pid」那一支，`[:316](E:\pzd\scripts\verify-apphost.ps1#L316)` 仍是 `Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id`。aspire 模式下这个检查**能取到 pid，但对象是 `dcp.exe` 代理**，所以会稳定落进 `:317` 报「不属于本次启动的进程树」——**误红**，不是"取不到"。
 
 所以 A11 的修法是换判据，不是补分支：aspire 分支用 kubeconfig 路径匹配，或 `/api/version` 的 buildId 等于本轮 hash。补分支解决不了它。
+
+> **本节修订（2026-10-28）**：上面这个修法建议**已作废**，两条都被否掉了——kubeconfig 路径匹配挡不住同目录残留实例；`buildId` 只能证明版本相同，排除不了同 hash 的另一个实例。最终采用的是响应头 `X-Pzd-Run-Id`，见 §13.2。
+
+---
+
+## 13. 终审结论（2026-10-28）：票 03 / 08 / 09 全部通过
+
+> 本节是最终结论。§1–§12 是递增的复审过程，其中出现的「需修改」「未修」均已在对应小节标注闭环；阅读时以本节为准。
+
+### 13.1 结论一览
+
+| 票 | 结论 | 锚（代码 + 脚本） | 边界 |
+| --- | --- | --- | --- |
+| 03 主路径 | 通过 | `f778a32`（§9） | — |
+| 03 · F-03-A10 | 闭环 | `398b6e8`（§12.4） | — |
+| 03 · F-03-A12 | 闭环 | `562fd88`（§12.5） | — |
+| 03 · F-03-A11 | **闭环** | `db17a9b` + 当轮脚本 | **副本树**，非主仓 |
+| 03 · A5（entry TDZ） | **通过** | `331fac3` | 仅缩短值超时实跑 |
+| 08 | 通过 | `e8f2e2d` | 三条覆盖边界，见 13.4 |
+| 09 | 通过 | `68f0bef` + 当前脚本 | — |
+
+### 13.2 A5 与 A11
+
+**A5（`apps/web/app/entry.server.tsx`）通过 @ `331fac3`。** 我逐行核过交付文件，不是照转述：
+
+- 三处 `clearTimeout` 覆盖所有出口：`:91` 成功路径 `final`、`:111` `onShellError`、`:129` 同步 catch 兜底；
+- 定时器挪到 `renderToPipeableStream` 之后（`:144`），`abort` 提前声明为 `| undefined`（`:74`），同步抛出时定时器压根没挂上——TDZ 不可达；
+- 变异残留 `pzd-probe` 计数 **0**；我实建 `Pzd.AppHost.csproj` **0 警告 0 错误**（那行 `GetRequiredService<IHostEnvironment>()` 的 using 没漏）。
+
+**根因封口**，三块证据分工，成品口径：
+
+| 环节 | 证据 | 强度 |
+| --- | --- | --- |
+| 宿主环境默认 `Production` | `ce08feb` 在正式 `Pzd.AppHost.exe` 上读出 `宿主环境=Production`、两个 `*_ENVIRONMENT` `<unset>` | 运行期读数 |
+| `DOTNET_ENVIRONMENT=Development` → `EnvironmentName=Development` | 不启 DCP 的 15 行探针程序 | 实测，不在正式 AppHost 内 |
+| 宿主环境 → web 的 `NODE_ENV` | `pzd-envtest`（pin=0 + Development → `development` + `EXIT=0`）／反向 `pzd-fin`（`f6b32412`，`_out:1` = `production`）／第三份 `331fac3-nopin` | 进程级读数各一次 |
+
+链条：宿主环境 `Production` → Aspire JS 托管集成在**AppHost 装配资源模型时（运行期，`CreateBuilder` 之后、DCP 启动之前）**按 `IsDevelopment()` 写 `NODE_ENV=production` → `jsxDEV` 缺失 → 调用点同步抛出 → 默认 entry 的 `abort` 停在 TDZ → 6 秒后 exit 1。
+
+两条已知边界，不往高写：① 写入发生在「装配资源模型期」还是「DCP 运行时」仍未区分；② JS 集成内部那个 `IsDevelopment() ? … : …` 是元数据反推、未反编译 IL。二者都不影响 pin 的必要性。
+
+**`pin`（`37bd872`，`src/Pzd.AppHost/Program.cs:85`）无条件保留。** 三条理由：只影响 `web` 一个资源；宿主环境改成 Development 时确实会绿，但删掉后任何宿主环境为 Production 的场景（CI、容器、别人机器）立刻复发；反对用 `launchSettings.json` 根治（会把整个 AppHost 带进 Development，翻转所有 `IsDevelopment()` 分支）。
+
+**A11 通过 @ `db17a9b`。** 那一轮 aspire `EXIT=0`、脚本 8 条 `[ok]`，其中三条正是 A11 要的：`X-Pzd-Run-Id` 前端头与 `/api/version` **同 runId**（`f730b9e2…`）、前端 pid **22096**、`/` 回 **SPA 外壳**。归属判据满足「不能只证明版本相同」——同 runId + 具体 pid + 内容形态三项同时成立。
+
+**边界：副本树，不是主仓。** 按老何口径，干净副本的有效证据可验收，主仓故障单列（见 13.5）。
+
+### 13.3 票 08 / 09
+
+**08 通过 @ `e8f2e2d`**（不是 `79bbe36`——那一轮是旧契约自洽，不能当新契约的通过证据）。229 条全绿、五条安全头齐全、两条降级日志可按资源名 grep、`/` 无租户 400。三条覆盖边界照实登记，其中第二条是交接硬依赖：
+
+1. CSRF 双层 token 只有单测——`src/Pzd.Api` 没有任何写端点，真实 HTTP 面打不出那条 400；
+2. **没有任何端点发放 `XSRF-TOKEN` cookie**——登录壳落地时必须同时提供，否则前端所有 POST 一律 400；
+3. 审计（`WithAuditLog` / 有界 Channel）同样只有单测。
+
+**09 通过 @ 当前脚本 + `68f0bef`。** 我在当前脚本上复跑：`EXIT=0`、8 条 `[ok]`、`Degraded mode:` **0 条**、`Successfully validated presence of 37 schema objects`、`LocalTransactionJobStore initialized`、`persistence: True, clustered: True`、端口释放。`git diff 6b67c2d..HEAD -- src/Pzd.Api src/Pzd.Infrastructure` 为空，被测代码面未变。
+
+`QRTZ_EXECUTION_HISTORY` 是**可选预留、未接线**：`db/master/quartz_tables.sql:203` 注释写明只有配了 `UsePersistentStore(s => s.UseExecutionHistory())` 才会读写，代码里零命中。所以“建表但 0 行”不是缺陷，写“要用需在 `QuartzRegistration` 加一行”。
+
+### 13.4 四条取证纪律（本轮三次踩坑的产物）
+
+1. **层面要说清**：任何「相同 / 不同 / 有 / 没有」的断言必须点明是**字节**（sha256、`cmp`）、**文本**（`diff --strip-trailing-cr`）还是**语义**（代码是否生效、值是否进了进程）。本轮三个实例全栽在这上面：`grep -c` 数到注释行、日志 GBK/UTF-8 混读、`.bak` 字节不同但文本相同。
+2. **全称判断不许用截断结果**：「只有 / 全部 / 唯一 / 0 条」后必须指出它是从哪条完整命令得出的。本轮我自己犯了两次：`grep|head -10` 数出 `jsxDEV` “8 次”（实际 1040）、只看 `_err` 就说“目录里只有一份有内容”（另两个 `_out` 有 10KB / 2.3KB）。
+3. **追加写的文件必须按 runId 取**：`artifacts/pzd-web-env.log` 混了 5 轮 10 行，`production` 和 `development` 都在里面，脱离 runId 引用必错。
+4. **共享副本的反推禁令**：`mtime` 只记最后一次写入、`git status` 只说改过、`grep -c` 会数到注释——三者都不许反推当轮状态。只能用当轮 `git diff`、或能包住该轮（mtime 区间 + runId + 栈路径 + 单轮）的会话目录；两样都没有才记「不可考」。
+
+第 4 条我本人踩过：曾用 `Program.cs` 的 `mtime 01:47` 反推「00:07 那轮不是注释态」，属同类错误，已收回。
+
+### 13.5 剩余已知限制
+
+**主仓 `E:\pzd` 根目录 ACL 被 Aspire 的临时目录加固污染**（显式 `Deny Everyone / DeleteSubdirectoriesAndFiles`、AppContainer SID、整棵仓库带低完整性标签），导致主仓跑 aspire 在 DCP 会话目录创建阶段被拒（`Locations.GetOrCreateDcpSessionDir` → `CreateTempSubdirectory`；同一秒 `SocketPermissionHelper.CreateSecurityInfo` 也被拒）。删除 `.aspire-tmp` 无效——受限 ACE 是 `(I)` 继承自根，重建即回。
+
+- 定性：**失败阶段已定性；指向根 ACL 是当前最强假设，未定案。** 定案需修完 ACL 后在**同一棵树**上做前后对照。
+- 修复需用户批准；备份与回滚已就绪（`icacls /save` 到 `artifacts/acl-backup-pzd.txt`，32,472 项）。
+- `exit -532462766`（`0xE0434352`）是 .NET 未处理异常的通用退出码，**不作因果证据**；只用上面两个调用点。
+- 不影响 §13.1 的四项结论。

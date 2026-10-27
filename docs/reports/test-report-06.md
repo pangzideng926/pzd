@@ -150,3 +150,13 @@ Assert.False(errors.TryGetProperty("UserName", out _), body);
 - 累积态 `abde749`：build 0/0、156 条全绿；`src`/`tests` 干净。
 - **测试侧结论：票 06 三项返工全部冒烟通过，可进审计**（另有 low 观察：`ToCamelCaseKeys` 只认两种字典值类型，见 §7；不阻塞，建议步骤 3 接 FluentValidation 时确认产出形状）。
 - 票 07 的 F-07-1/F-07-2（代码检查可绕过、`DomainEventDispatcher` 零覆盖）在 `74b0145` 已列为必修，等旺总返工后我再按新 hash 复测。
+
+## 11. 残余 low 修复冒烟：`837117f`（`ToCamelCaseKeys` 任意字典形态）
+
+> 干净副本 @ `837117f`（在 `40f016a` 之上，只改 `ProblemDetailsWriter.ToCamelCaseKeys` + 3 条用例）。
+
+- 基线：build 0 警告 0 错误；35 + 75 + 33 + 25 + 1 = **169 条全绿**（Api 30 → 33）。
+- 实现：改用非泛型 `IDictionary` 重建为 `Dictionary<string, object?>`（Ordinal），覆盖任意字典形态；camelCase 撞键按「后写覆盖」去重；非字符串键 / 非字典值原样返回。
+- 新用例：`List<string>` 值字典、`ReadOnlyDictionary`、`UserName`/`userName` 撞键去重各一条（先红 3 条再转绿，与提交说明一致）。
+- 变异：去重改回 `converted.Add(...)` → `Errors_keys_that_collide_after_camel_casing_are_deduplicated` **1 failed**，守护成立。
+- **结论：§7 的 low 关闭；票 06 无挂起项。**

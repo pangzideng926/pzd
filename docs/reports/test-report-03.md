@@ -1375,12 +1375,12 @@ artifacts/a5-evidence/prepin-90ee1b2/web-{stdout,stderr}.log
 
 另：`C:/tmp/pzd-envtest`（同一基座、pin 整行删除、`cf7b5542…`）是一次**独立的第二棵树**，结论相同（`development` + `EXIT=0` + `/` SPA 外壳）。两份分属不同树、不同 runId，互为交叉验证，不是同一份数据的两次引用。
 
-### 28.3 取证判据修订（本轮踩过的四个坑，逐条作废旧写法）
+### 28.3 取证判据修订（本轮踩过的七个坑，逐条作废旧写法）
 
 | 旧写法 | 为什么错 | 改成 |
 |---|---|---|
 | `grep -c 'WithEnvironment("NODE_ENV"'` 判有无 pin | **注释掉的行照样命中**，正好把有无 pin 判反（本轮多人中招） | `grep -n '^\s*web = web\.WithEnvironment("NODE_ENV"'` 数**活代码**；再配基座 hash + `git status --porcelain` |
-| 引用 `artifacts/pzd-web-env.log` 里的一行 | 该文件**追加写**，同文件里 `production` 与 `development` 都有（`pzd-fin` 那份混了 4 轮以上） | 必须 `runId + 会话目录名` 一起引；我自己第一版 grep 就抓到了 16:07 的旧 `production` |
+| 引用 `artifacts/pzd-web-env.log` 里的一行 | 该文件**追加写**，同文件里 `production` 与 `development` 都有。`pzd-fin` 那份**全量 10 行 / 5 轮**（`e8c2d03f…` dev、`f6b32412…` prod、`bc3ecc7f…` dev、`probe-foreign-abc123` 手工灌入的 dev、`968c1848…` dev），其中 `probe-foreign-abc123` 正是「脱离 runId 引用必错」的现成反例 | 必须 `runId + 会话目录名` 一起引；我自己第一版 grep 就抓到了 16:07 的旧 `production` |
 | 只看扩展名/印象定编码 | 同一台机器多种编码：`artifacts/verify-apphost.log` 与 DCP `_out` 是 **UTF-8**，脚本自己的 `[ok]` 输出是 **GBK** | 先看字节再读；按文件判，不按印象判 |
 | 探针文件没生成 → 某条结论 | 文件没生成只说明 web 没走到写文件那一步 | **本轮无效**，既不是正证也不是反证 |
 | 「相同 / 不同」不加限定就说 | 同一份内容在字节、文本、语义三个层面可以同时「不同又相同」。本轮三次实例：`grep -c` 数到注释行、`[ok]` 行 GBK 与 `.aspire-tmp` UTF-8 混读、`.bak` 与 git blob 差 313 字节但去 CR 后 sha256 一致 | 断言必须写清层面：**字节 / 文本 / 语义**。「逐字节相同」只在 `cmp` 通过时才写 |
