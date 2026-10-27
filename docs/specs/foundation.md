@@ -281,4 +281,7 @@
   - **F-06-1 errors camelCase** → 仍要求实现：出口统一转 camelCase，用例必须以 PascalCase 键入参并断言 `userName`（防止再出现「用例自己喂期望输入」）；本轮无 FluentValidation / Application 层，**管道与校验规则移交步骤 3**（tickets.md「步骤 3 移交清单」第 1 项），交付报告不得写成「管道已验证」。
   - **框架裸 401/403（老登 F-06-3）** → 纳入本轮票 06：status code pages 映射为 `Auth.Unauthorized` / `Auth.Forbidden` ProblemDetails 并带 `traceId`，补用例；避免步骤 3 一上授权就出现 `System.Unexpected`。
   - 编号以终审报告 [`review-06.md`](../reports/review-06.md) 为准：**F-06-1** = errors camelCase、**F-06-2** = 租户 traceId、**F-06-3** = 框架 401/403；F-06-4/5/6 为 low。
+- **票 06 终审通过（2026-10-27，`abde749`）**：全仓 **156** 条全绿（35 + 71 + 30 + 19 + 1），见 [`review-06.md`](../reports/review-06.md)。三项实现：F-06-1 `3ff40ef`、F-06-2 `6e20aaf`（`ProblemDetailsWriter` 为唯一 ProblemDetails 构造实现，中间件与 `ToHttpResult` 共用）、F-06-3 `abde749`（`CommonErrors` 新增 `Auth.Unauthorized` / `Auth.Forbidden`）。
+  - `Auth.*` 文案以 `CommonErrors` 代码为单一来源；票面原写的两句已对齐为「未登录或会话已过期。」/「没有权限访问该资源。」（仅文案，不改行为）。
+  - 剩 3 条 low 不阻塞：`ToCamelCaseKeys` 仅识别两种泛型字典形态（`ReadOnlyDictionary` 静默不转换）——**票 07 收口后由旺总顺手带一笔并补只读字典 / List 值字典两条用例**；`Auth.*` 文案与票面不一致（本轮已对齐）；`6e20aaf` 提交信息把 F-06-2 写成 F-06-1（历史记录，不回改）。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

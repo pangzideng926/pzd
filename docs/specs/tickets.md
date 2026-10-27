@@ -256,7 +256,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **Blocked by:** 04
 
-**Status:** 🔧 返工中（终审需修改：[`review-06.md`](../reports/review-06.md)；F-06-1/2 必修、F-06-3 顺带）
+**Status:** ✅ 通过（终审：[`review-06.md`](../reports/review-06.md)，实现 commit `abde749`，全仓 **156** 条全绿：35+71+30+19+1；F-06-1 `3ff40ef` / F-06-2 `6e20aaf` / F-06-3 `abde749`）
 
 - [ ] 映射全表通过 HTTP 接缝逐条断言：400（含 `errors` 字典）、401、403、404、409（乐观锁/唯一键语义）、422、426、503
 - [ ] `type` = `https://pzd/errors/{kebab-code}`；`code` 与 `Error.Code` 一致；`traceId` 与响应头 `X-Trace-Id` 同源
@@ -268,7 +268,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 **F-06-3 口径（老何定，2026-10-27；旺总按此实现，不必再确认）**
 
 - **只动「空 body 的状态码」这一条路径**：`UsePzdStatusCodePages` 的 switch + `CommonErrors` 新增两条错误码。**404/405 保持原样不动**（`Http.NotFound` / `Http.MethodNotAllowed` 的 code 与 `type` 均不得变化，补一条防回归断言）。
-- 新增：`CommonErrors.Unauthorized = ("Auth.Unauthorized", ErrorType.Unauthorized, "未认证或认证已失效。")`、`CommonErrors.Forbidden = ("Auth.Forbidden", ErrorType.Forbidden, "没有权限执行该操作。")`；`status` 取该次响应状态码本身。
+- 新增：`CommonErrors.Unauthorized = ("Auth.Unauthorized", ErrorType.Unauthorized, "未登录或会话已过期。")`、`CommonErrors.Forbidden = ("Auth.Forbidden", ErrorType.Forbidden, "没有权限访问该资源。")`；`status` 取该次响应状态码本身。（文案以 `CommonErrors` 代码为单一来源，票面此句与 `abde749` 对齐；改文案不算行为变更，但必须只有一处定义。）
 - `type` 必须**精确**等于 `https://pzd/errors/auth.unauthorized` / `https://pzd/errors/auth.forbidden`，复用现有同一份 kebab 转换（不新增第二份转换函数；`Auth.Unauthorized` 段内已无大写，重复转换不改变值，但实现上仍只允许一处）。
 - `traceId` 与响应头 `X-Trace-Id` 同源，与其他错误出口一致；`HasStarted` 时不得覆盖已写 body（现有 guard 保留，补一条用例）。
 - **不属于本条**：真正产生 401/403 的授权中间件、权限码、`.RequirePermission` 属步骤 3（移交清单第 4 项）。本条只保证「没有任何 body 的 401/403」落成正确 ProblemDetails，避免步骤 3 一上授权就出现 `System.Unexpected`。
