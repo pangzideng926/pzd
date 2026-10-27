@@ -4,28 +4,40 @@ using Pzd.Api.Endpoints;
 using Pzd.Api.Errors;
 using Pzd.Api.Health;
 using Pzd.Infrastructure;
+using Pzd.Infrastructure.Audit;
+using Pzd.Infrastructure.Observability;
 using Pzd.Infrastructure.Persistence;
+using Pzd.Infrastructure.Security;
 using Pzd.Infrastructure.Tenancy;
 using Pzd.SharedKernel.Abstractions;
+using Serilog;
 using SqlSugar;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 只走控制台日志：Windows 上默认还会挂 EventLog provider，沙箱/服务账户无写权限时
-// 写日志本身会抛异常并打断请求（实测 /health/ready 降级路径直接 500→连接中断）。
-// Serilog + OTel 在票 08 接管，这里先保证「日志不成为故障源」。
-builder.Logging.ClearProviders();
-builder.Logging.AddSimpleConsole();
+// 票 08：Serilog 接管技术日志。D2 约束（票 03）仍成立：默认 provider 全部清掉、只留控制台，
+// 「日志不得成为故障源」；票 03 的 HealthChecks=Error 过滤也在 AddPzdSerilog 内保持。
+builder.AddPzdSerilog();
 
-// 框架的 DefaultHealthCheckService 每次探到 Degraded 都会打一条 Warn
-// （"Health check redis with status Degraded completed with status Degraded…"）。
-// 探针被 5s 轮询时这条会把日志刷满，而它不是业务事件、也没有额外信息：
-// 降级事实由启动期那条 Degraded mode Warn 与 /health/ready 响应体表达，这里把它压到 Error（F-03-4）。
-builder.Logging.AddFilter("Microsoft.Extensions.Diagnostics.HealthChecks", LogLevel.Error);
+// 票 08：OTel traces/metrics；未配置 OpenTelemetry:Endpoint 时不导出、不报错。
+builder.AddPzdOpenTelemetry();
 
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddPzdProblemDetails();
+
+// 票 08：Data Protection 密钥环（路径来自 DataProtection:KeyPath）+ Antiforgery。
+// 两个 token：可读 cookie token（XSRF-TOKEN，HttpOnly=false）+ 请求头 X-XSRF-TOKEN。
+builder.Services.AddPzdDataProtection(builder.Configuration, builder.Environment);
+builder.Services.AddPzdAntiforgery();
+
+// 票 08：审计。请求线程只做有界 Channel 的 TryEnqueue；后台服务批量交给 IAuditLogWriter。
+// 本票不落库（步骤 3 接租户库时替换 NullAuditLogWriter）。
+var auditOptions = AuditOptions.Load(builder.Configuration);
+builder.Services.AddSingleton(auditOptions);
+builder.Services.AddSingleton<AuditLogChannel>();
+builder.Services.AddSingleton<IAuditLogWriter, NullAuditLogWriter>();
+builder.Services.AddHostedService<AuditLogBackgroundService>();
 
 // 票 03：就绪探针。MySQL / Redis 任一不可用都返回 Degraded（不是 Unhealthy），
 // 让「实例缺失时降级启动」与「真故障」在语义上分开；明细由 HealthResponseWriter 输出 mysql/redis 两项。
@@ -68,9 +80,25 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UsePzdStatusCodePages();
+
+// 票 08：每请求一行摘要（UseSerilogRequestLogging）；TenantId/UserId/TraceId/ClientIp
+// 由 LogContextMiddleware 的富化回调补齐。放在异常处理之后，500 也能留下摘要行。
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = LogContextMiddleware.EnrichDiagnosticContext;
+});
+
+// 票 08：安全响应头（CSP / X-Frame-Options / X-Content-Type-Options，非开发环境加 HSTS）。
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
+// 租户与用户都已就绪：把 TenantId/UserId/TraceId/ClientIp 推进 LogContext。
+app.UseMiddleware<LogContextMiddleware>();
 app.UseAuthorization();
+
+// 票 08：写请求默认 Antiforgery 校验（安全方法放行）；放在认证/租户之后，401/租户错误优先。
+app.UseMiddleware<AntiforgeryValidationMiddleware>();
 
 app.MapGet("/", () => "PZD API");
 
@@ -90,6 +118,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 
 // 启动期降级日志（票 03 ④）：对每个不可用资源各打一条 Warning，文本固定为
 // `Degraded mode: <MySQL|Redis> unavailable（...）`，验收时用真实启动的 stdout grep 举证。
+// 票 08 后这条 Warning 经 Serilog 控制台 sink 输出，文本与举证方式不变。
 var startupReport = await app.Services.GetRequiredService<HealthCheckService>()
     .CheckHealthAsync(new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token);
 
