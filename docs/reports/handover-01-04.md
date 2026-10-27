@@ -3,7 +3,7 @@
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
 > 文件名沿用首轮，内容已覆盖票 01–12；下一轮请从本文件第 2、3 节接着走。
 > 状态快照：**已收口代码基线 `f778a32`**（票 03 终审点；`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误，五个测试工程 35+30+86+43+10 = **204 条全绿、0 Skip**，老登于 2026-10-27 在 `f778a32` 干净 worktree 实跑）。此后 HEAD 已到 `e8f2e2d`（票 08 提交，待复测），`204` 只对 `f778a32` 成立，别拿它给 08 背书。
-> 结论：**票 01、04、05、06、07、12、02、03 全部收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、**07 终审 [`review-07.md`](review-07.md)（`7f699c5`，185 条）**、[12 审计](review-12.md)、**02 终审 [`review-02.md`](review-02.md)（`57c226e`/复核 `1588559`）**、**03 终审 [`review-03.md`](review-03.md) §9（`f778a32`）**）。在途：08 可观测性/审计/安全横切（雨哥，`e8f2e2d` 已提交待复测）、10 租户隔离集成测试（锋哥 `95cfc5d`）、09 Quartz（旺总，接 08 管道）、11 验收脚本（最后，开工前必修 F-03-A10）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
+> 结论：**票 01、04、05、06、07、12、02、03、10 全部收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、**07 终审 [`review-07.md`](review-07.md)（`7f699c5`，185 条）**、[12 审计](review-12.md)、**02 终审 [`review-02.md`](review-02.md)（`57c226e`/复核 `1588559`）**、**03 终审 [`review-03.md`](review-03.md) §9（`f778a32`）**、**10 终审 [`review-10.md`](review-10.md)（锚 `204f93e`，11/11）**）。在途：08 可观测性/审计/安全横切（雨哥，`e8f2e2d` 待复测）、09 Quartz（旺总，`Jobs/**` 开发中）、11 验收脚本（最后，门禁只剩 F-03-A11）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
@@ -15,8 +15,8 @@
 | 构建 | 0 警告 0 错误（`-warnaserror`，`f778a32` 上老登实跑） |
 | 测试 | **204 条、0 失败 0 Skip**（SharedKernel 35 / 架构 30 / Infrastructure 86 / Api 43 / 集成 10；`f778a32` 快照；此前的 185 是 `7f699c5`、173 是 `0da4a18`，已作废） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`） |
-| 进行中 | 08 已提交 `e8f2e2d`（待李总复测）；10 蹲 `95cfc5d`（待复测）；09 等 08 的 `Program.cs` 已定稿即可接；11 最后 |
-| 下一张票 | 08 复测 → 09 Quartz 接线（旺总）→ 10 复测 → 11 验收脚本（开工前必修 **F-03-A10**） |
+| 进行中 | 08 已提交 `e8f2e2d`（待李总复测）；09 旺总在做 `Jobs/**`（包已就位 `49a6b43`，`appsettings.json` 不改、配置键用默认值）；**10 已审计通过**；11 门禁只剩 A11 |
+| 下一张票 | 08 复测 → 09 Quartz（旺总）→ 11 验收脚本（唯一门禁 **F-03-A11**） |
 
 ## 2. 未完成项 / 待办与已落票约束
 
@@ -91,6 +91,7 @@
 | 票 06 测试报告、审计终稿 | [`test-report-06.md`](test-report-06.md)、[`review-06.md`](review-06.md) |
 | 票 07 测试报告、审计终审 | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
 | 票 02 测试报告、审计终审 | [`test-report-02.md`](test-report-02.md)、[`review-02.md`](review-02.md) |
+| 票 10 审计报告（锚 `204f93e`） | [`review-10.md`](review-10.md) |
 | 票 12 测试记录、审计报告 | [`test-report-12.md`](test-report-12.md)、[`review-12.md`](review-12.md) |
 | 多租户实现 | [`src/Pzd.Infrastructure/Tenancy/`](../../src/Pzd.Infrastructure/Tenancy/) |
 | ProblemDetails 唯一实现 | [`src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs`](../../src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs) |
@@ -115,8 +116,8 @@
 - **降级日志的匹配口径（票 03 ④ 的证据链，票 11 直接依赖）**：08 把 Serilog 换成 JSON formatter 后，`Degraded mode:` 仍渲染成**可 grep 的文本**、不是模板占位（老登在 `299421d` 实跑确认，票 03 的通过结论在 08 之上继续成立）。但**行尾现在多了 ` | {"SourceContext": "Pzd.Api"}`**，所以票 11 断言必须用**子串**「`Degraded mode:` + 资源名（`MySQL`/`Redis`）」匹配，**不得整行相等**；另外框架自身每次探测还会打一条 `Health check redis with status Degraded completed…`（不是我们的打点），计数时别把它算进来，也别把它的存在当缺陷。
 - **断言规矩（票 03 血泪，票 11 必须遵守）**：**任何「HTTP 200 就算通过」的断言都不许再写进验收脚本**。必须证明这个 200 是**本次启动的进程**给的：API 腿核对 5080 监听者属于本次宿主进程树，前端腿核对 5199 监听者属于本次 `$webProcess` 子树，并检查 `verify-web.log.err` 里没有 `Port 5199 is already in use` / `ERR_PNPM`；取不到 pid 或拿不到父链时**判失败**，不许「无法判定就跳过」。已登记的必修项：**F-03-A10（=李总报告 F-03-A3，medium，票 11 开工前必修）**——`7c5f411` 上实测过完整假绿：自己的 vite 报 `Port 5199 is already in use` 挂掉，脚本仍打 `[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳` 并 `exit 0`，探到的是别人的实例。**验收按票面 `299421d` 四条走，别只做前三条**：① 正向要有 pid 与归属证据；② 反向要**先占 5199 再跑**，必须非零且**不许杀掉外来进程**；③ 取不到 pid / 父链不可读 / 不属于本次树 → 判 `1` 并打印原因，不许跳过；④ **再补一个「预检通过之后才出现外来监听」的受控反例**——不加这条，测试实际打到的只是端口预检，归属断言根本没被走到。另注意 api 模式以本次 web 根进程为准、aspire 模式以本次编排资源进程树为准，**不能机械假定两模式同一个根 PID**。
   - **A10 状态：四条已闭环（`398b6e8`/`b4b5d5d`，老登实测）**。① 正向 `[ok] … 监听者 pid … 属本次进程树`；② 反向（外来 node 占 5199、返回带 `lang="zh-CN"` 的 200）→ `exit 1` 并报 pid；③ 取不到 pid / 血脉不符（`398b6e8` 改三段式）：同一变异在 `7ccbbcf` 上 `[ok]`+`EXIT=0`，在 `398b6e8` 上 `前端 … 取不到监听者 pid，无法确认 200 是否来自本次实例`+`EXIT=1`；④ 竞态反向（预检之后才出现外来监听）由旺总的延迟插入副本实测到 `exit 1`。附加实测：判红退出时外来监听进程仍在 `LISTENING`（脚本只收拾自己的进程树，**不误伤别人的实例**）。web 腿另扫 `verify-web.log.err` 的 `already in use`/`EADDRINUSE`/`ERR_PNPM`，并检查 `$webProcess.HasExited`。
-  - **F-03-A12（high，未修，票 11 门禁）**：`398b6e8` 只改了 web 腿，**API 腿仍是老写法**——HEAD `5adc55a` 的 `scripts/verify-apphost.ps1:310` 是 `if ($listenerPid -and -not (Test-ProcessDescendsFrom …))` → `else` 打 `[ok] … 由本次启动的进程树监听（pid ）`，pid 取不到时**照样宣告通过**。老登实测：让 `Get-PortListenerPid 5096` 返回 `$null` → `[ok]` + `REAL_EXIT=0`。这条比 A10 ③ 更要紧：**API 腿是每轮 `-Mode api`/`-Mode aspire` 都走的主判据**，也是票 11 唯一的 200 归属证据。修法照 web 腿三段式搬：属于→`[ok]`、不属于→失败、**取不到 pid→失败并写明「无法确认 200 是否来自本次实例」**。
-  - **F-03-A11（未修，票 11 门禁，与 A12 根因相反）**：aspire 模式下 **5080 由 `dcp.exe` 代理持有**，父链 `dcp.exe → dcp.exe → 已退出`，第二跳就断——**不是深度问题**，调层数或加 job 关系都救不了，属「证据取错了对象」而非「取不到证据」。正确修法是改判据本身：按 `kubeconfig` 路径匹配本次副本，或断言 `/api/version` 的 `buildId` 等于本轮 hash。**修 A12 时别顺手把 aspire 分支一起改错**：一个该失败却通过、一个该通过却失败，方向相反。
+  - **F-03-A12（high，**已闭环 `562fd88`**）**：`398b6e8` 只改了 web 腿，API 腿当时仍是 `if ($listenerPid -and -not (Test-ProcessDescendsFrom …))` → `else [ok]`，pid 取不到时照样宣告通过（老登实测 `[ok] … 由本次启动的进程树监听（pid ）` + `REAL_EXIT=0`）。`562fd88` 把 web 腿的三段式搬到 API 腿：`-not $listenerPid` → 失败并写明「取不到监听者 pid，无法确认 200 是否来自本次实例」／不属于本次树 → 失败／否则 `[ok]`。张一一实测正常路径 `exit 0`、变异（函数直接 `return $null`）`REAL_EXIT=1` 两侧都有。**这条比 A10 ③ 更要紧**：API 腿是每轮 `-Mode api`/`-Mode aspire` 的主判据，也是票 11 唯一的 200 归属证据；改动只动 api 分支，未碰 aspire。
+  - **F-03-A11（未修，票 11 唯一剩余门禁）**：aspire 模式下 **5080 由 `dcp.exe` 代理持有**，父链 `dcp.exe → dcp.exe → 已退出` 第二跳就断——**不是深度问题**，调层数或加 job 关系都救不了，属「证据取错了对象」而非「取不到证据」。**老何定的口径（别再拿 `buildId` 单独当归属证据）**：必须证明应答来自**本次运行**，不能只证明版本相同——`buildId = 本轮 hash` 排除不了同 hash 的残留实例。可用「会话目录/编排资源关联」（能证到「监听代理 → 本次编排 → 本次 API 资源」）或本次启动的唯一标记。**验收三条**：正常实例通过、**同 hash 的外来实例必须失败**、归属证据取不到时失败。修复并复审前 A11 继续阻塞票 11。
 - **会留下孤儿 vite**：脚本/验收进程被强杀或中断时，`Stop-ProcessTree` 来不及跑，`pnpm --filter @pzd/web dev` 的子进程会继续占着 5199（进程链根已死）。下一次验收要么被预检拦成 `exit 2`，要么（A10 未修前）假绿。清理前先确认**链根 pid 已不存在**，别把别人正在跑的实例当孤儿杀掉；正常退出后应断言 5080/5199 均无 `LISTENING`。
 - **`scripts/verify-apphost.ps1` 退出码三档（票 03 起，票 11 必须沿用；已于 `f778a32` 定稿）**：票面 `756c1fc` 定的是 `0` = 指定模式全部通过 / `1` = 构建、启动或验收失败 / `2` = 环境预检受阻（**非零、未完成，CI 不得放绿**），票 11 汇总优先级 `1 > 2 > 0`，保留原始退出码与失败阶段；退出码只分类结果，不单独裁定根因。
   - **代码与票面已一致（`f778a32` 起）**：`scripts/verify-apphost.ps1:264-267` 构建失败走 `[fail]` + **`exit 1`**（旺总 `f778a32` 把原 `exit 2` 与「环境/占用问题，不是本票缺陷」的误导前缀一并改掉，老登 F-03-A9 闭环）；`exit 2` 只剩端口占用、依赖缺失等环境预检分支。因此**编译不过 = 1 = 本票缺陷**，环境问题 = 2 = 非零但不算产品缺陷，两者不得混用，也不许有人拿 2 当「机器问题」分诊掉红。
