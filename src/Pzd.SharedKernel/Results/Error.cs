@@ -40,6 +40,11 @@ public sealed class Error : IEquatable<Error>
 
     public string Message { get; }
 
+    /// <summary>
+    /// 构造时的只读快照：复制的是字典结构（键值对集合），值本身不做深拷贝。
+    /// 因此调用方之后修改原字典不影响快照，但若值对象自身可变，其内部状态变化仍会被读到——
+    /// 需要真正不可变的元数据时，请传不可变类型的值（如 string / 数值 / 记录类型）。
+    /// </summary>
     public IReadOnlyDictionary<string, object?> Metadata { get; }
 
     public static bool IsValidCode(string? code) =>
