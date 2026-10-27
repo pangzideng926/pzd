@@ -111,6 +111,8 @@
 - **前端 dev 端口与探测地址（票 02 `c3d69f1` 定，票 11 沿用）**：dev 固定 `http://127.0.0.1:5199/`——`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`，并且**显式** `server.host = "127.0.0.1"`，与后端 `127.0.0.1:5080` 统一成 IPv4。**`server.host` 留空时 Node 只绑 `::1`**，此时 `curl 127.0.0.1:5199` 返回 `000` 是假红、不是服务故障；票面早先「一律用 localhost」的写法已作废。前端 dev 期 `/api`、`/hubs` 代理到 5080。
 - **生成物不入库**：`node_modules/`、`apps/web/build/`、`apps/web/.react-router/`（typegen）、`*.tsbuildinfo`；`pnpm-lock.yaml` 必须入库。已误提交的用 `git rm -r --cached` 清出。
 - **MinVer**：浅克隆丢 tag 会让版本掉成 `0.0.0-alpha…`。
+- **审计/复测副本不要用目录联结复用 `node_modules`**（老登原话）：pnpm 会以 `ERR_PNPM_UNSAFE_TASK_RUN_STATE_PATH` 拒绝运行，aspire 的 `web` 资源因此秒失败，会被误读成代码缺陷；需要复测前端腿时用 `pnpm install --frozen-lockfile` 装真依赖，或直接在已装依赖的正常副本上验。
+- **`scripts/verify-apphost.ps1` 退出码三档（票 03 `8307b4d` 起，票 11 必须沿用）**：`0` = 通过；`1` = 验票失败（票面缺陷）；`2` = 环境问题（端口被占 / 前端依赖未装，脚本会先做前置检查并以 pid 报占用者）。票 11 与 CI 一律按退出码判定，**别把 `exit 2` 当产品缺陷**，也别按输出里出现 `WARNING` 判失败。
 
 ## 6. 可直接复制的验证命令
 

@@ -12,16 +12,18 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 | 前端 monorepo 骨架 | ✅ 审计通过（`57c226e` 闭环 F-02-1；报告 `review-02.md`） |
-| 03 | Aspire 编排 + 健康检查/版本端点（F-05-4） | 🔧 开工中（`AllowAnonymousTenant` 豁免、`/health/live|ready`、`/api/version`） |
+| 03 | Aspire 编排 + 健康检查/版本端点（F-05-4） | 🔧 返工中（首轮需修改：A1 端口前置检查已闭环、**A2 `--no-build` 仍必修**） |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
 | 07 | UoW + Outbox + 领域事件 | ✅ 审计通过（`7f699c5`，185 条） |
-| 08–10 | 可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
-| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10 |
+| 08 | 可观测性 + 审计 + 安全横切 | 🔧 雨哥开发中（`Infrastructure/{Observability,Audit,Security}`） |
+| 09 | Quartz + 健康检查 + 版本 | ⏳ 等 08 的 `Program.cs` 定稿（旺总） |
+| 10 | 租户隔离集成测试 | 🔧 锋哥开发中（`tests/Pzd.IntegrationTests/**`） |
+| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10（按退出码判定：0 通过 / 1 票面缺陷 / 2 环境问题） |
 
 票 07 已终审通过（`7f699c5`，185 条全绿：SharedKernel 35 + 架构 30 + Infrastructure 86 + Api 33 + 集成 1）：`40f016a`（F-07-1/2/3）、`001a731`（失败原因与重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（规则第二层）、`0c29633`（F-07-4 规则标识符级 + `Jobs/**`、`*Job.cs`）、`7f699c5`（F-07-5 重试上限只从 `Outbox:MaxAttempts` 读、终态同写 `RejectionReason` 与 `LastError`）。三条口径务必照写：**多处理器部分失败重放是明确遗留（与步骤 3 Outbox 落库同批）**、**事务只有补偿删除，不等于已回滚验证**、**拒绝 ≠ 死信队列（本轮只有终态标记）**。
 
-接下来是票 02（前端 monorepo 骨架，03/11 的唯一前置，已开工），然后 08 → 10。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕；票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+当前并行推进：**03 Aspire 返工**（首轮审计需修改，A2 `--no-build` 必修）、**08 可观测性 + 审计 + 安全横切**（雨哥）、**10 租户隔离集成测试**（锋哥）；09 等 08 的 `Program.cs` 定稿后由旺总接。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕；票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
