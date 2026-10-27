@@ -111,6 +111,7 @@ git log --oneline -1; git tag
 - [ ] **dev 端口与绑定显式写死、可预期**：`vite.config.ts` 固定 `server.port = 5199` 且**显式** `server.host = "127.0.0.1"`（不靠默认端口漂移，也不留空 host）；验收与后续脚本一律探 `http://127.0.0.1:5199/`。原因：host 留空时本机 Vite 只绑 `::1`，此时探 `127.0.0.1` 会假红；**显式绑 IPv4 后 `127.0.0.1:5199` 正常返回 200**，与后端 `127.0.0.1:5080` 口径一致（此前「一律用 localhost」的写法作废）
 - [ ] 工作区包关系正确（web 依赖 ui/api/realtime 中实际需要的包），lockfile 提交
 - [ ] 产物与生成物**不入库**：`.gitignore` 覆盖 `node_modules/`、`apps/web/build/`、`.react-router/`（typegen 产物）、`*.tsbuildinfo`；已误提交的用 `git rm -r --cached` 清出（lockfile 必须入库，不要混为一谈）
+- [ ] 生产 `build` 链路无噪音：`turbo` 对 echo 型包（`packages/api|realtime|ui`）不应报 `no output files`——按包在 `turbo.json` 里把这些 task 的 `outputs` 设为 `[]`；一键验收脚本读 `pnpm -w build` 输出时不得被这类告警干扰
 - [ ] 若 shadcn preset 拉取失败：退化为最小 React Router SPA，并在 `docs/specs/foundation.md` §9 记录偏差与剩余项
 
 **验证命令**
