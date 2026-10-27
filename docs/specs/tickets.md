@@ -168,8 +168,8 @@ pnpm -w typecheck
 
 已落地：`src/Pzd.AppHost`（`AddConnectionString` 引用本机 mysql/redis、不建容器；API `port: 5080`；`AddViteApp` + `WaitFor(api)`）、`scripts/verify-apphost.ps1`（198 行，`-Mode api|aspire`，轮询就绪 + 三端点探活 + 退出后检查无残留监听 + mysql/redis 明细非 `Healthy` 即记 failure）、`MySqlHealthCheck` 改服务器级 ping（`pzd_master` 未建库不判 `Degraded`）、`Program.cs` 只挂控制台日志。
 
-- **偏差 D1 已推翻（2026-10-27 李总实测，老何改写）**：原记「DCP 编排在本沙箱无法启动＝环境限制」**不成立**。真实原因是 `src/Pzd.AppHost/Program.cs:22` 的 `WithHttpEndpoint(port: 5080, targetPort: 5080, name: "http")`（`fd90640` 提交的版本仍是这一行）——Aspire 不允许非容器资源同时指定相同的 `Port` 与 `TargetPort` 并走代理，启动即抛 `InvalidOperationException`。去掉 `targetPort` 后 DCP 能起、三个后端端点全过（[`test-report-03.md`](../reports/test-report-03.md)）。→ **F-03-1（high，必修）**，属代码缺陷；票面与报告不得再写「沙箱里 DCP 起不来」。
-  - **F-03-2（medium，必修）**：端点修好后 `AddViteApp` 的前端资源 90s 内没起来（5199 连接被拒、进程快照无 vite/node 子进程，不是起得慢），aspire 模式前端首屏未通过；需查 DCP 里的 pnpm 调用与端口注入。
+- **D1 当前口径（2026-10-27 17:01，取代此前“D1 已推翻”结论）**：F-03-1 端点代码缺陷已由 `7c5f411` 修复；另有本机 agent 会话 DCP ACL/令牌权限阻塞。依据 Chief 16:59 实跑报告，`SetSecurityInfo/CreateWindowsDirectory` 抛 `UnauthorizedAccessException`，资源未启动且 5080/5199 无监听。此前“DCP 已能启动”的证据缺少响应进程归属核对，现撤回；残留 API 导致假绿只是待核查解释。状态为**待用户普通终端证明**，api 路径可独立评审，不替代 aspire。普通终端也失败不自动降级，任何验收降级须用户明确批准。具体缺失特权的机制尚未单独验证，不凭权限列表下定论。
+  - **F-03-2（原 medium，待复测定位）**：旧测试观察到 90s 内 5199 无监听、无 vite/node 子进程，前端首屏尚未验证通过。现有 DCP ACL 阻塞，不能认定是独立前端代码缺陷；先在用户普通终端证实本次 DCP/资源启动，再检查 pnpm、端口注入与首屏。
   - `-Mode api` 定位改为**附加的快速回归路径**，不能替代「一条命令 `dotnet run --project src/Pzd.AppHost` 拉起 API + 前端」这条验收；`-Mode aspire` 必须在本机实测通过。孤儿 `dcp.exe`（系统 TEMP、抢占监听套接字）清理属运维动作，**不能当验收豁免**。
   - **F-03-1 / F-03-2 未闭环前票 03 不得标通过**；若本轮确实解决不了，必须由用户明确同意降级并写进步骤 3 移交清单。
 - **偏差 D2**：API 与 AppHost 均 `ClearProviders()` 只留控制台——EventLog provider 无写权限时**写日志本身会抛异常**（实测把 `/health/ready` 降级路径变成连接中断）。票 08 接 Serilog + OTel 时必须保留「日志不得成为故障源」，不得把这两处 `ClearProviders` 当作临时脏补丁删掉。
