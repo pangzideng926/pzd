@@ -106,7 +106,8 @@
 - **租户配置**：`Tenants` 的非法值（`Status` 拼错/数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛 `InvalidOperationException`，不会等首个请求；`Tenants` 为空允许启动但请求 400（不做 fail-fast）；`ExpiresAt` 缺省或 `null` 为永不过期，空字符串为配置错误。
 - **后台任务取连接**：请求路径专用的是 `GetCurrentConnectionScopeAsync(ct)`，后台路径禁止出现该调用；后台任务/消费者必须用带 `long tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId, ct)`（先校验停用/到期）。无参 `GetConnectionScopeAsync()` 已不存在，编译期即挡。架构规则守的是「后台路径不出现 `.GetCurrentConnectionScopeAsync(`」，属字符串规则，别把它当沙箱（边界见 §2「规则适用边界」）。
 - **07 内存实现**：Outbox/UoW 的事务仍是**补偿删除**，不是真实回滚（步骤 3 换真实事务并删补偿）；失败原因、零处理器/零消费者告警随 `001a731` 补上；重试上限随 `7f699c5` 改为只从 `Outbox:MaxAttempts` 读（缺省 5，默认值只在 `OutboxOptions.DefaultMaxAttempts`，`appsettings.json` 不写该键），终态同时写 `RejectionReason` 与 `LastError`；处理器级幂等（F-07-6）留步骤 3。报告与文档不得写成「事务回滚已验证」「已实现死信队列」。
-- **前端 dev 端口与探测地址（票 02 `1dc8f74` 定，票 11 沿用）**：dev 固定 `http://localhost:5199/`（`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`、显式写 `server.host`）。**探测一律用 `localhost`，不要用 `127.0.0.1`**：Windows 上 Node 默认可能只绑 `::1`，写死 IPv4 会连接被拒（`curl` 的 `000`），那是绑定差异不是服务故障；后端段仍用 `http://127.0.0.1:5080`（出站 IPv4，不受影响）。前端 dev 期 `/api`、`/hubs` 代理到 5080。
+- **前端 dev 端口与探测地址（票 02 `c3d69f1` 定，票 11 沿用）**：dev 固定 `http://127.0.0.1:5199/`——`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`，并且**显式** `server.host = "127.0.0.1"`，与后端 `127.0.0.1:5080` 统一成 IPv4。**`server.host` 留空时 Node 只绑 `::1`**，此时 `curl 127.0.0.1:5199` 返回 `000` 是假红、不是服务故障；票面早先「一律用 localhost」的写法已作废。前端 dev 期 `/api`、`/hubs` 代理到 5080。
+- **生成物不入库**：`node_modules/`、`apps/web/build/`、`apps/web/.react-router/`（typegen）、`*.tsbuildinfo`；`pnpm-lock.yaml` 必须入库。已误提交的用 `git rm -r --cached` 清出。
 - **MinVer**：浅克隆丢 tag 会让版本掉成 `0.0.0-alpha…`。
 
 ## 6. 可直接复制的验证命令

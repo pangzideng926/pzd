@@ -105,7 +105,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-- **前端 dev 地址是 `http://localhost:5199/`**，`vite.config.ts` 里 `server.port` 固定 5199、`strictPort: true`，并显式写 `server.host`。**验收和排查一律用 `localhost:5199`，不要用 `127.0.0.1:5199`**——Windows 上 Node 默认可能只监听 `::1`，写死 IPv4 会得到连接被拒（`curl` 返回 `000`），那是绑定差异、不是服务没起来。
+- **前端 dev 地址是 `http://127.0.0.1:5199/`**：`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`，并且**显式绑定 `server.host = "127.0.0.1"`**，与后端统一走 IPv4。**别把 `server.host` 留空**——留空时 Node 只绑 `::1`，此时 `curl 127.0.0.1:5199` 会连接被拒（`curl` 返回 `000`），那是假红不是服务没起来；遇到先查 `server.host` 有没有写。
 - **后端地址是 `http://127.0.0.1:5080`**，前端 dev 期把 `/api`、`/hubs` 代理到它（`/hubs` 带 WebSocket）；生产由 `Pzd.Api` 托管 `build/client`，同源部署，不需要代理。
 - 健康检查与版本端点免租户（票 03 的 F-05-4 前置）：`/health/live`、`/health/ready`、`/api/version` 不带 claim / `X-Tenant` / 子域也返回 200，其余端点仍 400。
 
@@ -128,5 +128,6 @@ pnpm dev
 - 工作以 [票](docs/specs/tickets.md) 为单位，每张票完成时必须贴「验证命令 + 实际输出摘要」；失败不许标完成。
 - 测试先行：新行为先写用例；架构分层由 `tests/Pzd.ArchitectureTests` 自动拦截，不靠人工 review。
 - 提交保持单一主题，提交信息用 `feat|test|docs|chore(scope): …`。
+- **产物与生成物不入库**：`node_modules/`、`apps/web/build/`、`apps/web/.react-router/`（typegen 产物）、`*.tsbuildinfo` 都不提交；**`pnpm-lock.yaml` 必须入库**（加 `--frozen-lockfile` 才能复现），两件事别混。
 - 集成测试环境约定见 [integration-test-environment.md](docs/notes/integration-test-environment.md)：`MySqlConnector 2.6.2` 不支持连接串时区参数，每次取连接执行 `SET time_zone = '+00:00'` 并断言（连接池会重置会话）；`lower_case_table_names=1`，隔离证据只认数据行与库名。
 - 改动前先读 [规格](docs/specs/foundation.md) 对应章节与票面，不要猜 API。
