@@ -1,15 +1,14 @@
 # 测试报告：票 02（前端 monorepo 骨架）
 
-> **定稿依据：干净 `git worktree` @ `d32eb67`**（含 `57c226e` 包级 `turbo.json` 把 echo 型包 `outputs` 设为 `[]`、`d32eb67` 固定规范探测地址为 `127.0.0.1:5199` 并标注 lint 为占位）。
-> **补充复核 @ `c0da821`**（老登 `review-02.md` 的 F-02-1/F-02-3 落地后）：build/typecheck `--force` 告警均为 0，dev 在替代端口 5201 返回 200（5199 当时被他人 dev 实例占用，`strictPort` 按设计拒绝启动）；见 §6。
-> 代号等价说明：`aaf077f` / `bbfe7fd` 与本次被测代码树一致（`git diff --stat aaf077f bbfe7fd -- . ':(exclude)docs'` 为空）；本轮差异只在 `57c226e` 的 turbo 告警修复。
+> **定稿依据：干净 `git worktree` @ `4bb7218`（当前 HEAD）**，四条命令全部在该 hash 的副本上、以 **`127.0.0.1:5199`** 正式跑通（见 §2、§2b）。
+> 历史 hash 关系：`57c226e` 修掉 `no output files` 告警 → `d32eb67` 首次在 5199 上跑通四条（当时端口空出）→ `c0da821` 复核 F-02-1/F-02-3（§6）→ `4bb7218` 为本次最终定稿，与 `c0da821` 代码树一致、只差 README。
 > 早前入库的 `bbfe7fd` 版本自述为「快照/待定稿」，以本文件为准。
 
 ## 1. 环境与复现入口
 
 ```
-git worktree add --detach C:/tmp/final02 d32eb67
-cd C:/tmp/final02
+git worktree add --detach C:/tmp/head02 4bb7218
+cd C:/tmp/head02
 pnpm install --frozen-lockfile
 pnpm -w build --force        # 必须 --force：否则 turbo 缓存日志会假装构建过
 pnpm -w typecheck --force
@@ -26,7 +25,9 @@ pnpm exec react-router dev   # 走 vite.config：host 127.0.0.1 + port 5199 + st
 | `pnpm install --frozen-lockfile` | ✅ 通过 | 退出 0；`+104` 包，`esbuild postinstall` 正常（`allowBuilds: esbuild` 生效） |
 | `pnpm -w build --force` | ✅ 通过 | `Tasks: 4 successful, 4 total`，`Cached: 0`（真实构建）；`SPA Mode: Generated build\client\index.html`，产物 1462 字节；**`no output files found` 计数 = 0** |
 | `pnpm -w typecheck --force` | ✅ 通过 | `Tasks: 7 successful, 7 total`，`Cached: 0`，无 `no output files` 告警 |
-| dev 起服务 + `GET /` | ✅ 200 | 副本按 `vite.config` 默认起在 **`127.0.0.1:5199`**（`LISTENING`），`http=200 bytes=1749`；HTML 含 `lang="zh-CN"`、`isSpaMode`、`加载中…`，引用路径为副本 `C:/tmp/final02`（证明是本副本在应答） |
+| dev 起服务 + `GET /` | ✅ 200 | 副本按 `vite.config` 起在 **`127.0.0.1:5199`**（`LISTENING`），`http=200 bytes=1747`；HTML 含 `lang="zh-CN"`、`isSpaMode`、`加载中…`，引用路径为副本 `C:/tmp/head02`（证明是本副本在应答） |
+
+本次 `4bb7218` 的实测计数：`build --force` → 4/4、`Cached: 0`、`no output files` **0**；`typecheck --force` → 7/7、`Cached: 0`、告警 **0**；dev 在 5199 上真实监听并 200。端口在此前的复验里多次被他人 dev 实例占用（pid 99312 / 125456 / 125412），`strictPort` 按设计报 `Port 5199 is already in use`；占用释放后本次定稿即在该端口完成，结论不依赖替代端口。
 
 ## 3. 票面验收项逐条对照
 
@@ -44,9 +45,9 @@ pnpm exec react-router dev   # 走 vite.config：host 127.0.0.1 + port 5199 + st
 
 ## 5. 结论
 
-- 票 02 的**四条验收命令与票面第 8 条全部通过**（`d32eb67`，正式 5199 端口）：可重复安装、真实构建产出 SPA 外壳、类型检查 7/7、dev 首页 200、构建不污染工作区、build 输出无告警。
+- 票 02 的**四条验收命令与票面第 8 条全部通过**（`4bb7218`，正式 5199 端口）：可重复安装、真实构建产出 SPA 外壳、类型检查 7/7、dev 首页 200、构建不污染工作区、build 输出无告警。
 - 无新增缺陷；`lint` 为占位、shadcn/orval/SignalR 属步骤 4，已在 foundation §9 记偏差，本报告不写「已接入」。
-- 建议 @老登 按 `d32eb67`（或代码树等价的 `bbfe7fd` + `57c226e`）出审计结论。
+- 审计已按 `96770f7` 终审通过；若需复核实现细节，代码树与 `c0da821`、`d32eb67` 等价（仅 README 差异）。
 - 未验证（不属本轮验收）：浏览器运行时水合（无头环境只验 HTML）、`GET /` 之外的业务路由、真实 lint 规则。
 
 ## 6. 补充复核 @ `c0da821`（针对 review-02 的 F-02-1 / F-02-3）

@@ -12,7 +12,7 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 | 前端 monorepo 骨架 | ✅ 审计通过（`57c226e` 闭环 F-02-1；报告 `review-02.md`） |
-| 03 | Aspire 编排 | ready-for-agent（`Blocked by: 01, 02, 05`；受 F-05-4 约束） |
+| 03 | Aspire 编排 + 健康检查/版本端点（F-05-4） | 🔧 开工中（`AllowAnonymousTenant` 豁免、`/health/live|ready`、`/api/version`） |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
 | 07 | UoW + Outbox + 领域事件 | ✅ 审计通过（`7f699c5`，185 条） |
@@ -46,7 +46,7 @@ Directory.Packages.props     NuGet 中央包管理
 NuGet.config                 packageSourceMapping，保证 restore 可复现
 src/
   Pzd.SharedKernel/          领域原语、Result/Error、ITenantContext/IClock/ICurrentUser
-  Pzd.Infrastructure/        多租户内核、ProblemDetailsWriter、UoW/Outbox（07 返工中）
+  Pzd.Infrastructure/        多租户内核（含 AllowAnonymousTenant 豁免）、ProblemDetailsWriter、UoW/Outbox（07 ✅）
   Pzd.Api/                   最小 API + 租户中间件 + Result→HTTP / 异常处理
 tests/
   Pzd.ArchitectureTests/     分层规则 + 租户隔离规则（ChangeDatabase）+ 反向用例
