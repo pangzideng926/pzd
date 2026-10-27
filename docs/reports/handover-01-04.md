@@ -1,16 +1,16 @@
 # 交接记录：票 01 / 04 通过 → 下一轮（票 02/03/05 起）
 
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
-> 状态快照：HEAD `0fb2e36`（tag `v0.1.0` 之后第 5 个提交），工作区干净；`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 31+13+1+1+1 = **47 条全绿**（我于 2026-10-27 复跑确认）
+> 状态快照：HEAD = 最新文档提交；代码基线 `0639969`（构建与测试实跑于 `0fb2e36`，其后提交均未触及代码）。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 31+13+1+1+1 = **47 条全绿**（我于 2026-10-27 复跑确认）
 > 结论：**票 01 通过、票 04 通过**（依据 [复审计终稿](review-01-04-final.md)）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
 | 项 | 值 |
 |---|---|
-| 分支 / HEAD | `master` / `0fb2e36` |
+| 分支 / HEAD | `main` / 最新文档提交（代码基线 `0639969`） |
 | tag | `v0.1.0`（MinVer 基准） |
-| 版本号 | HEAD 实测 `0.1.1-alpha.0.5`（`dotnet msbuild … -t:Build -getProperty:Version`） |
+| 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`，实测序列 `.5`→`.8`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`） |
 | 测试 | 47 条、0 失败（见 [`test-report-01-04.md`](test-report-01-04.md) §7.5 与 [`review-01-04-final.md`](review-01-04-final.md) §1） |
 | 生产代码 | 票 04 返工只动测试资产；SharedKernel 实现自 `50ac4ec` 后未变 |
@@ -72,7 +72,7 @@
 
 - **测试运行方式**：`E:\pzd` 是 Low Mandatory Level，`dotnet test` 会因 MTP 命名管道握手失败而报错（不是测试失败）。工作区内用 `dotnet run --project tests/<工程>/<工程>.csproj`；普通目录/CI 用 `dotnet test Pzd.slnx`。
 - **版本查询**：必须 `-t:Build`，否则得 `1.0.0`；期望值以 tag 为基准，不要硬编码 `0.1.0`。
-- **MySQL 时区**：`@@time_zone=SYSTEM`（东八区），不是 UTC。集成测试连接串显式 `ServerTimeZone=UTC`（或 `CONVERT_TZ` 后断言），禁止「写 `UtcNow` 读回相等」这种吃服务器默认值的断言。
+- **MySQL 时区**：`@@time_zone=SYSTEM`（东八区），不是 UTC。`MySqlConnector 2.6.2` 不支持 `ServerTimeZone` / `ConnectionTimeZone`（未知关键字直接抛 `ArgumentException`），`DateTimeKind=Utc` 也不改会话时区；正确做法是**每次取连接后** `SET time_zone = '+00:00'` 并断言 `@@session.time_zone`（连接池重置会话，不能只在 fixture 里 SET 一次），或在查询里显式 `CONVERT_TZ`。禁止「写 `UtcNow` 读回相等」这种吃服务器默认值的断言。
 - **表名大小写**：Windows 上 `lower_case_table_names=1`，隔离证据只认数据行与库名，不认表名大小写差异。
 - **凭据**：只走环境变量或 `local.env`（gitignored）；仓库、日志、报告零密码。
 - **MinVer**：浅克隆丢 tag 会让版本掉成 `0.0.0-alpha…`。

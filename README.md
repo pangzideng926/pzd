@@ -90,5 +90,5 @@ dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 - 工作以 [票](docs/specs/tickets.md) 为单位，每张票完成时必须贴「验证命令 + 实际输出摘要」；失败不许标完成。
 - 测试先行：新行为先写用例；架构分层由 `tests/Pzd.ArchitectureTests` 自动拦截，不靠人工 review。
 - 提交保持单一主题，提交信息用 `feat|test|docs|chore(scope): …`。
-- 集成测试环境约定（时区必须显式 UTC、`lower_case_table_names=1`）见 [integration-test-environment.md](docs/notes/integration-test-environment.md)。
+- 集成测试环境约定见 [integration-test-environment.md](docs/notes/integration-test-environment.md)：`MySqlConnector 2.6.2` 不支持连接串时区参数，每次取连接执行 `SET time_zone = '+00:00'` 并断言（连接池会重置会话）；`lower_case_table_names=1`，隔离证据只认数据行与库名。
 - 改动前先读 [规格](docs/specs/foundation.md) 对应章节与票面，不要猜 API。
