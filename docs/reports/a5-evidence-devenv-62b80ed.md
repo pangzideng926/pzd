@@ -14,8 +14,8 @@
 
 > **两棵树都是真 un-pin，两条运行各自成立、互不依赖（2026-10-28 定稿，中间经过一次撤回）**：
 >
-> - 一度以为 `pzd-fin` 现在「命中 1」= 带 pin，据此把李总那轮降为参照。**这个判断错了，已撤回**：那个「1」命中的是**注释行** `// web = web.WithEnvironment("NODE_ENV", "development");`。
-> - **正确判据（旺总给，已固定）**：`grep -c 'WithEnvironment("NODE_ENV"'` **作废**——它分不出活代码和被注释的代码，正好会把有无 pin 判反。改用**活代码行** `grep -n '^\s*web = web\.WithEnvironment("NODE_ENV"'`，再配**当轮 diff/启动记录**和 **runId**，三样齐才算「这棵树的证词」。
+> - **`pzd-fin` 那轮（`968c1848…`）成立、可复核**：同一基座 `62b80ed`，`:85` 是**注释态**（**15170 字节 = 原件 15167 + `// ` 3 字节**、sha256 `f1ea6ffc…`、`mtime 01:47:53.771`，比探针首行早 18 秒），**活代码 pin 0**，探针 runId `968c1848…` 对得上。按**归属**不作主证据（那是李总的树和 runId）——**与这条数据是否成立无关，它成立**。
+> - **判据作废与替代（照抄即可）**：`grep -c 'WithEnvironment("NODE_ENV"'` **一律不算**——它会数到注释行，能把有无 pin 判反。改用**活代码行** `grep -n '^\s*web = web\.WithEnvironment("NODE_ENV"'`，再配**当轮 diff/启动记录**和 **runId**，三样齐才算「这棵树的证词」。
 > - 按新判据复核：`pzd-envtest` = 整行已删、活代码 pin **0**；`pzd-fin:85` = 注释态、活代码 pin **0**。**两棵都是 un-pin**，李总那轮（`968c1848…`）成立，老登已书面撤回降档。
 > - **引主证据按「归属」记、不按「强度」记**（老登/李总/张一一一致）：主证据引 `pzd-envtest` 是因为**那是张一一的树、他的 runId**，不是因为另一条弱。
 > - **`.bak` 别写成「两棵树里都有」**：两棵树内 `find` 都找不到 `Program.cs.orig.bak`；李总那份备份放在**树外** `artifacts/a5-evidence/devenv-62b80ed/Program.cs.orig.bak`。
