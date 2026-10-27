@@ -146,6 +146,50 @@ internal static class ArchRules
             .ToArray();
     }
 
+    /// <summary>
+    /// 代码检查（F-05-8）：后台路径不得用无参重载 <c>GetConnectionScopeAsync()</c> 裸取连接——
+    /// 它只信任 <see cref="Pzd.SharedKernel.Abstractions.ITenantContext"/>，绕过停用/到期校验。
+    /// 只认带点的调用（<c>.GetConnectionScopeAsync(</c>），接口与工厂里的方法声明不算。
+    /// </summary>
+    internal static IReadOnlyCollection<string> ParameterlessTenantConnectionViolations(string repositoryRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
+
+        var sourceRoot = Path.Combine(repositoryRoot, "src");
+
+        if (!Directory.Exists(sourceRoot))
+        {
+            throw new InvalidOperationException(
+                $"No 'src' directory under repository root '{repositoryRoot}': tenant connection scan would silently pass.");
+        }
+
+        var sources = Directory.GetDirectories(sourceRoot)
+            .Where(directory => Path.GetFileName(directory).StartsWith("Pzd.", StringComparison.Ordinal))
+            .Where(directory => !Path.GetFileName(directory).EndsWith(ContractsSuffix, StringComparison.Ordinal))
+            .SelectMany(directory => Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories)
+                .Where(file => !IsBuildOutputOf(directory, file)))
+            .Select(path => (Path: Path.GetRelativePath(repositoryRoot, path), Content: File.ReadAllText(path)));
+
+        return ParameterlessTenantConnectionViolationsFromSource(sources);
+    }
+
+    /// <summary>F-05-8 规则本体：纯函数版本，反向用例用合成源码验证规则确实会报。</summary>
+    internal static IReadOnlyCollection<string> ParameterlessTenantConnectionViolationsFromSource(
+        IEnumerable<(string Path, string Content)> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        return sources
+            .Where(source => ParameterlessTenantConnectionPattern.IsMatch(source.Content))
+            .Select(source => source.Path)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex ParameterlessTenantConnectionPattern = new(
+        @"\.\s*GetConnectionScopeAsync\s*\(\s*(?:\)|(?:CancellationToken|cancellationToken|ct|token|stoppingToken|default)\b)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>仓库根目录：从测试输出目录向上查找 Pzd.slnx。</summary>
     internal static string FindRepositoryRoot()
     {

@@ -1,5 +1,6 @@
 using Pzd.Api.Errors;
 using Pzd.Infrastructure;
+using Pzd.Infrastructure.Persistence;
 using Pzd.Infrastructure.Tenancy;
 using Pzd.SharedKernel.Abstractions;
 using SqlSugar;
@@ -28,6 +29,14 @@ builder.Services.AddSingleton<ITenantStore>(_ => new InMemoryTenantStore(tenants
 builder.Services.AddSingleton<TenantConnectionCache>();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 builder.Services.AddScoped<ITenantDbProvider, TenantDbProvider>();
+
+// 票 07：UoW + Outbox。本轮全内存实现，步骤 3 换成租户库事务与 outbox 表。
+builder.Services.AddSingleton<IOutboxStore, InMemoryOutboxStore>();
+builder.Services.AddSingleton<IUnitOfWorkTransactionFactory, InMemoryUnitOfWorkTransactionFactory>();
+builder.Services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<OutboxDispatcher>();
+builder.Services.AddHostedService<OutboxDispatcherHostedService>();
 
 var app = builder.Build();
 
