@@ -306,8 +306,14 @@ try {
         Write-Host "[ok] /health/live 200（免租户）"
 
         # F-03-A1：200 必须来自本次启动的进程树，否则判失败（残留实例顶端口时最容易踩）。
+        # F-03-A12（老登）：API 腿是每一轮的主判据，取不到监听 pid 也必须判失败。
+        # 原写法 `if ($listenerPid -and -not 血缘)` 在 pid 为空时短路进 else，打印
+        # 「由本次启动的进程树监听（pid ）」并 exit 0——主动断言一个查不到的假事实。
         $listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
-        if ($listenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
+        if (-not $listenerPid) {
+            $failures.Add("$($ApiBaseUrl) 取不到监听者 pid，无法确认 200 是否来自本次实例（宿主 pid $($hostProcess.Id)）")
+        }
+        elseif (-not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
             $failures.Add("$($ApiBaseUrl) 的监听者 pid $listenerPid 不属于本次启动的进程树（宿主 pid $($hostProcess.Id)），200 不是本次实例给的")
         }
         else {
