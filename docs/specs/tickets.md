@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 🔧 进行中**（`007fe6d`：③② 闭环；F-03-1/2/3 待闭环；`-Mode aspire` 必须本机实测通过）｜08/09/10 ready-for-agent｜11 待 02–10 收口
+> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 🔧 待复测**（`7c5f411`：F-03-1 已入库；aspire/F-03-2/3 待复测与审计）｜08 ready-for-agent（执行细化已落）｜09 等待 03 验收｜10 ready-for-agent｜11 待 02–10 收口
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -142,7 +142,9 @@ pnpm -w typecheck
 
 **Blocked by:** 01, 02, 05（F-05-4 需在 05 的中间件上加豁免）
 
-**Status:** 🔧 进行中（`007fe6d`：③② 闭环；**F-03-1（high，AppHost 端点缺陷）待提交、F-03-2（medium，aspire 模式前端）待修、F-03-3（降级日志重复）待收敛**；见下节「第二步进度与偏差」与编号对照）
+**Status:** 🔧 待复测/审计（基线 `7c5f411`：F-03-1 只保留 port 的修复已入版本库，待李总 aspire 模式复测；F-03-2 前端首屏尚无新通过结论；F-03-3 已有 `0746b4a` + `d17df6c` 修复，待日志计数复测。提交不等于通过，票 03 未关闭。）
+
+**当前复测清单（2026-10-27）**：在 `7c5f411` 或代码等价基线上核验后端三端点、5199 首屏、退出后无残留监听；缺资源启动 Warning 数等于不可用资源数，轮询三次不增，框架健康检查 Warn 为 0。旧基线 api 模式结论不能自动覆盖新提交的脚本清理/重试与降级分支；有变更的分支须补测。脚本只能清理可证明属于本次运行的资源，不得以机器上全部 dcp 进程作为安全清理范围。
 
 - [ ] API 在 AppHost 中固定 `http://127.0.0.1:5080`（便于前端 proxy 与脚本验证）
 - [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**（根 `status` 与两个明细都是 **`Healthy`**，用 .NET 原生三态，**不映射 `Up/Down`**）
@@ -375,6 +377,8 @@ dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitT
 
 # 08: 可观测性 + 审计 + 安全横切
 
+**执行细化：** [ticket-08-execution.md](./ticket-08-execution.md)。沿现有八条验收拆为请求日志/脱敏、OTel、审计、密钥/XSRF、安全头五段，加综合回归；含文件职责、失败用例、验证命令、步骤 3–4 移交与 09 前置检查。不新增票号，包版本及实现签名由旺总核实。
+
 **What to build:** 每个请求一行结构化日志并自动带 `TenantId`/`UserId`/`TraceId`/`ClientIp`；OTel traces/metrics 已接入；关键写端点标注 `WithAuditLog` 后异步批量采集审计；写请求默认 Antiforgery 校验，Data Protection 密钥可持久化，安全响应头就位。
 
 **文件路径**
@@ -424,7 +428,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **Blocked by:** 03, 04（健康检查与版本端点的豁免与配置来自票 03）
 
-**Status:** ready-for-agent
+**Status:** 等待前置验收（04 已通过；03 基线 `7c5f411` 待 aspire 复测与审计，尚未放行）。开工核对见 [执行细化末节](./ticket-08-execution.md)：凭据/建库权限须安全探测；Quartz 专用表由 09 建，不复建 03 的 health/version 端点，不以服务器 ping 代替 AdoJobStore 持久化证据。
 
 - [ ] **F-05-4**：无 claim / `X-Tenant` / 子域时，`/health/live`、`/health/ready`、`/api/version` 均返回 200；豁免端点之外仍返回 400 `Tenant.NotFound`
 - [ ] 提供 master 连接串：启动 **MySQL AdoJobStore**（`SchedulerName = "pzd"` + 集群配置），`pzd_master` 内 `qrtz_*` 表存在
