@@ -109,6 +109,8 @@ git log --oneline -1; git tag
 - [ ] `pnpm -w typecheck` 退出码 0，TS strict
 - [ ] `pnpm --filter web dev` 起服务后 `GET /` 返回 200 且不是错误页
 - [ ] **dev 端口与绑定显式写死、可预期**：`vite.config.ts` 固定 `server.port = 5199` 且**显式** `server.host = "127.0.0.1"`（不靠默认端口漂移，也不留空 host）；**验收与脚本的规范探测地址固定为 `http://127.0.0.1:5199/`**。实测补充：显式绑 IPv4 后 `localhost:5199` 同样返回 200，但 `localhost` 的名称解析顺序依机器而异（可能先解析到 `::1`），**不作为规范探测地址**；`http://[::1]:5199/` 返回 `000` 属预期，不要拿它当反例。根因：host 留空时本机 Vite 只绑 `::1`，那时探 IPv4 才会假红（此前「一律用 localhost」的写法作废）
+- [ ] **端口只有一处来源**：`server.port = 5199` 只写在 `vite.config.ts`；`apps/web/package.json` 的 `dev` 脚本**不得**再带 `--port 5199`（现状是两处都写，改端口时会漂）。改完起一次 dev 确认仍监听 5199
+- [ ] 占位包**不得被描述成「已接入」**：`home.tsx` 确实 import 了 `@pzd/api|realtime|ui` 的占位常量（不是零 import，报告按此纠正），但这只证明 workspace 依赖可用；三个包的真实能力（orval / SignalR / shadcn）仍是步骤 4 的剩余项
 - [ ] **`lint` 本轮是占位，不得当质量证据**：`pnpm -w lint` 目前四个包都是 echo（`"web: no linter yet"` 等），通过只说明脚本存在；报告与交接**不得**写成「lint 通过＝代码质量达标」。真正的 ESLint/规则集随步骤 4 前端外壳接入，登记为剩余项
 - [ ] 工作区包关系正确（web 依赖 ui/api/realtime 中实际需要的包），lockfile 提交
 - [ ] 产物与生成物**不入库**：`.gitignore` 覆盖 `node_modules/`、`apps/web/build/`、`.react-router/`（typegen 产物）、`*.tsbuildinfo`；已误提交的用 `git rm -r --cached` 清出（lockfile 必须入库，不要混为一谈）
@@ -482,6 +484,7 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 - [ ] 无凭据时同一脚本退出码 0，集成测试段打印 Skip 原因（CI 兜底），其余段照常必过
 - [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
+- [ ] **成败按退出码判定，不按日志字符串匹配**：React Router v8 future-flag 等告警会长期存在于 `pnpm -w build` 输出，脚本匹配「WARNING/error」字样必然误判；只看退出码 + 产物/端点断言
 - [ ] `CLAUDE.md` 覆盖：工程结构、分层依赖、命名、Result/ProblemDetails、权限码格式、测试分层与 Skip 规则、提交规范、凭据红线（§4.12）
 - [ ] `README.md` 的一键命令与脚本实际一致（经实测）；环境前提与 `local.env` 变量名写清楚，不含真实密码
 - [ ] `.gitignore` 含 `local.env`；推送到 `github.com/pangzideng926/pzd` 前 `git grep` 无密码/连接串残留，`docs/reports/` 报告不含凭据
