@@ -15,8 +15,8 @@
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`，我在 `7f699c5` 跑过） |
 | 测试 | 185 条、0 失败（架构 30 / SharedKernel 35 / Infrastructure 86 / Api 33 / 集成 1；见各票测试报告） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`） |
-| 进行中 | 票 02 前端 monorepo 骨架已提交 `aaf077f`（`host: "127.0.0.1"` + `port: 5199`、`.react-router/` 已清出索引），等老登审计、李总按 hash 定稿报告 |
-| 下一张票 | 02 审计 → 03 Aspire（受 F-05-4 约束）→ 08 → 10 → 11 |
+| 进行中 | 票 02 首轮审计**需修改**（[`review-02.md`](review-02.md)，F-02-1：turbo echo 包 `no output files`），修复已提交 `57c226e`（包级 `turbo.json` 设 `outputs: []`，`--force` 零告警），等老登复审；李总报告定稿基线要写 `57c226e` |
+| 下一张票 | 02 终审 → 03 Aspire（受 F-05-4 约束）→ 08 → 10 → 11 |
 
 ## 2. 未完成项 / 待办与已落票约束
 
@@ -71,7 +71,7 @@
 
 ## 3. 下一步顺序
 
-1. **老登 / 李总 / 旺总**：票 **02** 已提交 `aaf077f`（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、`host: "127.0.0.1"` + `port: 5199`），[`test-report-02.md`](test-report-02.md) 已按该 hash 在干净 worktree 定稿。**四条验收全过**（install/build/typecheck/dev 200、构建不污染工作区），但票面 `b761c94` 的「build 无噪音」**未满足**：`--force` 实建后仍有 3 条 `no output files`（`@pzd/api|realtime|ui#build`），修法是给这三个 echo 包各加 `"turbo": { "tasks": { "build": { "outputs": [] } } }`，改完只需复核这一条。老登审计以修完的 hash 为准。
+1. **老登 / 李总**：票 **02** 首轮审计**需修改**（[`review-02.md`](review-02.md)）——骨架与四条验收命令全过，唯一必修是 **F-02-1**：`turbo.json` 只有全局 `outputs`，三个 echo 包（`api|realtime|ui`）在冷缓存 `--force` 下会打 3 条 `no output files`（缓存命中会把它藏住）。修法已落地 `57c226e`：每个 echo 包加 `packages/<pkg>/turbo.json`（`{"extends":["//"],"tasks":{"build":{"outputs":[]}}}`），`--force` 跑 build/typecheck 零 WARNING。老登按 `57c226e` 复审，李总把 [`test-report-02.md`](test-report-02.md) 定稿基线改成 `57c226e` 并注明 `lint` 为 echo 占位。4 条 low 不阻塞：React Router v8 future-flag 告警（票 11 用退出码判定、别按字符串匹配）、端口在 `vite.config.ts` 与 `dev` 脚本两处、`web` 声明三个 `@pzd/*` 依赖但零 import、`lint` 恒 0。
 2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
 3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
 4. **收尾小项已做（`2f48e7d`，不重开票）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 已删，缺键走 `OutboxOptions.DefaultMaxAttempts`（=5）成为唯一路径，默认值只剩一处来源；删后 `dotnet build -warnaserror` 0/0、`Pzd.Infrastructure.UnitTests` 86 条全绿，其中 `Max_attempts_defaults_to_five_when_the_key_is_absent` 正守着这条路径。
@@ -90,6 +90,7 @@
 | 票 05 测试报告、审计终稿 | [`test-report-05.md`](test-report-05.md)、[`review-05.md`](review-05.md) |
 | 票 06 测试报告、审计终稿 | [`test-report-06.md`](test-report-06.md)、[`review-06.md`](review-06.md) |
 | 票 07 测试报告、审计终审 | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
+| 票 02 测试报告、审计（首轮需修改，修复待复审） | [`test-report-02.md`](test-report-02.md)、[`review-02.md`](review-02.md) |
 | 票 12 测试记录、审计报告 | [`test-report-12.md`](test-report-12.md)、[`review-12.md`](review-12.md) |
 | 多租户实现 | [`src/Pzd.Infrastructure/Tenancy/`](../../src/Pzd.Infrastructure/Tenancy/) |
 | ProblemDetails 唯一实现 | [`src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs`](../../src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs) |
