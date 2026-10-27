@@ -1,35 +1,33 @@
-# 交接记录：票 01 / 04 通过 → 下一轮（票 02/03/05 起）
+# 交接记录：票 01 / 04 / 12 通过 → 下一轮（票 02/03/05 起）
 
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
-> 状态快照：HEAD = 最新文档提交；代码基线 `0639969`（构建与测试实跑于 `0fb2e36`，其后提交均未触及代码）。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 31+13+1+1+1 = **47 条全绿**（我于 2026-10-27 复跑确认）
-> 结论：**票 01 通过、票 04 通过**（依据 [复审计终稿](review-01-04-final.md)）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
+> 状态快照：HEAD = 最新文档提交；代码基线 `1463e9e`（票 12 修复 F8）。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 35+13+1+1+1 = **51 条全绿**（我于 2026-10-27 在 `1463e9e` 复跑确认）
+> 结论：**票 01、04、12 通过**（依据 [票 01/04 复审计终稿](review-01-04-final.md)、[票 12 审计](review-12.md)）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
 | 项 | 值 |
 |---|---|
-| 分支 / HEAD | `main` / 最新文档提交（代码基线 `0639969`） |
+| 分支 / 代码基线 | `main` / `1463e9e`（票 12 修复 F8；其后仅文档提交） |
 | tag | `v0.1.0`（MinVer 基准） |
-| 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`，实测序列 `.5`→`.8`） |
+| 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`；`1463e9e` 实测 `.11`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`） |
-| 测试 | 47 条、0 失败（见 [`test-report-01-04.md`](test-report-01-04.md) §7.5 与 [`review-01-04-final.md`](review-01-04-final.md) §1） |
-| 生产代码 | 票 04 返工只动测试资产；SharedKernel 实现自 `50ac4ec` 后未变 |
+| 测试 | 51 条、0 失败（35+13+1+1+1；见 [`test-report-01-04.md`](test-report-01-04.md)、[`test-report-12.md`](test-report-12.md)） |
+| 生产代码 | 票 04 返工只动测试资产；票 12 只动 [`Error.cs`](../../src/Pzd.SharedKernel/Results/Error.cs)（F8 已关闭） |
 
 ## 2. 未完成项 / 必须跟进（按优先级）
 
-### 2.1 F8 必须落票（老何，别只停在聊天约定）
+> F8 已由票 12（`1463e9e`）修复并由审计关闭，见 [票 12 审计](review-12.md)；本节不再重复。
 
-`Error.Metadata` 仍直接持有调用方传入的字典（[`Error.cs:33`](../../src/Pzd.SharedKernel/Results/Error.cs#L33)），构造后修改原字典会改变已创建的 `Error`；共享的 `EmptyMetadata` 理论上也能被强转改写。修法：复制成 `ReadOnlyDictionary`（`StringComparer.Ordinal`）快照，并补一条「构造后改原字典不影响 Error」的用例。**`tickets.md` 目前没有对应票**，请老何新增（可并入 05 或单独一张小票），否则这条会在无人认领的情况下丢失。
-
-### 2.2 规则③的检查范围只覆盖 3 个底座程序集（模块票必须处理）
+### 2.1 规则③的检查范围只覆盖 3 个底座程序集（模块票必须处理）
 
 `ArchRules.ProductAssemblies`（[`ArchRules.cs:28-29`](../../tests/Pzd.ArchitectureTests/ArchRules.cs#L28-L29)）硬编码 `Pzd.SharedKernel` / `Pzd.Infrastructure` / `Pzd.Api`。票 05 起出现真实模块后，模块的 Domain 程序集不在检查范围内，F7 对它们等于空转。落地票 05/06 时把模块程序集纳入（建议复用 `DiscoverModules` 的结果）。
 
-### 2.3 `*.Contracts` 工程自身不受规则④约束
+### 2.2 `*.Contracts` 工程自身不受规则④约束
 
 `DiscoverModules` 排除 `*.Contracts`（[`ArchRules.cs:79-80`](../../tests/Pzd.ArchitectureTests/ArchRules.cs#L79-L80)），老登实测 `Pzd.Identity.Contracts -> Pzd.Identity` 全绿。不在本轮票面，后续补一条「Contracts 只能引用 SharedKernel / 其他 Contracts」，否则 Contracts 会成为绕过模块隔离的后门。
 
-### 2.4 F7 的两条断言当前不可证伪（补测条件明确，不阻塞）
+### 2.3 F7 的两条断言当前不可证伪（补测条件明确，不阻塞）
 
 `*.Domain` 禁依赖 `Pzd.Infrastructure` / `Pzd.Api` 两条现在能跑且绿，但直接删掉后 12 条架构测试仍全绿——`SharedKernel -> Infrastructure` 会先报 `MSB4006` 循环依赖，`Pzd.Infrastructure` 无源文件、`Pzd.Api` 只有 internal `Program`，构造不出可引用的违规模块。
 
@@ -37,22 +35,18 @@
 - 票 05 给 `Pzd.Infrastructure` 加公共类型后，在测试程序集的 `Pzd.SharedKernel.Domain` 命名空间下加 `FakeInfrastructureDependency` 引用它，并入反向用例、断言恰好 2 条违规；
 - 票 06 给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后同理补 `Pzd.Api` 一条。
 
-### 2.5 票面措辞与状态回填（老何）
+### 2.4 票 12 收尾（low）
 
-- [`tickets.md:158`](../specs/tickets.md#L158) 与 [`tickets.md:176`](../specs/tickets.md#L176) 写「四条规则都有反向用例」，与实现不符：只有**规则③**有生产级反向用例，规则④是**单元级**反例（`Modules_must_not_reference_other_modules_directly`），① ② 是对真实程序集的直接断言。建议改成「规则③反向用例 + 规则④单元级反例」。
-- 顶部进度行（`tickets.md:5`）与票 04 `Status`（`tickets.md:170`）仍是「返工中」，应回填为票 01/04 审计通过。
-- 票 04 的 `Status` 建议改为 done/通过，并在票面附审计报告链接。
-
-### 2.6 提交纪律（旺总，低）
-
-`49ee09a` 把老何的 `.gitignore`（`local.env`）改动混进了测试返工提交，无害，但后续尽量单一主题。
+- **票 12 状态回填（老何）**：`tickets.md:453` 的 `Status` 仍为 ready-for-agent，应改为 ✅ 通过 + 审计链接 [`review-12.md`](review-12.md)，票面验收框可一并勾选。
+- **浅快照边界（旺总/老何）**：`Error.Metadata` 只做字典结构快照，值若为可变对象（`List<T>`、嵌套字典）仍会随外部修改而变化；`Error.cs` 现有注释只对「原字典」成立。建议在 `Metadata` 的 XML 注释补一句「仅结构快照，值请使用不可变类型」，或写进票 12 票面；不建议为 `object?` 做深拷贝。
+- **（可选）只读用例再补两路**：`Clear()` 与 `ICollection<KeyValuePair>.Add` 未覆盖，`ReadOnlyDictionary` 对这两条同样抛 `NotSupportedException`，不影响正确性。
 
 ## 3. 下一步顺序
 
-1. **老何**：补 F8 票；回填票 01/04 状态与 158/176 措辞；确认票 05 是否顺带接 2.2 的规则③范围。
-2. **旺总**：开票 05（多租户内核，测试先行）。约束已在 [`foundation.md`](../specs/foundation.md) §4.3 与 [`tickets.md`](../specs/tickets.md) 票 05 写明：`ITenantContext.TenantId` 为 `long`、停用/过期 403、Scoped 不跨请求、`TenantDbProvider` 加锁双检。
+1. **老何**：回填票 12 状态（见 §2.4）；确认票 05 是否顺带接 §2.1 的规则③范围。票 01/04 状态与 158/176 措辞已于 `8e1a1a3` 回填，无需再改。
+2. **旺总**：开票 05（多租户内核，测试先行）。约束已在 [`foundation.md`](../specs/foundation.md) §4.3 与 [`tickets.md`](../specs/tickets.md) 票 05 写明：`ITenantContext.TenantId` 为 `long`、停用/过期 403、Scoped 不跨请求、`TenantDbProvider` 加锁双检；顺手在 `Error.Metadata` 注释补「仅结构快照」一句（§2.4）。
 3. **李总**：票 10 的测试依据已核对（MySQL 8.0.46 + root 建库权限 + Memurai 8.2.10 + `PZD_REDIS_TEST_DB=15`），等 05 完成后按票面写集成测试。
-4. **老登**：05 完成后审计；若 2.2 未在 05 处理，审计时按 blocker 提。
+4. **老登**：05 完成后审计；若 §2.1 未在 05 处理，审计时按 blocker 提。
 5. 票 02（前端 monorepo）与 03（Aspire）可并行推进，互不依赖 05；票 11 最后。
 
 ## 4. 关键文件
@@ -63,10 +57,12 @@
 | 规格 | [`docs/specs/foundation.md`](../specs/foundation.md) |
 | 票（含状态与验收命令） | [`docs/specs/tickets.md`](../specs/tickets.md) |
 | 集成测试环境约定 | [`docs/notes/integration-test-environment.md`](../notes/integration-test-environment.md) |
-| 测试报告 | [`docs/reports/test-report-01-04.md`](test-report-01-04.md) |
-| 审计终稿 | [`docs/reports/review-01-04-final.md`](review-01-04-final.md) |
+| 测试报告（票 01/04） | [`docs/reports/test-report-01-04.md`](test-report-01-04.md) |
+| 审计终稿（票 01/04） | [`docs/reports/review-01-04-final.md`](review-01-04-final.md) |
+| 测试记录（票 12） | [`docs/reports/test-report-12.md`](test-report-12.md) |
+| 审计报告（票 12） | [`docs/reports/review-12.md`](review-12.md) |
 | 架构规则实现 | [`tests/Pzd.ArchitectureTests/ArchRules.cs`](../../tests/Pzd.ArchitectureTests/ArchRules.cs) |
-| Error 实现（F8 位置） | [`src/Pzd.SharedKernel/Results/Error.cs`](../../src/Pzd.SharedKernel/Results/Error.cs) |
+| Error 实现（票 12 已改） | [`src/Pzd.SharedKernel/Results/Error.cs`](../../src/Pzd.SharedKernel/Results/Error.cs) |
 
 ## 5. 环境约束（踩过的坑，别再踩）
 

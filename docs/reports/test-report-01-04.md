@@ -169,4 +169,9 @@
 - 文档第 20 行「SqlSugar 对应 `IsAutoCloseConnection` 同级的时区配置」不存在（`ConnectionConfig` 无时区项），建议删除该句。
 - 其余事实（8.0.46、建库权限、`utf8mb4_0900_ai_ci`、Memurai 8.2.10、`PZD_REDIS_TEST_DB=15`、`lower_case_table_names=1`）本轮未独立连实例复验（环境归 Chief），按其实测值采信；票 10 落地时由集成测试实跑覆盖。
 
+### 8.1 闭环（`0639969` + `55d8e39`，2026-10-27）
+
+- 约定文件已按上述第 1 条修正，并补充了「连接池复用会重置会话状态」的实测结论；该新增结论我独立验证过驱动侧依据：`MySqlConnector 2.6.2` 的 `ConnectionReset` 默认 `true`、`DateTimeKind` 默认 `Unspecified`、枚举 `MySqlDateTimeKind` 为 `Unspecified/Utc/Local`，与文档描述一致。
+- 票 10 实现提醒：**我最初写的「SqlSugar 默认 `IsAutoCloseConnection=true`」是错的**。独立复测（`SqlSugarCore 5.1.4.221` 的 `SqlSugar.dll`，`new ConnectionConfig().IsAutoCloseConnection` 与 `new SqlSugarClient(config)`）实测均为 **`False`**，已按 `55d8e39` 修正前提。结论不变：fixture 仍须**显式** `IsAutoCloseConnection=false`（默认值随版本变，一旦为 `true`，每次操作开关连接，会话级 `SET time_zone` 会在下一次操作前丢失），并在 `Open` 后 `SET`；`@@session.time_zone` 断言必须落在实际执行查询的同一物理连接上（或按约定关掉 `ConnectionReset`）。
+
 ---

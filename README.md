@@ -9,7 +9,8 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 票 | 内容 | 状态 |
 |---|---|---|
 | 01 | 仓库与 .NET 骨架 | ✅ 审计通过 |
-| 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `0fb2e36`） |
+| 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
+| 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
 | 05–10 | 多租户内核、异常处理、UoW、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/05–10 |
@@ -52,7 +53,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 31 + 13 + 1 + 1 + 1 = **47 条全绿**，2026-10-27 于 `0fb2e36` 实测）：
+五个测试工程（当前 35 + 13 + 1 + 1 + 1 = **51 条全绿**，2026-10-27 于 `1463e9e` 实测）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
