@@ -281,8 +281,13 @@
   - **F-06-1 errors camelCase** → 仍要求实现：出口统一转 camelCase，用例必须以 PascalCase 键入参并断言 `userName`（防止再出现「用例自己喂期望输入」）；本轮无 FluentValidation / Application 层，**管道与校验规则移交步骤 3**（tickets.md「步骤 3 移交清单」第 1 项），交付报告不得写成「管道已验证」。
   - **框架裸 401/403（老登 F-06-3）** → 纳入本轮票 06：status code pages 映射为 `Auth.Unauthorized` / `Auth.Forbidden` ProblemDetails 并带 `traceId`，补用例；避免步骤 3 一上授权就出现 `System.Unexpected`。
   - 编号以终审报告 [`review-06.md`](../reports/review-06.md) 为准：**F-06-1** = errors camelCase、**F-06-2** = 租户 traceId、**F-06-3** = 框架 401/403；F-06-4/5/6 为 low。
+- **F-07-1 规则适用边界（老何定，2026-10-27，`40f016a`）**：后台路径（`Persistence/**`、`*HostedService.cs`、`*Dispatcher.cs`）禁用 `GetCurrentConnectionScopeAsync(` 是**字符串级架构规则**，不是沙箱。判定口径：
+  - 审计/测试若在后台路径找到**真实可写的绕过**（方法名与括号间加空格、方法组引用后间接调用、路径外的后台文件、反射构造等，且不需要先伪造 `ITenantContext`）→ **必修**，补进规则与反向用例，票 07 不开。
+  - 若绕过的前提是「先手工 `Set` 一个停用/伪造租户上下文」，或只能靠反射/动态调用自造假调用点 → 记为**已声明边界**，不阻塞，交接写清「规则拦误用，不防蓄意规避」。
+  - 无论哪种，**不得**把这条规则描述成「不可能绕过」；类型系统那一层（`GetConnectionScopeAsync(ct)` 不存在）是本轮唯一强保证，字符串规则是补充。
+  - 步骤 3 引入 Quartz Job 后，后台路径清单必须同步扩展（Job 类所在目录），否则规则对 Job 路径失效。
 - **票 06 终审通过（2026-10-27，`abde749`）**：全仓 **156** 条全绿（35 + 71 + 30 + 19 + 1），见 [`review-06.md`](../reports/review-06.md)。三项实现：F-06-1 `3ff40ef`、F-06-2 `6e20aaf`（`ProblemDetailsWriter` 为唯一 ProblemDetails 构造实现，中间件与 `ToHttpResult` 共用）、F-06-3 `abde749`（`CommonErrors` 新增 `Auth.Unauthorized` / `Auth.Forbidden`）。
   - `Auth.*` 文案以 `CommonErrors` 代码为单一来源；票面原写的两句已对齐为「未登录或会话已过期。」/「没有权限访问该资源。」（仅文案，不改行为）。
-  - 剩 3 条 low 不阻塞：`ToCamelCaseKeys` 仅识别两种泛型字典形态（`ReadOnlyDictionary` 静默不转换）——**票 07 收口后由旺总顺手带一笔并补只读字典 / List 值字典两条用例**；`Auth.*` 文案与票面不一致（本轮已对齐）；`6e20aaf` 提交信息把 F-06-2 写成 F-06-1（历史记录，不回改）。
+  - 剩 3 条 low 不阻塞：`ToCamelCaseKeys` 仅识别两种泛型字典形态——**已随 `837117f` 修复**（非泛型 `IDictionary` 重建 + `Ordinal` 去重，补只读字典 / `List` 值字典用例）；`Auth.*` 文案与票面不一致（`71529fd` 已对齐）；`6e20aaf` 提交信息把 F-06-2 写成 F-06-1（历史记录，不回改）。
   - **camelCase 落点定在出口，不换成序列化层 `DictionaryKeyPolicy`（老何定）**：`errors` 是嵌在 ProblemDetails 里的字典，而 `DictionaryKeyPolicy` 是全局 JSON 选项，会连带改变任何被序列化的字典键（`metadata`、审计、步骤 3 的 DTO 字典），口径不可控。出口转换的作用域只有 `errors` 一处，且与 `Error.Code` 的 kebab 转换同处 `ProblemDetailsWriter`，易于测试。实现上按「非泛型 `IDictionary` 重建 + `StringComparer.Ordinal` 去重（后写覆盖先写）」处理任意字典形态，不接受按泛型类型枚举白名单。步骤 3 接 FluentValidation 时仍需确认产出形状并保持同一断言（PascalCase 入 → `userName`）。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
