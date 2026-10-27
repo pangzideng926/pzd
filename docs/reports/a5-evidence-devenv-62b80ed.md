@@ -9,7 +9,10 @@
 | 组 | 树 | pin | `DOTNET_ENVIRONMENT` | runId | 时间 |
 | --- | --- | --- | --- | --- | --- |
 | A（对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **已删**（`:85` 整行移除/注释掉） | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07 |
-| B（实验） | 同上（李总）/ `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本） | **已删**（`grep -c` 命中 0） | **`Development`** | `968c1848dbe84ebd89294b33662749d8`（李总）/ `cf7b5542b12142d18c5349496d720292`（张一一） | 17:48 |
+| B（实验）· **主证据** | `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本） | **已删**（`grep -c` 命中 **0**，现场实测） | **`Development`** | `cf7b5542b12142d18c5349496d720292` | 17:48 |
+| B′（同格，**不作主证据**） | `C:/tmp/pzd-fin`（李总） | **现在命中 1**，跑的那一刻是否真删了**无法复核** | `Development` | `968c1848dbe84ebd89294b33662749d8` | 17:48 |
+
+> **主证据为什么只认 `pzd-envtest`（老登，2026-10-28）**：`pzd-fin` 现在 `pin_hits=1`，说明这棵树在 17:48 之后又被改回去过；于是「跑的时候确实删了 pin」已经**不可复核**——探针只能证明当时读到 `development`，证不了当时树是 un-pin。**只有 `pzd-envtest`（实测 `pin_hits=0`）能当主证据。** 顺带一个陷阱（旺总）：`grep -c 'WithEnvironment("NODE_ENV"'` **分不出「活代码」和「被注释掉的代码」**，判 pin 到底生效没有，得看那行的**原文**，别只看计数。
 
 ## 2. 结果并排
 
@@ -40,6 +43,17 @@ B 组（李总那轮）进程级探针原文：
 
 行为侧：`/` 200 + SPA 外壳（pid 111888）、`/api/version 0.1.1-alpha.0.199+62b80ed`、8 条 `[ok]`、`EXIT=0`。
 
+## 2.5 判据四档（先定判据，别等结果出来再吵）
+
+| 探针文件读到 | 结论 |
+| --- | --- |
+| `NODE_ENV=development` | 宿主环境这条成立（B 组命中此档） |
+| `production` | 第 2 步错，整条链重读 |
+| **值既非 dev 也非 prod（`<unset>`/空）** | 宿主环境不是唯一决定因素，另有分岔 |
+| **文件根本没生成** | web 没跑到写文件（没起或秒退）→ **判本轮无效，不是反证** |
+
+第四档是老登补的：李总早先踩过这个坑，若不写进去，「没生成」会被读成某条结论。判「文件没生成」之前，先看 `state=` 与进程在不在。
+
 ## 3. ⚠️ 引用前必读：探针文件是**追加写**的，一个文件混着多轮
 
 `artifacts/a5-evidence/devenv-62b80ed/pzd-web-env.log` 的全文（10 行）里就有 **5 个不同 runId**：
@@ -54,16 +68,24 @@ B 组（李总那轮）进程级探针原文：
 
 **所以：引用这个文件必须按 `runId`（或时间戳）拆，不能 `grep NODE_ENV` 取第一条**——否则会把 A 组的 `production` 说成 B 组的，或者反过来。这跟「同一行打两次不是两次请求」是同一类坑。
 
-## 4. 这次实验钉死的与没钉死的
+## 4. 三块证据分工（老登定稿，别合并成一句「实验证明根因」）
 
-**钉死了**：**宿主环境是这条链的上游开关**。同一棵树、同一份脚本、**只改 `DOTNET_ENVIRONMENT` 一个变量**，`NODE_ENV`、`/` 状态码、脚本退出码全部跟着变。所以不再是「工程没有 `launchSettings.json` 所以宿主默认 Production」这种推断。
+| 环节 | 证据 | 强度 |
+| --- | --- | --- |
+| ① 宿主环境默认是 **Production** | 旺总 `ce08feb` 那行在正式 `Pzd.AppHost.exe` 上读出 `宿主环境=Production`、两个 `*_ENVIRONMENT` `<unset>` | **运行期直接读数** |
+| ② `DOTNET_ENVIRONMENT=Development` → `EnvironmentName=Development` | 雨哥那个**不启 DCP** 的 15 行探针 | 实测，但不在正式 AppHost 内 |
+| ③ 宿主环境 → web 的 `NODE_ENV` | 本实验：`pzd-envtest`（pin=0 + Development → `development` + `EXIT=0`）；反向 `331fac3-nopin`（pin=0 + 默认宿主 → `production` + `jsxDEV`） | **两个独立树各一次，都可复核** |
 
-**没钉死（三条边界，引用必带）**：
+**拼起来才是完整链条**：① 证明「原来是 Production」，③ 证明「这个值决定了 web 的 `NODE_ENV`」。**缺任何一段都只是半条链**，交接里分开写。
 
-1. **仍不区分写入时机**：证明不了注入发生在「AppHost 装配资源模型期」还是「DCP 运行时」。那一格只能靠旺总那个 `Build()` 后 dump `EnvironmentCallbackAnnotation` 的办法。
-2. **两条通道分属不同运行，别混引**：B 组的 DCP 会话目录在正常退出时被清理了，所以**进程级 `_out` 只有 A 组有**（`331fac3-nopin` 那份）；B 组的进程级读数来自 **vite 文件探针**。`_out` 与探针不是同一次运行的两个文件，说清楚是谁的。
-3. **副本树，不是主仓绿**：B 组跑在副本里，不能替代「主仓绿」；主仓 aspire 仍卡 `E:\pzd` 根 ACL。
-4. **没证明 JS 集成内部就是那个三元表达式**：`IsDevelopment() ? … : …` 仍是**元数据反推、没反编译 IL**。这次实验证明的是「宿主环境驱动结果」，不是「内部实现就是那行代码」。
+**仍不成立的（必须保留的四条）**：
+
+1. **写入时机未区分**：证明不了注入发生在「AppHost 装配资源模型期」还是「DCP 运行时」；那一格只能靠旺总 `Build()` 后 dump `EnvironmentCallbackAnnotation`。
+2. **两条通道分属不同运行**：B 组 DCP 会话目录被正常退出清理，进程级 `_out` 只有 A 组有；B 组的进程级读数来自 vite 文件探针。别混引。
+3. **副本树，不等于「主仓绿」**：主仓 aspire 仍卡 `E:\pzd` 根 ACL。
+4. **没证明 JS 集成内部就是 `IsDevelopment() ? … : …`**（元数据反推、未反编译 IL）。
+
+**还有一个诚实的缺口（老登指出，锋哥补证）**：`pzd-envtest` 停在 `62b80ed`，**早于 `ce08feb`，没有「宿主环境」那行诊断**。所以那一轮「宿主环境=Development」依据的是 `DOTNET_ENVIRONMENT` 的**继承链**（`scripts/verify-apphost.ps1:345` 的 `Start-Process` 没有 `-UseNewEnvironment`，脚本也不清环境），**是推断，不是日志里读出来的**。交接写「继承链推断」，**不要写成「日志显示 Development」**。
 
 ## 5. 顺带的两个产出
 
