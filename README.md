@@ -12,11 +12,19 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
-| 05 | 多租户内核 + 单测 | 🔧 开工中（旺总） |
-| 06–10 | 异常处理、UoW + Outbox、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
-| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/05–10 |
+| 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`；票面回填中） |
+| 06 | 异常处理 + Result→HTTP | ready-for-agent |
+| 07–10 | UoW + Outbox、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
+| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/06–10 |
 
-下一张票是 **05 多租户内核**（测试先行）。残余项与交接细节见 [交接记录](docs/reports/handover-01-04.md)。
+下一张票是 **06 异常处理 + Result→HTTP**（测试先行）。票 03 开工前需先落 **F-05-4**（`/health`、`/api/version` 免租户），细节见 [交接记录](docs/reports/handover-01-04.md)。
+
+## 多租户内核（票 05）
+
+- 解析顺序：登录 claim `tid`（忽略 `X-Tenant`）→ 匿名 `X-Tenant` → 子域名；每个请求重新查 `ITenantStore`，`ITenantContext` 为 Scoped、不跨请求。
+- 停用/过期：中间件直接 403（`Tenant.Disabled` / `Tenant.Expired`）；`Tenants` 配置在启动期严格校验，非法值启动失败。
+- 连接：每租户独立 `SqlSugarScope`，懒加载 + 双检 + `ConcurrentDictionary`；禁止 `ChangeDatabase`，架构测试扫描 `src/Pzd.*`。
+- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载只信任上下文，不要裸用（F-05-8，票 07 落实）。
 
 ## 仓库结构
 
@@ -28,10 +36,10 @@ Directory.Packages.props     NuGet 中央包管理
 NuGet.config                 packageSourceMapping，保证 restore 可复现
 src/
   Pzd.SharedKernel/          领域原语、Result/Error、ITenantContext/IClock/ICurrentUser
-  Pzd.Infrastructure/        空壳（票 05 起填充多租户与横切实现）
-  Pzd.Api/                   最小 API（目前只有 GET / 返回 "PZD API"）
+  Pzd.Infrastructure/        多租户内核：租户配置校验、解析中间件、每租户 SqlSugarScope 连接工厂、SystemClock
+  Pzd.Api/                   最小 API + 租户解析中间件（目前只有 GET /）
 tests/
-  Pzd.ArchitectureTests/     4 条分层规则 + 反向用例（NetArchTest）
+  Pzd.ArchitectureTests/     分层规则 + 租户隔离规则（ChangeDatabase）+ 反向用例
   Pzd.SharedKernel.UnitTests/
   Pzd.Infrastructure.UnitTests/  Pzd.Api.UnitTests/  Pzd.IntegrationTests/
 docs/
@@ -54,7 +62,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 13 + 1 + 1 + 1 = **51 条全绿**，2026-10-27 于 `1463e9e` 实测）：
+五个测试工程（当前 35 + 16 + 54 + 10 + 1 = **116 条全绿**，2026-10-27 于 `e593225` 实测）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
@@ -78,14 +86,15 @@ dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 
 ## 配置与凭据
 
-数据库、Redis 的连接串只允许通过环境变量或本地 `local.env` 注入（`local.env` 已被 `.gitignore` 忽略）：
+数据库连接串与租户清单只允许通过环境变量或本地 `local.env` 注入（`local.env` 已被 `.gitignore` 忽略）：
 
-- `ConnectionStrings__mysql`
-- `ConnectionStrings__redis`
+- `ConnectionStrings__master`：API 主库连接串（`appsettings.json` 里是空密码占位）
+- `Tenants__0__Id` / `Code` / `Status` / `ExpiresAt` / `ConnectionString`：租户清单（等价于 `appsettings.json` 的 `Tenants` 数组）
+- `ConnectionStrings__redis`：Redis（票 09 起使用）
 - `PZD_TEST_MYSQL`（票 10 集成测试）
 - `PZD_REDIS_TEST_DB`（票 10，约定用 `15` 号逻辑库）
 
-仓库、日志、测试报告与提交信息中**零密码**。当前代码还没有消费这些键——AppHost 与租户解析分别在票 03、05 落地。
+仓库、日志、测试报告与提交信息中**零密码**。`Tenants` 的非法值（`Status` 拼错或数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛异常；`Tenants` 为空时能启动，但所有请求 400（是否启动期 fail-fast 待定）。
 
 ## 开发约定
 
