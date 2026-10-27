@@ -299,7 +299,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **Blocked by:** 05, 06
 
-**Status:** 🔧 返工中（`40f016a` F-07-1/2/3、`001a731` low 四条 → 173 条；**剩 F-07-4 规则收紧必修**，见下）
+**Status:** 🔧 返工中（`0da4a18` 已含 F-07-1/2/3 + low 四条 + 零实参第二层，173 条；**仍差 F-07-4 规则收紧、F-07-5 上限配置化**）
 
 **复测追加必修（李总 `test-report-07.md`，老何定级为本轮必修）**
 
@@ -312,7 +312,9 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - **F-07-2（medium → 必修，已落地 `40f016a`）**：`DomainEventDispatcher` 原零覆盖——把 `MakeGenericType(domainEvent.GetType())` 改成 `typeof(IDomainEvent)` 后 152 条仍全绿。现补 4 条：同一事件实例按运行时类型解析、两个处理器按 DI 注册顺序、无处理器也成功、一批两个不同事件各走各处理器；变异后 3 条红。
 - **F-07-3（low → 本轮顺手，已落地 `40f016a`）**：补偿删除顺序改为**先回滚、再补偿删除**，`UnitOfWorkTests` 断言调用序列 `dispatch → outbox-add → commit → rollback → outbox-remove`。
 - **low 四条（已落地 `001a731`）**：零处理器/零消费者记 Warning；`OutboxMessage.LastError` 落失败原因；`MaxAttempts = 5` 后以 `RetryLimitExceeded` 拒绝毒消息；反射异常用 `ExceptionDispatchInfo` 解包。
+- **F-07-5（low → 本轮必修，小改动；老登问的 `MaxAttempts` 那点）**：`001a731` 里是 `public const int MaxAttempts = 5;`，与我定的「可配置、不得焊死为常量判断依据」不符（判定依据正是该常量）。**要求**：上限从配置读取（默认 5，配置键 `Outbox:MaxAttempts`），代码里只此一处来源、无第二处硬编码；补一条「配置成 1 时第一条失败即拒绝、同批后续消息仍被处理」的用例——这条同时把「毒消息不饿死后续」的验收从「循环失败 5 次」变成可调，测试不再依赖常量值。步骤 3 落库时该配置键与死信表同批（移交清单第 6 项）。
 - **low（明确遗留，留步骤 3）**：**多处理器部分失败重放**（需按处理器维度记进度，与 Outbox 落库同批）——交付与交接写「遗留」，不得写成已解决。
+- **编号对照（避免两套号对不上）**：票面编号为准——**F-07-1** 改名+API 形状、**F-07-2** `DomainEventDispatcher`、**F-07-3** 补偿顺序、**F-07-4** 规则收紧（三项漏检，必修、未关）、**F-07-5** 重试上限配置化。老登首轮报告里的 F-07-4/5/6（失败原因落库、防饿死、反射解包）对应票面「low 四条（`001a731`）」，**不带票面编号**；老登的 F-07-7/8/9（断行、方法组、`Jobs/` 路径）已全部并入票面 **F-07-4**。
 
 **实现偏差与口径（2026-10-27，`d9919ab`，已由老何回填）**
 
