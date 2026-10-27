@@ -27,6 +27,14 @@ public sealed class TenantResolutionMiddleware
         ITenantStore tenantStore,
         IClock clock)
     {
+        // F-05-4：豁免端点（/health/live、/health/ready、/api/version 等）不做租户解析与状态校验，
+        // 也不查 ITenantStore——否则健康检查会被拦成 400/403，监控与一键脚本都拿不到结果。
+        if (context.GetEndpoint()?.Metadata.GetMetadata<AllowAnonymousTenantAttribute>() is not null)
+        {
+            await _next(context);
+            return;
+        }
+
         var (tenant, error) = await ResolveAsync(context, tenantStore);
 
         if (tenant is null)

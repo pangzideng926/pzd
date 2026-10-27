@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Pzd.Api.Endpoints;
 using Pzd.Api.Errors;
+using Pzd.Api.Health;
 using Pzd.Infrastructure;
 using Pzd.Infrastructure.Persistence;
 using Pzd.Infrastructure.Tenancy;
@@ -10,6 +13,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddPzdProblemDetails();
+
+// 票 03：就绪探针。MySQL / Redis 任一不可用都返回 Degraded（不是 Unhealthy），
+// 让「实例缺失时降级启动」与「真故障」在语义上分开；明细由 HealthResponseWriter 输出 mysql/redis 两项。
+builder.Services
+    .AddHealthChecks()
+    .AddCheck<MySqlHealthCheck>("mysql")
+    .AddCheck<RedisHealthCheck>("redis");
 
 // 启动期加载并校验租户配置：非法配置直接启动失败，不等首个请求（F-05-1）。
 var tenants = TenantConfiguration.Load(builder.Configuration);
@@ -50,6 +60,20 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 
 app.MapGet("/", () => "PZD API");
+
+// F-05-4：健康检查与版本端点必须在无租户上下文时可用（k8s / 监控 / 一键脚本都不带租户）。
+// 标记 AllowAnonymousTenant 后中间件跳过解析与状态校验；其余端点缺租户仍是 400 Tenant.NotFound。
+app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy" }))
+    .WithMetadata(new AllowAnonymousTenantAttribute());
+
+app.MapGet("/api/version", () => Results.Ok(ApiVersionInfo.Current))
+    .WithMetadata(new AllowAnonymousTenantAttribute());
+
+// 就绪探针：带 mysql/redis 明细；两项缺配置即 Degraded，MapHealthChecks 对 Degraded 仍回 200。
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    ResponseWriter = HealthResponseWriter.WriteAsync,
+}).WithMetadata(new AllowAnonymousTenantAttribute());
 
 app.Run();
 
