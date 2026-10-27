@@ -130,7 +130,7 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 ## 9. 结论
 
-**观测事实**：DCP 拉起的 vite 进程里 `NODE_ENV=production`（见 §3，进程级）。**机制链（旺总 `ce08feb`，老登审计通过）**：工程缺 `launchSettings.json` → 宿主环境 `Production`（运行期实读：`宿主环境=Production`、两个 `*_ENVIRONMENT` 均 `<unset>`）→ Aspire 的 JS 托pipe集成按 `IsDevelopment()` 给 web 写 `NODE_ENV=production` → `react-router dev` 的 SSR 变换产出 `jsxDEV`、production 运行库没有该导出 → 调用点同步抛出。所以**来源不是 `dcp.exe`**；唯一未闭合的一环是「JS 集成内部那个赋值表达式」仍是元数据反推（未反编译 IL），收尾靠无 pin 树上做一次 `DOTNET_ENVIRONMENT=Development → vite 读到 development` 的确认实验。未钉住时它拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
+**观测事实**：DCP 拉起的 vite 进程里 `NODE_ENV=production`（见 §3，进程级）。**机制链（旺总 `ce08feb`，老登审计通过）**：工程缺 `launchSettings.json` → 宿主环境 `Production`（运行期实读：`宿主环境=Production`、两个 `*_ENVIRONMENT` 均 `<unset>`）→ Aspire 的 JS 托管集成按 `IsDevelopment()` 给 web 写 `NODE_ENV=production` → `react-router dev` 的 SSR 变换产出 `jsxDEV`、production 运行库没有该导出 → 调用点同步抛出。所以**来源不是 `dcp.exe`**；唯一未闭合的一环是「JS 集成内部那个赋值表达式」仍是元数据反推（未反编译 IL），收尾靠无 pin 树上做一次 `DOTNET_ENVIRONMENT=Development → vite 读到 development` 的确认实验。未钉住时它拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
 
 **四条证据链上的分工（按 §2 的强度）**：① 进程级字符串 `NODE_ENV=production`（最硬）→ ② 快照同值（互证）→ ③ 同一请求 106ms 后 `jsxDEV is not a function`（后果）→ ④ `GET /` 500 且归属头与本轮 runId 一致（排除残留实例）。
 
