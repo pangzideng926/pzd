@@ -272,6 +272,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - `type` 必须**精确**等于 `https://pzd/errors/auth.unauthorized` / `https://pzd/errors/auth.forbidden`，复用现有同一份 kebab 转换（不新增第二份转换函数；`Auth.Unauthorized` 段内已无大写，重复转换不改变值，但实现上仍只允许一处）。
 - `traceId` 与响应头 `X-Trace-Id` 同源，与其他错误出口一致；`HasStarted` 时不得覆盖已写 body（现有 guard 保留，补一条用例）。
 - **不属于本条**：真正产生 401/403 的授权中间件、权限码、`.RequirePermission` 属步骤 3（移交清单第 4 项）。本条只保证「没有任何 body 的 401/403」落成正确 ProblemDetails，避免步骤 3 一上授权就出现 `System.Unexpected`。
+- **错误码前缀不再改**：`Auth.Unauthorized` / `Auth.Forbidden` 与 `Http.NotFound` / `Http.MethodNotAllowed` 并存是**刻意**的（`Http.*` = HTTP 语义、`Auth.*` = 认证授权层、`Tenant.*` = 租户、`System.*` = 意外），登记在 foundation §4.4「错误码前缀登记」。`abde749` 已按此实现，**不需要改成 `Http.*`**。
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
 - [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（交接记录「F7 补测条件」项）
@@ -520,7 +521,7 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 1. **FluentValidation 管道 + Application 层校验**（票 06 F-06-1 的生成端）：pipeline behavior、Validation 类型 Result 生成、`errors` 键 camelCase 的端到端断言；票 06 只保证出口转换与透传，不声称管道已验证。
 2. **`*.Contracts` 自身引用约束**（规则④扩展）：Contracts 只能引用 SharedKernel / 其他 Contracts，堵住绕过模块隔离的后门。
 3. **登录类端点租户策略**：`AllowAnonymousTenant` 的完整匿名解析（子域 / `X-Tenant`）、登录端点豁免与限流。
-4. **权限码与授权**：`IAuthorizationPolicyProvider`、`.RequirePermission`、401/403 由授权中间件产生（依赖 F-06-3 已修）。
+4. **权限码与授权**：`IAuthorizationPolicyProvider`、`.RequirePermission`、401/403 由授权中间件产生（依赖 F-06-3 已修）；产生的 401/403 **必须复用** `Auth.Unauthorized` / `Auth.Forbidden`，不得另造前缀（见 foundation §4.4「错误码前缀登记」）。
 5. **Platform / Identity 模块**：租户开通流程、登录、`/api/me`（§18 步骤 3）。
 6. **Outbox / 审计 / Quartz 的落库表**：`db/tenant` 迁移执行器与 `schema_versions`（假设 A6 的延后项）；与之一并：Outbox **投递失败原因落库**、**零处理器消费要告警而非静默**（票 07 两条 low，内存实现期不阻塞）。
 

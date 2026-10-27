@@ -103,6 +103,13 @@
 - 全局 `IExceptionHandler` 链只处理意外异常：500、生产不返回堆栈、`traceId` 取 `Activity.Current?.Id`；`AddProblemDetails(o => o.CustomizeProblemDetails = ...)` 统一补 `traceId`、`code`。
 - 租户中间件手写的 400/403（`Tenant.NotFound` / `Tenant.Disabled` / `Tenant.Expired`）必须与 `ToHttpResult()` 共用同一出口：响应体带 `traceId`、响应头带 `X-Trace-Id`、kebab 转换只有一份实现（F-06-2，票 06 收口）。
 - 框架裸 401/403（status code pages 路径）必须映射为 ProblemDetails：`Auth.Unauthorized` / `Auth.Forbidden`，不得落成 `System.Unexpected` /「服务器内部错误」（F-06-3，本轮修）。
+- **错误码前缀登记（老何定，2026-10-27；`Auth.*` 与 `Http.*` 并存是刻意的，不合并）**：
+  - `Http.*` = HTTP 语义层（`Http.NotFound`、`Http.MethodNotAllowed`）：请求本身不合法，与业务无关。
+  - `System.*` = 意外异常（`System.Unexpected`）：服务端缺陷。
+  - `Tenant.*` = 租户解析/状态（`Tenant.NotFound` / `Tenant.Disabled` / `Tenant.Expired`）。
+  - `Auth.*` = 认证与授权横切层（`Auth.Unauthorized` / `Auth.Forbidden`）：**凭据缺失或已失效、以及已认证但无权限**。
+  - `Auth.Unauthorized` 的语义边界：**框架兜底「未认证」**（无 token / token 无效 / 未携带凭据）；登录时账号密码错误属业务错误，步骤 3 由 Identity 模块给码（仍为 401），两者不混用。
+  - **约束给步骤 3**：授权中间件、`.RequirePermission`、JWT 挑战路径产生的 401/403 必须复用这两个码，不得另造前缀；前端只按 `code` 分支，同一个 401/403 不允许出现两种 code。
 - `errors` 键统一 camelCase（`userName`），由 Result→ProblemDetails 出口转换；本轮**没有** Application 层与 FluentValidation，Validation 错误由测试手工构造，**管道与校验规则属步骤 3 新票**（tickets.md「步骤 3 移交清单」第 1 项），上线后保持同一行为与断言。
 - 前端侧错误拦截（orval mutator）属步骤 4，本轮只留 `packages/api` 目录与 README 占位。
 
