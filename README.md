@@ -105,6 +105,8 @@ dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 
 仓库、日志、测试报告与提交信息中**零密码**。`Tenants` 的非法值（`Status` 拼错或数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛异常；`Tenants` 为空允许启动，但所有请求返回 400（不做启动期 fail-fast）；`ExpiresAt` 缺省或 `null` 视为永不过期，空字符串为配置错误、启动失败。
 
+**Outbox 重试上限**：配置键 `Outbox:MaxAttempts`，缺省 **5**。默认值只有一处定义——`OutboxOptions.DefaultMaxAttempts`；`appsettings.json` **不写**这个键（缺键即走默认），将来要改默认值只改代码那一处，否则会出现两处字面值、改了不生效。`0`、`-1`、非数字会在启动期直接抛异常，不静默回退；达到上限的消息进入终态「已拒绝」并同时写 `RejectionReason` 与 `LastError`，消息保留、同批后续消息继续处理——**「拒绝」不是死信队列**，死信表与人工重放属步骤 3。
+
 ## 开发约定
 
 - 工作以 [票](docs/specs/tickets.md) 为单位，每张票完成时必须贴「验证命令 + 实际输出摘要」；失败不许标完成。

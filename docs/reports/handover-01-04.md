@@ -74,7 +74,7 @@
 1. **旺总 / Chief**：票 **02 前端 monorepo 骨架**（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、dev proxy）已在工作区，按票面四条验收命令跑通后提交——它是 03 Aspire 与 11 的唯一前置。
 2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
 3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
-4. **待处理 low（不阻塞）**：`appsettings.json` 的 `Outbox:MaxAttempts` 与 `DefaultMaxAttempts` 是两处字面值，改默认值时删键或注明为运行时覆盖。
+4. **已定收尾小项（不阻塞、不重开票，票面 `f8b886c`）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 要删掉，让「缺键走 `OutboxOptions.DefaultMaxAttempts`」成为唯一路径；删后跑一次 `Pzd.Infrastructure.UnitTests` 确认「缺键回默认 5」用例仍绿即可，**不需要新 hash 终审**。README 已补 `Outbox:MaxAttempts`（缺省 5）。
 5. 依赖关系：02 是 03/11 的前置；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
 
 ## 4. 关键文件
@@ -105,7 +105,7 @@
 - **凭据**：只走环境变量或 `local.env`（gitignored）；仓库、日志、报告零密码。
 - **租户配置**：`Tenants` 的非法值（`Status` 拼错/数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛 `InvalidOperationException`，不会等首个请求；`Tenants` 为空允许启动但请求 400（不做 fail-fast）；`ExpiresAt` 缺省或 `null` 为永不过期，空字符串为配置错误。
 - **后台任务取连接**：请求路径专用的是 `GetCurrentConnectionScopeAsync(ct)`，后台路径禁止出现该调用；后台任务/消费者必须用带 `long tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId, ct)`（先校验停用/到期）。无参 `GetConnectionScopeAsync()` 已不存在，编译期即挡。架构规则守的是「后台路径不出现 `.GetCurrentConnectionScopeAsync(`」，属字符串规则，别把它当沙箱（边界见 §2「规则适用边界」）。
-- **07 内存实现**：Outbox/UoW 的事务仍是**补偿删除**，不是真实回滚（步骤 3 换真实事务并删补偿）；失败原因、`MaxAttempts=5`、零消费者告警已随 `001a731` 补上；处理器级幂等（F-07-6）留步骤 3。报告与文档不得写成「事务回滚已验证」。
+- **07 内存实现**：Outbox/UoW 的事务仍是**补偿删除**，不是真实回滚（步骤 3 换真实事务并删补偿）；失败原因、零处理器/零消费者告警随 `001a731` 补上；重试上限随 `7f699c5` 改为只从 `Outbox:MaxAttempts` 读（缺省 5，默认值只在 `OutboxOptions.DefaultMaxAttempts`，`appsettings.json` 不写该键），终态同时写 `RejectionReason` 与 `LastError`；处理器级幂等（F-07-6）留步骤 3。报告与文档不得写成「事务回滚已验证」「已实现死信队列」。
 - **MinVer**：浅克隆丢 tag 会让版本掉成 `0.0.0-alpha…`。
 
 ## 6. 可直接复制的验证命令
