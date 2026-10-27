@@ -15,7 +15,7 @@
 | 构建 | 0 警告 0 错误（`-warnaserror`，`f778a32` 上老登实跑；`6b67c2d` 上张一一实跑 0 警告 0 错误） |
 | 测试 | **204 条、0 失败 0 Skip**（SharedKernel 35 / 架构 30 / Infrastructure 86 / Api 43 / 集成 10；`f778a32` 快照；此前的 185 是 `7f699c5`、173 是 `0da4a18`，已作废）。票 08 在 `e8f2e2d` 上实测 **229 条**（Api 68）；`1259466` 后 Api 73，`beb83f3` 后 **Api 78**（张一一实测全绿），别把三个数混用 |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`）；08：`Infrastructure/{Observability,Audit,Security}`；09：`Infrastructure/Scheduling/*` |
-| 进行中 | **08 测试通过待审计**（`e8f2e2d`/`test-report-08.md`，229 条）；**09 测试通过待审计**（`6b67c2d`/`test-report-09.md`）；**10 已审计通过**；**A5 已定位且运行侧确认**（DCP 注入 `NODE_ENV=production`，A/B 闭环）；11 门禁只剩 **A11**：正向证据已有，缺「aspire 形态的同 hash 外来实例反例」+「主仓复跑」+「老登复审」 |
+| 进行中 | **08 ✅ 审计通过**（锚 `e8f2e2d`，229 条；**不是** `79bbe36`——那版跑绿属旧契约自洽）；**09 ✅ 审计通过但欠一次复跑**（锚 `6b67c2d` + **当时的脚本**；脚本此后改了 34 增 7 删，被测代码无变动，故须在当前脚本上复跑一次）；**10 已审计通过**；**A5 定因已封口**（宿主环境驱动 `NODE_ENV`，单变量实测）；11 门禁只剩 **A11**：正向证据已有（**5 次**，含无 pin + Development 那次），缺「aspire 形态的同 hash 外来实例反例」+「主仓复跑」+「老登复审」 |
 | 下一张票 | 08/09 送审计 → 主仓 aspire 实跑（先解决 §5 的 ACL，需用户点头）→ A11 三条补齐 → 11 收口（`CLAUDE.md` + 一键脚本文档） |
 
 ## 2. 未完成项 / 待办与已落票约束
@@ -98,6 +98,21 @@
 | 持久化 / Outbox（返工中） | [`src/Pzd.Infrastructure/Persistence/`](../../src/Pzd.Infrastructure/Persistence/) |
 | 架构规则实现 | [`tests/Pzd.ArchitectureTests/ArchRules.cs`](../../tests/Pzd.ArchitectureTests/ArchRules.cs) |
 
+## 4.5 通则：测试工具的版本要和被测代码一起锚定（老登，2026-10-28）
+
+票 09 的审计暴露了一个会反复咬人的问题：
+
+```
+git diff --stat 6b67c2d..HEAD -- scripts/verify-apphost.ps1
+  → 34 insertions(+), 7 deletions(-)      ← 测试脚本改了很多
+git diff --stat 6b67c2d..HEAD -- src/Pzd.Api src/Pzd.Infrastructure
+  → 空                                    ← 被测代码没动
+```
+
+**被测代码没变，但「怎么测」变了**（TEMP 位置、BOM 处理、A13 端口清理都在脚本里）。所以「09 通过」严格说是「**09 在 `6b67c2d` 那份脚本上通过**」；要写「现在仍然通过」，必须在**当前脚本**上复跑一次。
+
+**规矩**：验收结论一律锚「代码 hash + 脚本 hash（或 commit）」两个坐标。只写代码 hash 的结论，脚本一改就变成悬空结论；反过来，脚本改了就默认旧结论**待复跑**，不默认仍然成立。
+
 ## 5. 环境约束（踩过的坑，别再踩）
 
 - **测试运行方式：`dotnet test` 在本项目的 agent 会话里不可用——原因是命名管道，跟 ACL 无关（张一一实测，2026-10-28）**：测试平台要经 `NamedPipeClientStream` 连 testhost，被会话沙箱拒绝——`Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.`，栈顶是 `System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)` → `Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(...)`。**关键论证**：同一个测试工程，`dotnet run --project tests/<工程>/<工程>.csproj` **能跑**（35 条通过），`dotnet test` 就挂——同一个目录、同一份 ACL，所以挡它的不是低完整性标签、也不是 `E:\pzd` 的 ACE；而且**在 `E:\pzd-webcheck` 那种干净副本里一样会挂**。**因此：修完 ACL 也不会恢复，别把这条标成「污染期现象」**，否则下一轮会有人照着「ACL 修好就能 `dotnet test`」白试一轮。绕行方式固定为 `dotnet run --project tests/<工程>/<工程>.csproj`（**常态做法，不是临时将就**）；普通目录/CI（无沙箱）仍用 `dotnet test Pzd.slnx`。
@@ -174,7 +189,8 @@
       - **机制链已经成立，来源具体化为「Aspire JS 集成」而不是 `dcp.exe`（旺总 `ce08feb`，老登已审计通过）**：① 工程里**没有 `launchSettings.json`**，代码和脚本都没设 `DOTNET_ENVIRONMENT`/`ASPNETCORE_ENVIRONMENT`；② 因此**宿主环境是 `Production`**——这条已从「推断」升级为**运行期直接读出来**：`[pzd-diag] apphost 自身 NODE_ENV=<unset> 宿主环境=Production DOTNET_ENVIRONMENT=<unset> ASPNETCORE_ENVIRONMENT=<unset>`（正式 `Pzd.AppHost.exe` 实跑，不是探针程序、不是推断）；③ JS 托管集成按 `IsDevelopment()` 把 web 的 `NODE_ENV` 写成 `production`；④ `react-router dev` 的 SSR 变换产出 `jsxDEV`，production 的 `jsx-runtime` 没有它 → 调用点同步抛出。
       - **候选 B（启动 shell 继承）据五处独立观测排除**：四个 shell（双方 bash/pwsh）`NODE_ENV` 全空 + AppHost 自读 `<unset>`。**残余边界仍在，但只指向 A 内部**：DCP 下 web 还有 103 项变量（只白名单打印 4 个），理论上仍有「某个未白名单变量让工具链翻车」的可能，但**没有任何证据指向它**。
       - **措辞纪律（旺总提）**：别写「在**构建期**写入」——会被读成 `dotnet build`/MSBuild 阶段（`vite.config.ts` 在 typecheck 上下文里也会加载并打出 `production`，正是这条纪律要防的读法）；要写「**在 AppHost 构建资源模型时（运行期：`CreateBuilder` 之后、DCP 启动之前）写入**」。
-      - **唯一未闭合的一环（也是唯一能推翻整条链的实验）**：JS 集成内部那个赋值表达式仍是**元数据反推，没反编译 IL**。收尾实验在张一一那棵**无 pin** 的树上做一次即可：`DOTNET_ENVIRONMENT=Development` → vite 是否读到 `development`？读不到就说明整条链要重读。**跑完 A5 定因彻底封口。**
+      - **唯一未闭合的那一环已经闭合（李总 + 张一一，2026-10-28，两棵无 pin 树各跑一次）**：同一棵树、同一份脚本，**只改 `DOTNET_ENVIRONMENT` 一个变量**——A 组（不设，宿主 Production）`NODE_ENV=production` + `/` 500 + `EXIT=1`；B 组（`=Development`）`NODE_ENV=development` + `/` 200 + SPA 外壳 + `EXIT=0`（前端 pid 43076 / 111888，runId `cf7b5542…` / `968c1848…`）。所以「**宿主环境驱动 `NODE_ENV`**」是**实测**，不再是元数据反推。原文与两组并排见 [`a5-evidence-devenv-62b80ed.md`](a5-evidence-devenv-62b80ed.md)。**四条边界仍要带**：① 仍不区分「装配资源模型期 vs DCP 运行时」写入；② **两条通道分属不同运行别混引**——B 组 DCP 会话目录被正常退出清理，进程级 `_out` 只有 A 组有，B 组的进程级读数来自 vite 文件探针；③ 副本树，**不等于「主仓绿」**；④ 没证明 JS 集成内部就是 `IsDevelopment() ? … : …` 那行（未反编译 IL）。**另：探针文件是追加写的**，`devenv-62b80ed/pzd-web-env.log` 一个文件混了 5 个 runId（含 A 组 `production` 与 B 组 `development`），**必须按 runId 拆，别 grep 取第一条**。
+      - **由此得到一条防误判纪律（比结论本身重要）**：「**没有 pin 也能绿，只要宿主环境是 Development**」——所以「有人加了 `launchSettings.json`、看到本地正常就删 pin」会在 CI 的 Production 宿主上立刻复发。这就是 pin **无条件保留**的实证依据。
       - **`pin` 的定性：无条件保留**（旺总 `ce08feb` 注释里写了三个理由）——① 只影响 web 一个资源；② 有人加了 `launchSettings.json` 后看着正常，但**一删就会在 Production 宿主上复发**；③ **反对用 `launchSettings.json` 根治**，那会把整个 AppHost 带进 Development。
       - **`ce08feb` 老登审计通过，两个 low 记在案（不阻塞验收）**：① **提交类型写成了 `docs(apphost)`**，但这笔含一行 `Console.WriteLine` 代码（21 增 8 删不全是注释），按我们自己的规矩应是 `chore(apphost)` / `feat(apphost)`——不影响功能，但翻 `git log` 会误以为这是纯文档改动。② **`[pzd-diag]` 这类行是调试残留**：现在每次启动都会打「宿主环境=Production」，只输出四个白名单项、不泄露敏感信息，但**正式版要不要保留、要不要只在 dev 下输出**得有一句交代，否则将来有人会问「这行谁加的、能不能删」。
     - **机制可以在主仓、不依赖 DCP 复现（张一一，`e8df4ed`+`db17a9b`，签名级）**：给 vite 进程显式注入即可，两条命令谁都能重跑——
