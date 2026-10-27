@@ -163,6 +163,37 @@ public class ErrorMappingTests
         Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("traceId").GetString()));
     }
 
+    [Theory]
+    [InlineData("status401", 401, "Auth.Unauthorized", "https://pzd/errors/auth.unauthorized")]
+    [InlineData("status403", 403, "Auth.Forbidden", "https://pzd/errors/auth.forbidden")]
+    public async Task Framework_401_and_403_are_mapped_to_auth_problem_details(
+        string scenario,
+        int expectedStatus,
+        string expectedCode,
+        string expectedType)
+    {
+        await using var factory = new PzdApiFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await GetScenarioAsync(client, scenario);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(expectedStatus, (int)response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+
+        using var json = JsonDocument.Parse(body);
+        var root = json.RootElement;
+
+        Assert.Equal(expectedStatus, root.GetProperty("status").GetInt32());
+        Assert.Equal(expectedCode, root.GetProperty("code").GetString());
+        Assert.Equal(expectedType, root.GetProperty("type").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("title").GetString()));
+
+        var traceId = root.GetProperty("traceId").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(traceId));
+        Assert.Equal(traceId, response.Headers.GetValues("X-Trace-Id").Single());
+    }
+
     private static Task<HttpResponseMessage> GetScenarioAsync(HttpClient client, string scenario) =>
         SendAsync(client, HttpMethod.Get, $"/__tests__/{scenario}");
 

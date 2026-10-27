@@ -36,6 +36,8 @@ public static class ProblemDetailsSetup
 
             var error = statusCode switch
             {
+                StatusCodes.Status401Unauthorized => CommonErrors.Unauthorized,
+                StatusCodes.Status403Forbidden => CommonErrors.Forbidden,
                 StatusCodes.Status404NotFound => CommonErrors.NotFound,
                 StatusCodes.Status405MethodNotAllowed => CommonErrors.MethodNotAllowed,
                 _ => CommonErrors.Unexpected,

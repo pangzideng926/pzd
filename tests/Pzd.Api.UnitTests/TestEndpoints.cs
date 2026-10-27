@@ -48,6 +48,9 @@ internal sealed class TestEndpointsStartupFilter : IStartupFilter
         "clienttooold" => Result.Failure(new Error("Client.TooOld", ErrorType.ClientTooOld, "客户端版本过低")).ToHttpResult(),
         "tenantupgrading" => Result.Failure(new Error("Tenant.Upgrading", ErrorType.TenantUpgrading, "系统升级中")).ToHttpResult(),
         "throw" => throw new InvalidOperationException("boom: secret stack marker"),
+        // 框架生成的裸错误状态码（无 body）：交给 UseStatusCodePages 补 ProblemDetails。
+        "status401" => Results.StatusCode(StatusCodes.Status401Unauthorized),
+        "status403" => Results.StatusCode(StatusCodes.Status403Forbidden),
         _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, "unknown test scenario"),
     };
 
