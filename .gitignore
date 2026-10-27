@@ -43,3 +43,7 @@ local.env
 
 # DSH tooling artifacts
 .dsh-ops/
+
+# Aspire DCP 会往 TEMP 里建会话目录；受限令牌写不动系统 TEMP 时脚本把 TEMP/TMP 指到这里
+# （见 scripts/verify-apphost.ps1）。属于运行期产物，不入库。
+.aspire-tmp/

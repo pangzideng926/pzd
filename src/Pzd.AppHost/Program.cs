@@ -5,8 +5,15 @@ using Aspire.Hosting;
 var builder = DistributedApplication.CreateBuilder(args);
 
 // 本机（受限令牌）写 Windows 事件日志会被拒绝，默认的 EventLog 提供方会让宿主在启动期直接抛异常退出
-// （"Hosting failed to start"）。清掉默认提供方只留控制台——与测试宿主 ClearProviders 的处理同源。
-builder.Services.AddLogging(logging => logging.ClearProviders());
+// （"Hosting failed to start"）。因此换掉默认提供方、**只保留控制台**——既避开 EventLog，
+// 又不至于把资源日志一起吞掉（ClearProviders() 不补加控制台时，Dev 环境下一个字都看不到）。
+builder.Services.AddLogging(logging => logging
+    .ClearProviders()
+    .AddSimpleConsole(options =>
+    {
+        options.SingleLine = true;
+        options.TimestampFormat = "HH:mm:ss ";
+    }));
 
 // 票 03：只引用本机已有实例，不创建容器（本机无 Docker，容器编排不在本轮验收）。
 // 连接串从环境变量 / local.env 注入（ConnectionStrings__mysql、ConnectionStrings__redis），
@@ -19,7 +26,10 @@ var api = builder
     .AddProject<Projects.Pzd_Api>("api")
     .WithReference(mysql)
     .WithReference(redis)
-    .WithHttpEndpoint(port: 5080, targetPort: 5080, name: "http");
+    // 只固定对外端口：targetPort 交给 DCP 动态分配并由代理转发。
+    // 同时写 port 与相同的 targetPort 会被 Aspire 拒绝（"Non-container resources cannot be proxied
+    // when both TargetPort and Port are specified with the same value."）。
+    .WithHttpEndpoint(port: 5080, name: "http");
 
 // 前端 dev server：monorepo 用 pnpm，端口由 vite.config.ts 固定 5199（strictPort），
 // 这里不重复指定端口，免得同一事实两处定义；WaitFor 让前端等 API 起来再跑，避免 proxy 先接到 ECONNREFUSED。
