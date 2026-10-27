@@ -462,6 +462,8 @@ dotnet run --project src/Pzd.AppHost
 
 # 10: 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip）
 
+**执行口径与偏差（2026-10-27，锋哥真实 MySQL 实验报告、张一一确认）**：生产隔离靠每租户独立数据库，不把 QueryFilter 自动传播作为已实现保证。锋哥报告当前 SqlSugarScope 的过滤器状态属于 async 上下文：在 async provider 内挂载后返回调用方，ContextID 不同，过滤器未随返回连接传播；不是泛指所有 await 都必然丢失。票 10 在查询所在上下文显式挂载过滤器，单独验证纵深防御。provider 自动挂载的可靠接缝留步骤 3，禁止报告为“生产全局过滤已验证”。锋哥认领 `tests/Pzd.IntegrationTests/**`；票面列出的 provider 支撑路径不等于并行写入授权，需改生产代码时先协调认领。
+
 **What to build:** 连本机 MySQL 8.0.46，用 `pzd_it_a` / `pzd_it_b` 两个真实租户库验证跨租户隔离、QueryFilter 与停用租户 403；凭据/实例不可用时动态 Skip 且退出码 0（CI 兜底）。Docker / Testcontainers 不再是主路径。
 
 **文件路径**
@@ -478,7 +480,8 @@ dotnet run --project src/Pzd.AppHost
 **Status:** ready-for-agent
 
 - [ ] 本机凭据可用：真跑并全绿，贴 `TEST EXECUTION SUMMARY` 与 `SELECT VERSION()`（期望 `8.0.46`）；自动建/清 `pzd_it_a`、`pzd_it_b`
-- [ ] A/B 两库插同结构数据 → A 租户查询只返回 A，B 只返回 B；`QueryFilter` 生效
+- [ ] **生产隔离验收**：经真实 `ITenantDbProvider` 取得 A/B 两个租户连接，各库插同结构数据，A 连接只访问 A 库、B 连接只访问 B 库；此断言不依赖测试显式过滤器，不能用过滤器掩盖拿错库。
+- [ ] **QueryFilter 防御语义验收（独立用例）**：在测试查询所在 async 上下文，对已取得的租户连接显式挂载过滤器；同一测试库同时放本租户行与其他 TenantId 的脏行，过滤后仅返回本租户行。取消过滤器的对照必须看见脏行，使断言变红。此结果只证明显式挂载的防御语义，不证明 provider 自动挂载或跨 async 上下文传播。
 - [ ] 停用租户经 HTTP 接缝返回 403 `Tenant.Disabled`
 - [ ] 无 `CREATE/DROP DATABASE` 权限：改用 `PZD_TEST_MYSQL_DB_A/B` 指定的既有库并**仍真跑**；两者都不可用时 Skip 原因必须为 `no CREATE DATABASE privilege`
 - [ ] 无凭据 / MySQL 不可达：动态 Skip（原因明确），退出码 0，状态 **Skipped 而非 Passed**；跳过机制是动态探测，不写死 `Skip="…"`
@@ -573,6 +576,8 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 
 本轮为避免「假绿」主动下沉的事项，步骤 3 首次开模块 / 登录时逐条开票：
 
+- **票 10 QueryFilter 自动挂载遗留**：设计并评审跨 async provider 返回仍可靠的过滤接缝；生产调用链中验证取连接后经过 await、并发 A/B 租户时过滤仍正确且互不污染。同库脏 TenantId 行作反例；不能沿用票 10 测试手工挂载来声称自动接缝已通过。每租户独立库隔离要求不降低。
+
 1. **FluentValidation 管道 + Application 层校验**（票 06 F-06-1 的生成端）：pipeline behavior、Validation 类型 Result 生成、`errors` 键 camelCase 的端到端断言；票 06 只保证出口转换与透传，不声称管道已验证。
 2. **`*.Contracts` 自身引用约束**（规则④扩展）：Contracts 只能引用 SharedKernel / 其他 Contracts，堵住绕过模块隔离的后门。
 3. **登录类端点租户策略**：`AllowAnonymousTenant` 的完整匿名解析（子域 / `X-Tenant`）、登录端点豁免与限流。
@@ -583,6 +588,10 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 ---
 
 ## 交接检查单（每张票完成时贴出）
+
+**复测环境注意**：干净 worktree 自行执行 `pnpm install --frozen-lockfile`；不通过目录联结借用主仓 node_modules（老登实测触发 `ERR_PNPM_UNSAFE_TASK_RUN_STATE_PATH`）。安装/启动环境失败必须单列，不能当产品缺陷或通过证据；不得删除联结指向的主仓依赖。
+
+**当前接力**：08 由雨哥负责；09 由旺总在 08 的 API Program.cs 定稿并交接写入权后接手，且原有 03/04 验收前置仍须满足；10 由锋哥负责测试目录。该安排是共享文件写入顺序，不把 09 改派雨哥。
 
 1. 验证命令 + 真实输出摘要（不是"应该通过"）
 2. 测试类票贴 `=== TEST EXECUTION SUMMARY ===` 行（`dotnet run --project` 形式）；若用 `dotnet test`，注明运行目录不是 Low IL（如 `E:\pzd-copy`）

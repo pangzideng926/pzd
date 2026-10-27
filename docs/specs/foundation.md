@@ -93,7 +93,8 @@
   - `ITenantStore` 校验状态与到期：停用 → 403 `Tenant.Disabled`，过期 → 403 `Tenant.Expired`；每次请求都校验（不缓存「已通过」结论超过请求生命周期）。
 - **免租户豁免（F-05-4）**：`/health/live`、`/health/ready`、`/api/version`（以及后续登录类端点）标记 `AllowAnonymousTenant` metadata，中间件跳过租户解析与状态校验；这些端点无 claim / `X-Tenant` / 子域时返回 200。豁免端点之外，缺租户仍返回 400 `Tenant.NotFound`。**票 03 开工硬前置**，由票 03 / 09 实现。
 - `ITenantDbProvider`：两个入口——请求路径 `GetCurrentConnectionScopeAsync(ct)`（信任 `ITenantContext`）、显式 `GetConnectionScopeAsync(tenantId, ct)`（先校验停用/到期，按次查库）。按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、**连接创建只查一次 `ITenantStore`（显式重载为校验状态按次查库）**；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`；后台路径不得用 `GetCurrentConnectionScopeAsync`（F-05-8）。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
-- `master` 连接始终存在（`ConfigId = "master"`）；租户库表仍保留 `TenantId` 与全局 QueryFilter（纵深防御）。
+- `master` 连接始终存在（`ConfigId = "master"`）；租户库表仍保留 `TenantId`，全局 QueryFilter 是纵深防御目标，**不是本轮已验证的自动挂载能力**。
+- **票 10 偏差（2026-10-27，锋哥实测报告、张一一确认）**：当前 async provider 内挂载的 SqlSugarScope 过滤器属于该 async 上下文，返回调用方后 ContextID 不同，过滤器未随连接返回传播。生产隔离由每租户独立数据库保证；票 10 将数据库隔离和 QueryFilter 防御语义分开验证，后者只在测试查询上下文显式挂载。不得由显式测试推断生产 provider 已自动过滤。步骤 3 须设计可靠挂载接缝并补跨 provider 返回、await 与并发租户的回归，技术方案由开发评审。
 
 ### 4.4 异常处理与 Result
 
