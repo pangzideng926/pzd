@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 开工中**（前置 01/02/05 已满足，F-05-4 硬前置）｜08/09/10 ready-for-agent｜11 待 02–10 收口
+> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 🔧 进行中**（`b06706f` + `fd90640` 已落；口径决定 ③④② 三条必修未闭环，**不得标通过**；偏差 D1 待确认）｜08/09/10 ready-for-agent｜11 待 02–10 收口
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -142,7 +142,7 @@ pnpm -w typecheck
 
 **Blocked by:** 01, 02, 05（F-05-4 需在 05 的中间件上加豁免）
 
-**Status:** ready-for-agent
+**Status:** 🔧 进行中（第一步 `b06706f`、第二步 `fd90640` 已落；**口径决定 ③④② 三条必修未闭环，不得标通过**；偏差 D1 待确认，见下节「第二步进度与偏差」）
 
 - [ ] API 在 AppHost 中固定 `http://127.0.0.1:5080`（便于前端 proxy 与脚本验证）
 - [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**（根 `status` 与两个明细都是 **`Healthy`**，用 .NET 原生三态，**不映射 `Up/Down`**）
@@ -162,7 +162,19 @@ pnpm -w typecheck
 3. **缺资源一律降级，不许 503**：`RedisConnectionSettings.Parse` 遇空 host 要先校验并拒绝，健康检查的 catch 必须覆盖非网络异常（`ArgumentException`/`FormatException`/`UriFormatException` 等）→ `Degraded`；否则 `/health/ready` 变 503，直接违反第 150 行口径。
 4. **日志那句话必须真有出处**：启动期对每个不可用资源打一条 Warning，含原文 `Degraded mode: MySQL/Redis unavailable`；举证时用 grep 给出实际输出，不接受「代码里应该会打」。
 
-**验证命令**
+**票 03 第二步进度与偏差（老何回填，2026-10-27，`fd90640`；未通过）**
+
+已落地：`src/Pzd.AppHost`（`AddConnectionString` 引用本机 mysql/redis、不建容器；API `port: 5080`；`AddViteApp` + `WaitFor(api)`）、`scripts/verify-apphost.ps1`（198 行，`-Mode api|aspire`，轮询就绪 + 三端点探活 + 退出后检查无残留监听 + mysql/redis 明细非 `Healthy` 即记 failure）、`MySqlHealthCheck` 改服务器级 ping（`pzd_master` 未建库不判 `Degraded`）、`Program.cs` 只挂控制台日志。
+
+- **偏差 D1（环境，待确认；不得静默降级）**：DCP 编排在本沙箱无法启动（hosted service 启动即抛，EventLog 无写权限为直接诱因），脚本默认 `-Mode api`。**「`dotnet run --project src/Pzd.AppHost` 一条命令拉起 API + 前端」在本机未被实际验证**；需在有权限机器/CI 补跑 `-Mode aspire` 留证据，或由用户明确同意降级为「AppHost 编译通过 + `-Mode api` 等价路径」。**补验或明确同意降级之前，本票不得标通过**；报告不得写「AppHost 已验证拉起」。
+- **偏差 D2**：API 与 AppHost 均 `ClearProviders()` 只留控制台——EventLog provider 无写权限时**写日志本身会抛异常**（实测把 `/health/ready` 降级路径变成连接中断）。票 08 接 Serilog + OTel 时必须保留「日志不得成为故障源」，不得把这两处 `ClearProviders` 当作临时脏补丁删掉。
+- **偏差 D3**：`Aspire.Hosting.NodeJs` 在 Aspire 13.x 已并入 `Aspire.Hosting.JavaScript`（旧包止于 9.5.2），用 `AddViteApp`。
+- **未闭环三条**（`git diff --stat b06706f fd90640` 的 8 个文件里既无 `RedisHealthCheck.cs` 也无 `HealthAndVersionApiTests.cs`）：
+  - **③ 缺资源仍 503（实测）**：带 `ConnectionStrings__redis=host=` 启动，`/health/ready` = **503**，redis 明细 `Unhealthy`、描述 `The value cannot be an empty string. (Parameter 'host')`；`/health/live` 仍 200。根因是 `RedisConnectionSettings.Parse` 在 `try` 外，`ConnectAsync("")` 抛 `ArgumentException` 不在 `catch (SocketException or IOException or OperationCanceledException)` 范围。→ `Parse` 后校验 host 非空返回 `Degraded`，或 `Parse` 进 `try` 且 catch 兜 `ArgumentException`；补「空 host → `Degraded` 且 200」用例。
+  - **④ 降级日志无出处**：`grep -rn "Degraded mode" src/` 为空，`src/**/*.cs` 无任何启动期 `LogWarning`。→ 每个不可用资源一条 Warning，含原文，举证贴 grep 输出。
+  - **② 单元测试假绿**：`tests/Pzd.Api.UnitTests/Health/HealthAndVersionApiTests.cs:38` 仍是 `Assert.Contains(status, new[] { "Healthy", "Degraded" })`。→ 单元测试只守 200 + 免租户 + JSON 结构；`Healthy` 只由脚本断言（脚本侧 `verify-apphost.ps1:152-154` 已满足）。
+
+**验证命令**（票 03）
 
 ```powershell
 # 连接串由 local.env（gitignored）或当前会话环境变量提供；仓库与命令示例中不出现真实密码
