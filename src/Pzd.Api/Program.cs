@@ -5,6 +5,7 @@ using Pzd.Api.Errors;
 using Pzd.Api.Health;
 using Pzd.Infrastructure;
 using Pzd.Infrastructure.Audit;
+using Pzd.Infrastructure.Jobs;
 using Pzd.Infrastructure.Observability;
 using Pzd.Infrastructure.Persistence;
 using Pzd.Infrastructure.Security;
@@ -76,7 +77,30 @@ builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<OutboxDispatcher>();
 builder.Services.AddHostedService<OutboxDispatcherHostedService>();
 
+// 票 09：Quartz。master 库可连时用 MySQL AdoJobStore（集群 + System.Text.Json 序列化，SchedulerName = "pzd"）；
+// 没配连接串或连不上时降级内存存储 + 启动 Warning（CI 兜底，启动不失败）。
+// 探测只决定用哪个 JobStore，**不是**持久化证据——证据是重启后 QRTZ_JOB_DETAILS 里任务还在。
+// 任务只来自代码里的 [JobDefinition]（架构 §11.4），启动期校验 Cron/时区，非法值直接失败。
+var quartzPlan = QuartzRegistration.LoadPlan(builder.Configuration);
+var quartzDegraded = false;
+if (quartzPlan.UsePersistentStore
+    && !await QuartzRegistration.CanReachMasterAsync(quartzPlan.ConnectionString!, TimeSpan.FromSeconds(3)))
+{
+    quartzPlan = quartzPlan with { UsePersistentStore = false, ConnectionString = null };
+    quartzDegraded = true;
+}
+
+builder.Services.AddPzdQuartz(quartzPlan, QuartzRegistration.DiscoverJobs(builder.Configuration));
+
 var app = builder.Build();
+
+if (quartzDegraded)
+{
+    // 票 09 降级口径：只报「哪个连接串不可用」，不回显连接串本身（密码不得进日志）。
+    app.Logger.LogWarning(
+        "Degraded mode: Quartz persistent store unavailable（ConnectionStrings:{ConnectionStringName} 为空或连不上），已降级为内存存储，重启后任务不保留。",
+        quartzPlan.ConnectionStringName);
+}
 
 app.UseExceptionHandler();
 app.UsePzdStatusCodePages();
