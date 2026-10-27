@@ -13,18 +13,25 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
-| 06 | 异常处理 + Result→HTTP | ready-for-agent |
-| 07–10 | UoW + Outbox、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
-| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/06–10 |
+| 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
+| 07 | UoW + Outbox + 领域事件 | 🔧 返工中（F-07-1/F-07-2） |
+| 08–10 | 可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
+| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10 |
 
-下一张票是 **06 异常处理 + Result→HTTP**（测试先行）。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+当前在票 07 返工：F-07-1（无参重载改名、架构规则改认 API 形状）与 F-07-2（`DomainEventDispatcher` 行为用例）；完成后接 08/09/10。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
 - 解析顺序：登录 claim `tid`（忽略 `X-Tenant`）→ 匿名 `X-Tenant` → 子域名；每个请求重新查 `ITenantStore`，`ITenantContext` 为 Scoped、不跨请求。
 - 停用/过期：中间件直接 403（`Tenant.Disabled` / `Tenant.Expired`）；`Tenants` 配置在启动期严格校验，非法值启动失败。
 - 连接：每租户独立 `SqlSugarScope`，懒加载 + 双检 + `ConcurrentDictionary`；禁止 `ChangeDatabase`，架构测试扫描 `src/Pzd.*`。
-- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载只信任上下文，不要裸用（F-05-8，票 07 落实）。
+- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载只信任上下文，不要裸用（F-05-8，票 07 返工后无参重载改名）。
+
+## 异常处理（票 06）
+
+- 端点返回 `Result` / `Result<T>`，`ToHttpResult()` 映射为准确的 200/204/400/401/403/404/409/422/426/503 ProblemDetails；`type = https://pzd/errors/{kebab-code}`，`traceId` 与 `X-Trace-Id` 同源。
+- `ProblemDetailsWriter` 是唯一实现：租户中间件短路、`ToHttpResult`、全局异常、框架 401/403 兜底共用一份；404/405 保持 `Http.*`，空 body 的 401/403 落 `Auth.*`。
+- 未知异常 500 不带堆栈/类型名；`errors` 键在出口统一 camelCase（FluentValidation 管线属步骤 3，本轮未验证）。
 
 ## 仓库结构
 
@@ -36,8 +43,8 @@ Directory.Packages.props     NuGet 中央包管理
 NuGet.config                 packageSourceMapping，保证 restore 可复现
 src/
   Pzd.SharedKernel/          领域原语、Result/Error、ITenantContext/IClock/ICurrentUser
-  Pzd.Infrastructure/        多租户内核：租户配置校验、解析中间件、每租户 SqlSugarScope 连接工厂、SystemClock
-  Pzd.Api/                   最小 API + 租户解析中间件（目前只有 GET /）
+  Pzd.Infrastructure/        多租户内核、ProblemDetailsWriter、UoW/Outbox（07 返工中）
+  Pzd.Api/                   最小 API + 租户中间件 + Result→HTTP / 异常处理
 tests/
   Pzd.ArchitectureTests/     分层规则 + 租户隔离规则（ChangeDatabase）+ 反向用例
   Pzd.SharedKernel.UnitTests/
@@ -62,7 +69,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 16 + 54 + 10 + 1 = **116 条全绿**，2026-10-27 于 `e593225` 实测）：
+五个测试工程（当前 35 + 71 + 30 + 19 + 1 = **156 条全绿**，2026-10-27 于 `abde749` 实测）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
