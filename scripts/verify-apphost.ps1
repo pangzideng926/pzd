@@ -217,11 +217,20 @@ if ($Mode -eq "aspire") {
 
     # Aspire 的 DCP 会在 TEMP 下建会话目录（kubeconfig、日志套接字）。受限令牌写系统 TEMP 会被
     # UnauthorizedAccessException 拒掉、宿主启动即崩（"Access to the path ... is denied."），
-    # 所以把 TEMP/TMP 指到工作区内已 gitignore 的 .aspire-tmp/ 再启动 AppHost。
-    $tempDir = Join-Path $repoRoot ".aspire-tmp"
+    # 所以要把 TEMP/TMP 指到别处。
+    #
+    # **但不能指进仓库内部**（2026-10-27 实测）：Aspire 的 SocketPermissionHelper 会“加固”它拿到的
+    # 临时目录——给目录打 Low Mandatory Level 完整性标签、写入 AppContainer SID 的 ACE，并把当前用户
+    # 的完全控制换成只剩 (WO,S)。TEMP 若指向 <repo>/.aspire-tmp，这一刀就落在**仓库根**上，于是
+    # DCP 之后每次 CreateLoggingSocket 都 SetSecurityInfo 被拒、EnsureDcpHostRunning 等满 120s 超时，
+    # 一个资源都不编排；而 Deny ACE 是 (I) 继承，删了 .aspire-tmp 也会随重建回来，得管理员改根目录。
+    # 因此放到仓库的**同级**目录，并按仓库目录名区分，多个 worktree 互不干扰。
+    $repoName = Split-Path -Leaf $repoRoot
+    $tempDir = Join-Path (Split-Path -Parent $repoRoot) ".pzd-aspire-tmp-$repoName"
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
     [Environment]::SetEnvironmentVariable("TEMP", $tempDir, "Process")
     [Environment]::SetEnvironmentVariable("TMP", $tempDir, "Process")
+    Write-Host "aspire 临时目录（仓库外）：$tempDir" -ForegroundColor DarkGray
 }
 else {
     $target = "src/Pzd.Api/Pzd.Api.csproj"
