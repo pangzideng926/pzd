@@ -487,7 +487,15 @@ try {
                     # 归属已经判红，不再补一条「pid 取不到」的重复失败。
                 }
                 elseif ($Mode -eq "aspire") {
-                    Write-Host "[ok] 前端 127.0.0.1:5199 的 $ApiRunIdHeaderName 与本次运行一致（pid $webListenerPid），且是 SPA 外壳：由本次运行拉起"
+                    # 票面 299421d 第 ③ 条：取不到监听 PID / 父链不可读，本身就要判失败。
+                    # aspire 模式下归属由 runId 头证明，但 pid 读不到仍不能算「确认了监听者身份」，
+                    # 否则又变成「查不到就算过」——正是 A10 第 ③ 条要禁的那类假绿。
+                    if (-not $webListenerPid) {
+                        $failures.Add("前端 127.0.0.1:5199 取不到监听者 pid，无法确认监听者身份（runId 头已匹配，但票面 ③ 要求 pid 不可读即判失败）")
+                    }
+                    else {
+                        Write-Host "[ok] 前端 127.0.0.1:5199 的 $ApiRunIdHeaderName 与本次运行一致（pid $webListenerPid），且是 SPA 外壳：由本次运行拉起"
+                    }
                 }
                 else {
                     $webAncestor = if ($webProcess) { $webProcess.Id } else { $null }
