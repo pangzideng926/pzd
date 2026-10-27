@@ -220,7 +220,28 @@ internal static class EnvironmentDiagnostics
             return null;
         }
 
-        return name == "PATH" ? DescribePath(value) : Truncate(value);
+        return name switch
+        {
+            "PATH" => DescribePath(value),
+            "NODE_OPTIONS" => DescribeNodeOptions(value),
+            _ => Truncate(value),
+        };
+    }
+
+    /// <summary>
+    /// NODE_OPTIONS 不能按整串截断：要查的 `--conditions`、`--require`、`--loader` 完全可能落在尾部，
+    /// 被裁掉就等于白测。按空白切成 token 逐个渲染，只有单个 token 过长时才截断。
+    /// </summary>
+    private static string DescribeNodeOptions(string options)
+    {
+        var tokens = options.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0)
+        {
+            return "（空）";
+        }
+
+        var rendered = string.Join(" | ", tokens.Select(static token => Truncate(token)));
+        return $"{rendered}（共 {tokens.Length} 个 token）";
     }
 
     private static string DescribePath(string path)
