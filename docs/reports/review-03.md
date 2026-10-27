@@ -179,3 +179,166 @@
 > 另登记 **F-03-A10（原文：low；李总实测复现后**升为 medium，票 11 开工前必修**）**：web 腿只断言 `5199 → 200 + lang="zh-CN"`，未像 API 腿那样核对监听者是否属于本次进程树。李总在 `7c5f411` 上实测到完整假绿：他自己的 vite 报 `Port 5199 is already in use` + `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL` 失败，脚本仍打印 `[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳` 并 **exit 0**——探到的是别人的实例。修法：`$webProcess.HasExited` + `verify-web.log.err` 命中 `already in use`/`ERR_PNPM` 即失败；5199 的占用 pid 必须属于本次 `$webProcess` 子树；或探活带本次运行独有标记。李总报告里编号为 **F-03-A3**，与本条同指一事。
 >
 > 这一条**不影响票 03 的通过结论**：票 03 的 web 验收证据来自真起 vite + 归属证明（`verify-web.log` 尾部 `Local: http://127.0.0.1:5199/`、err 无冲突、退出后无残留），不是靠脚本那句 `[ok]`；但脚本本身在票 11 复用前必须补齐，否则票 11 的「一键通过」同样可能是别人的进程给的。
+
+---
+
+## 10. F-03-A10 复审补充（2026-10-27 17:40，老登）
+
+被审对象是**工作区未提交版本**（`scripts/verify-apphost.ps1`，HEAD 为 `931d700`），因为 A10 的修正在此之前未入库。`8fbbed9` 版本里 web 腿仍只有 `200 + lang="zh-CN"` 两段断言。
+
+### 10.1 已实测通过：外来监听被正确拒绝
+
+19:40 那次实测（`-Mode api -ApiBaseUrl http://127.0.0.1:5098`，含前端）撞上了真实的外来监听，结果正确：
+
+```
+[ok] http://127.0.0.1:5098 由本次启动的进程树监听（pid 124276）
+...
+验收失败：
+ - 前端 127.0.0.1:5199 的监听者 pid 117968 不属于本次启动的进程树（祖先 pid 91036），200 不是本次实例给的
+[exit code: 1]
+```
+
+定性证据不是脚本的自述，而是它自己的前端进程日志：
+
+```
+$ react-router dev
+Error: Port 5199 is already in use
+[ELIFECYCLE] Command failed with exit code 1.
+Error: ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL
+```
+
+即本次 `pnpm dev` 根本没起来，5199 上是别人的实例——**脚本没有把别人的 200 当成自己的**。这满足票面 `299421d` 第 ② 条「占住 5199 跑带前端路径必须非 0」。
+
+### 10.2 必修（high）：取不到监听 pid 时反而判通过
+
+```powershell
+$webAncestor    = if ($Mode -eq "aspire") { $hostProcess.Id } elseif ($webProcess) { $webProcess.Id } else { $null }
+$webListenerPid = Get-PortListenerPid 5199
+if ($webAncestor -and $webListenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $webListenerPid -AncestorPid $webAncestor)) {
+    $failures.Add("前端 … 的监听者 pid $webListenerPid 不属于本次启动的进程树（祖先 pid $webAncestor），200 不是本次实例给的")
+}
+else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳（监听者 pid $webListenerPid 属本次进程树）" }
+```
+
+`$webAncestor` 或 `$webListenerPid` 为 `$null`（`Get-NetTCPConnection` 不可用、查询竞态、前端刚退出、aspire 模式 `$hostProcess` 为空）时，整个 `-and` 短路为假，**直接落到 `else` 打印 `[ok]`**。这正好违反张一一第 ③ 条验收「PID/父链无法确认也必须失败」，而且它是最隐蔽的一种：越是异常状态，越报绿。
+
+修法：把判定反过来，只有三项全部成立且血缘为真才通过，其余一律 `$failures.Add(...)`：
+
+```powershell
+if (-not $webAncestor) { $failures.Add("前端归属无法确认：本次前端进程句柄为空（模式 $Mode）") }
+elseif (-not $webListenerPid) { $failures.Add("前端归属无法确认：5199 上取不到监听 pid") }
+elseif (-not (Test-ProcessDescendsFrom -ChildPid $webListenerPid -AncestorPid $webAncestor)) { $failures.Add(...) }
+else { Write-Host "[ok] ..." }
+```
+
+### 10.3 未验证（阻塞我判 A10 通过）：api 模式下以 `$webProcess.Id` 作祖先可能误红自己的前端
+
+`$webProcess` 是 `Start-Process pnpm.cmd` 的返回值，即 **cmd.exe 垫片**。Windows 上垫片在 node 起来后可能退出，node 被 reparent，`Test-ProcessDescendsFrom(node, pnpmPid)` 就会返回 false——此时脚本自己起的前端反被判成外来实例，是**误红**（比假绿好，但仍不可接受，票 11 会天天撞）。
+
+本次无法验证：5199 全程被别人的受控反例假服务器占着（见 §10.4），脚本的前端从未成功启动过，正向路径一次都没跑到。
+
+建议同时接受两种判据（李总 §12.3 的口径）：祖先匹配 **或** 监听进程命令行含本次副本的 `apps/web` 绝对路径。后者不受垫片/reparent 影响，且顺带覆盖 aspire 模式。
+
+### 10.4 环境事实
+
+实测期间 5199 被 pid `92300` 占用，命令行是 `node -e "…foreign dev server…foreign listener up on 5199…"`，父进程 `bash.exe` pid 74044——是别人正在跑的 A10 受控反例，**不是我的，我没动它**（票面 第 ② 条明确不许杀外来进程）。
+
+---
+
+## 11. F-03-A11 登记：aspire 模式下 5080 归属断言必然误红（票 11 门禁第 2 项）
+
+### 11.1 现象（依据李总实测，含命令行证据；我未独立复现）
+
+`ac20713` 给 5080 加的归属断言要求「监听 5080 的进程是本次宿主的后代」。但 `-Mode aspire` 下 **5080 由 Aspire 的端口代理 `dcp.exe` 持有**，不是 API 进程自己监听：
+
+```
+dcp.exe run-controllers --kubeconfig C:\tmp\pzd-asp4\.aspire-tmp\aspire-dcp*\kubeconfig …
+父链：dcp.exe → dcp.exe → 已退出（reparented）
+```
+
+父链在第二跳就断了，`Test-ProcessDescendsFrom` 永远返回 false → **aspire 模式必然 `exit 1`**，即使功能和日志全部达标。
+
+### 11.2 定性
+
+**工具误红，不是产品缺陷。** 李总在 `f2d49b8` / `e7200cb` 上两次 `-Mode aspire` 的端点证据（`/health/live` 200、`/health/ready` 三项 Healthy、`/api/version` 回显对应 hash、`/` 400、5199 首屏 SPA + 监听者命令行含本次副本 `apps/web`）都是真的，红的是脚本自己的判据。这与 A10 ③ 恰好相反：**A10 ③ 是该失败时判通过，A11 是该通过时判失败**。
+
+### 11.3 票 11 开工门禁（现在两条，缺一不可）
+
+| 编号 | 缺陷 | 方向 | 证据 |
+| --- | --- | --- | --- |
+| F-03-A10 | `$webAncestor -and $webListenerPid -and …` 任一为空即短路到 `else` 打印 `[ok]` | 该失败却通过 | 我实测：变异让 `Get-PortListenerPid 5199` 返回 `$null` → `[ok] …（监听者 pid  属本次进程树）`、`EXIT=0` |
+| F-03-A11 | aspire 模式 5080 由 `dcp.exe` 代理持有，父链断言必然为假 | 该通过却失败 | 李总实测命令行为证；我未独立复现 |
+
+`299421d` 已把 A10 的四条验收挂到票 11，**A11 尚未入任何票面门禁**，建议一并写入，否则票 11 的「一条命令给出唯一证据」在 aspire 模式下永远非 0。
+
+### 11.4 修法建议：抽成统一的归属判定，别在每个分支里拼 `-and`
+
+两个缺陷同源——**归属判据散落在各自分支里、靠一串 `-and` 短路**，所以一边漏判、一边错判。建议收成一个函数，按模式取不同的正证据，且**取不到证据即失败**：
+
+```
+Assert-Owner（模式, 端口, 宿主/前端句柄）:
+  api     : 血缘（监听 pid 是 $webProcess / $hostProcess 的后代）
+  aspire  : kubeconfig 路径匹配 $repoRoot\.aspire-tmp\aspire-dcp*\kubeconfig
+            或 /api/version 的 buildId == 本轮 hash
+  任一模式都保留：命令行含本次副本绝对路径（不受垫片/reparent 影响）
+  三个证据全取不到 → 失败，不得 [ok]
+```
+
+这样 A10 ③ 与 A11 一起闭环，且以后新增模式只需加一条判据。
+
+---
+
+## 12. 状态更新（`398b6e8`）：A10 四条全部闭环，但 API 腿有同款缺陷（F-03-A12）
+
+> 本节覆盖 §11 的 A10 状态。A10 已在 `398b6e8` 闭环；A11 仍开着；另发现 A12。
+
+### 12.1 A10 闭环确认（`398b6e8`，我实测）
+
+`398b6e8` 把前端归属改成三段式，并联查 `.err` 与 `HasExited`。我用同一个变异（让 `Get-PortListenerPid 5199` 返回 `$null`）对照两个版本：
+
+| 版本 | 实测输出 | 退出码 |
+| --- | --- | --- |
+| `7ccbbcf` | `[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳（监听者 pid  属本次进程树）` | **0** |
+| `398b6e8` | `前端 127.0.0.1:5199 取不到监听者 pid，无法确认 200 是否来自本次实例（祖先 pid 35128）` | **1** |
+
+票面 `299421d` 的四条验收现已全部有实测：① 正向 `[ok] …（监听者 pid 28416 属本次进程树）` exit 0；② 外来监听 exit 1（`.err` 有 `Port 5199 is already in use`）；③ pid 取不到 exit 1（上表）；④ 预检后才出现外来监听，即 ② 那次的实际形态。**A10 闭环。**
+
+### 12.2 新发现 F-03-A12（high）：API 腿仍是老写法，pid 取不到即放过
+
+`398b6e8` 只修了 web 腿，5080/api 那条腿没同步：
+
+```powershell
+$listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
+if ($listenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
+    $failures.Add("… 不属于本次启动的进程树 …")
+}
+else {
+    Write-Host "[ok] $ApiBaseUrl 由本次启动的进程树监听（pid $listenerPid）"
+}
+```
+
+与 A10 ③ 修之前一模一样的短路。变异实测（`Get-PortListenerPid 5096` 返回 `$null`，其余不动，`-SkipWeb`）：
+
+```
+[ok] http://127.0.0.1:5096 由本次启动的进程树监听（pid ）
+验收通过（/health/ready 期望模式：Healthy）：…
+REAL_EXIT=0
+```
+
+`pid` 后是两个空格——没查到 pid，却断言"由本次启动的进程树监听"，还宣告验收通过。**这条比 A10 ③ 更危险**：A10 ③ 只影响前端腿，而 API 腿是每一轮 `-Mode api` / `-Mode aspire` 都会走的主判据，也是票 11 唯一的 200 归属证据。
+
+修法：照 web 腿的三段式原样搬过来——`-not $listenerPid` 单独一支失败，`-not (Test-ProcessDescendsFrom …)` 再一支，其余才 `[ok]`。
+
+### 12.3 A11 仍在
+
+5080 的 aspire 分支没改判据，`dcp.exe` 代理持有 5080 的父链断裂问题（§11.1）照旧。**api 腿修 A12 时不要顺手把 aspire 分支一起改错**——两者根因不同：api 是"取不到证据放过了"，aspire 是"证据取错了对象（代理进程不是 API 进程）"。
+
+### 12.4 票 11 开工门禁（更新）
+
+| 编号 | 缺陷 | 方向 | 状态 |
+| --- | --- | --- | --- |
+| F-03-A10 | web 腿 pid 取不到即 `[ok]` | 该失败却通过 | **已闭环 `398b6e8`** |
+| F-03-A12 | API 腿 pid 取不到即 `[ok]` | 该失败却通过 | **未修**（本轮实测 exit 0） |
+| F-03-A11 | aspire 模式 5080 由 dcp 代理持有 | 该通过却失败 | **未修** |
+
+建议 A12 与 A11 同一批修，并照 §11.4 抽成统一函数，避免第三次漏一支。
