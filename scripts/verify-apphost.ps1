@@ -26,7 +26,9 @@ param(
     [switch]$SkipWeb,
     # 跳过 local.env 并清空连接串：本机用来复现「无实例 → Degraded」这条票面验收。
     # CI 本来就没有 local.env，不加这个开关也是 Degraded。
-    [switch]$NoCredentials
+    [switch]$NoCredentials,
+    # aspire 模式的临时目录根（默认仓库同级的一次性目录）。受限环境下换位置用。
+    [string]$TempRoot
 )
 
 $ErrorActionPreference = "Stop"
@@ -224,13 +226,18 @@ if ($Mode -eq "aspire") {
     # 的完全控制换成只剩 (WO,S)。TEMP 若指向 <repo>/.aspire-tmp，这一刀就落在**仓库根**上，于是
     # DCP 之后每次 CreateLoggingSocket 都 SetSecurityInfo 被拒、EnsureDcpHostRunning 等满 120s 超时，
     # 一个资源都不编排；而 Deny ACE 是 (I) 继承，删了 .aspire-tmp 也会随重建回来，得管理员改根目录。
-    # 因此放到仓库的**同级**目录，并按仓库目录名区分，多个 worktree 互不干扰。
-    $repoName = Split-Path -Leaf $repoRoot
-    $tempDir = Join-Path (Split-Path -Parent $repoRoot) ".pzd-aspire-tmp-$repoName"
-    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
-    [Environment]::SetEnvironmentVariable("TEMP", $tempDir, "Process")
-    [Environment]::SetEnvironmentVariable("TMP", $tempDir, "Process")
-    Write-Host "aspire 临时目录（仓库外）：$tempDir" -ForegroundColor DarkGray
+    #
+    # 因此：默认落在仓库**同级**目录，且每次运行用一次性子目录（`run-<时间戳>`），跑完在 finally 里删。
+    # `-TempRoot` 留给受限环境下换位置用。
+    if (-not $TempRoot) {
+        $repoName = Split-Path -Leaf $repoRoot
+        $TempRoot = Join-Path (Split-Path -Parent $repoRoot) ".pzd-aspire-tmp-$repoName"
+    }
+    $aspireTempDir = Join-Path $TempRoot ("run-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+    New-Item -ItemType Directory -Force -Path $aspireTempDir | Out-Null
+    [Environment]::SetEnvironmentVariable("TEMP", $aspireTempDir, "Process")
+    [Environment]::SetEnvironmentVariable("TMP", $aspireTempDir, "Process")
+    Write-Host "aspire 临时目录（仓库外，本次运行专用）：$aspireTempDir" -ForegroundColor DarkGray
 }
 else {
     $target = "src/Pzd.Api/Pzd.Api.csproj"
@@ -591,6 +598,17 @@ finally {
     # 那种情况不能等、也不该报「清理未释放」，否则会把别人的占用记成我们的清理问题。
     if ($startedSomething) {
         [void](Wait-PortReleased -Ports @(([uri]$ApiBaseUrl).Port, 5199))
+    }
+
+    # Aspire 的临时目录收尾：**清理失败只 warn**，不能把「目录没删掉」记成验收失败——
+    # 应用结论已经出完了，临时文件残留不该改判定。
+    if ($aspireTempDir -and (Test-Path $aspireTempDir)) {
+        try {
+            Remove-Item -LiteralPath $aspireTempDir -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host "[warn] aspire 临时目录未能删除（不影响结论）：$aspireTempDir" -ForegroundColor Yellow
+        }
     }
 }
 
