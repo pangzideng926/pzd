@@ -125,8 +125,9 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $runId = [guid]::NewGuid().ToString("N")
 [Environment]::SetEnvironmentVariable("PZD_RUN_ID", $runId, "Process")
 
-# 本次运行的起点时间。aspire 模式下前端进程不属于本次树（DCP reparent），
-# 用「监听进程启动时间晚于此刻」排除同目录的上一轮残留实例（老何要求）。
+# 本次运行的起点时间，只用于排障对时（日志、报告里对齐时间线）。
+# 曾经用它 + 命令行路径判 aspire web 腿的归属，已被 X-Pzd-Run-Id 取代：
+# 同目录的上一轮残留实例路径完全一致、时间判据也只是概率性排除，都不满足老何的口径。
 $runStartedAt = Get-Date
 Write-Host "本次运行开始于 $runStartedAt" -ForegroundColor DarkGray
 
@@ -141,6 +142,31 @@ function Stop-ProcessTree {
         ForEach-Object { Stop-ProcessTree -ProcessId $_.ProcessId }
 
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Wait-PortReleased {
+    # 老登 F-03-A6：Stop-ProcessTree 只递归 kill、**不等端口释放**。Windows 上监听套接字
+    # 不随进程退出立刻消失，所以「杀完马上再跑」必然撞 Assert-PortFree → exit 2。
+    # 这是脚本结构决定的必现行为，不是偶发，所以由脚本自己等到端口真正空出来，
+    # 不靠调用方之间留间隔。
+    param([int[]]$Ports, [int]$TimeoutSeconds = 15)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+        $busy = @($Ports | Where-Object { Get-PortListenerPid $_ })
+        if ($busy.Count -eq 0) { return $true }
+        Start-Sleep -Milliseconds 250
+    }
+
+    # 变量不能叫 $pid：$PID 是 PowerShell 的只读自动变量。
+    $left = @($Ports | ForEach-Object {
+            $listenerPid = Get-PortListenerPid $_
+            if ($listenerPid) { "$_ (pid $listenerPid)" }
+        })
+
+    Write-Host "[warn] 退出清理未在 $TimeoutSeconds 秒内释放端口：$($left -join '、')。紧接着的下一轮可能撞预检 exit 2。" -ForegroundColor Yellow
+    return $false
 }
 
 function Remove-StaleDcpState {
@@ -520,9 +546,16 @@ catch {
     }
 }
 finally {
+    $startedSomething = $hostProcess -or $webProcess
+
     if ($hostProcess) { Stop-ProcessTree -ProcessId $hostProcess.Id }
     if ($webProcess) { Stop-ProcessTree -ProcessId $webProcess.Id }
-    Start-Sleep -Milliseconds 500
+
+    # 预检就把本轮挡下时（exit 2）没有我们自己的进程，端口上的监听者是别人的：
+    # 那种情况不能等、也不该报「清理未释放」，否则会把别人的占用记成我们的清理问题。
+    if ($startedSomething) {
+        [void](Wait-PortReleased -Ports @(([uri]$ApiBaseUrl).Port, 5199))
+    }
 }
 
 if ($failures.Count -gt 0) {
