@@ -1,0 +1,40 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# Rider / VS
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+
+# Test results
+TestResults/
+*.trx
+coverage/
+*.coverage
+
+# Node
+node_modules/
+.turbo/
+.pnpm-store/
+dist/
+build/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config / secrets
+*.local.json
+appsettings.local.json
+.env
+.env.*
+!.env.example
+
+# DSH tooling artifacts
+.dsh-ops/

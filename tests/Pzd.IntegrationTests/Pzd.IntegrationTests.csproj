@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Pzd.Api/Pzd.Api.csproj" />
+    <ProjectReference Include="../../src/Pzd.Infrastructure/Pzd.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

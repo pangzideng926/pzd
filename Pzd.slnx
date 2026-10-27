@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pzd.SharedKernel/Pzd.SharedKernel.csproj" />
+    <Project Path="src/Pzd.Infrastructure/Pzd.Infrastructure.csproj" />
+    <Project Path="src/Pzd.Api/Pzd.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj" />
+    <Project Path="tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj" />
+    <Project Path="tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj" />
+    <Project Path="tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj" />
+    <Project Path="tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj" />
+  </Folder>
+</Solution>
