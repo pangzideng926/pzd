@@ -1,3 +1,4 @@
+using Pzd.Api.Errors;
 using Pzd.Infrastructure;
 using Pzd.Infrastructure.Tenancy;
 using Pzd.SharedKernel.Abstractions;
@@ -7,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
+builder.Services.AddPzdProblemDetails();
 
 // 启动期加载并校验租户配置：非法配置直接启动失败，不等首个请求（F-05-1）。
 var tenants = TenantConfiguration.Load(builder.Configuration);
@@ -29,6 +31,8 @@ builder.Services.AddScoped<ITenantDbProvider, TenantDbProvider>();
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
+app.UsePzdStatusCodePages();
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();

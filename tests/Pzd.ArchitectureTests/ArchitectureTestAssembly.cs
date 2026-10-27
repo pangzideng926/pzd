@@ -16,3 +16,11 @@ public sealed class FakeInfrastructureDependency
 {
     public Pzd.Infrastructure.Tenancy.TenantInfo? Tenant { get; set; }
 }
+
+/// <summary>
+/// 反向用例专用类型：故意让 Domain 命名空间依赖 <c>Pzd.Api</c>（票 06 的 F7 补测条件）。
+/// </summary>
+public sealed class FakeApiDependency
+{
+    public Pzd.Api.Errors.GlobalExceptionHandler? Handler { get; set; }
+}

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Pzd.Api.UnitTests;
 using Pzd.Infrastructure.Tenancy;
 using Pzd.SharedKernel.Abstractions;
 
@@ -30,7 +32,13 @@ internal sealed class PzdApiFactory : WebApplicationFactory<Program>
 
     public RecordingTenantStore TenantStore { get; }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        // 生产环境语义：异常走 IExceptionHandler（开发环境的 DeveloperExceptionPage 会先拦截）。
+        builder.UseEnvironment("Production");
+
+        // 沙箱里 EventLog 写入会被拒绝，测试宿主清空日志提供方，避免异常路径被日志失败打断。
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<ITenantStore>();
@@ -44,7 +52,10 @@ internal sealed class PzdApiFactory : WebApplicationFactory<Program>
                 .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
                     TestAuthenticationHandler.SchemeName,
                     _ => { });
+
+            services.AddSingleton<IStartupFilter, TestEndpointsStartupFilter>();
         });
+    }
 
     internal sealed class FixedClock : IClock
     {
