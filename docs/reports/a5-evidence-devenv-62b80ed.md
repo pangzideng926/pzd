@@ -9,10 +9,16 @@
 | 组 | 树 | pin | `DOTNET_ENVIRONMENT` | runId | 时间 |
 | --- | --- | --- | --- | --- | --- |
 | A（对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **已删**（`:85` 整行移除/注释掉） | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07 |
-| B（实验）· **主证据** | `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本） | **已删**（`grep -c` 命中 **0**，现场实测） | **`Development`** | `cf7b5542b12142d18c5349496d720292` | 17:48 |
-| B′（同格，**不作主证据**） | `C:/tmp/pzd-fin`（李总） | **现在命中 1**，跑的那一刻是否真删了**无法复核** | `Development` | `968c1848dbe84ebd89294b33662749d8` | 17:48 |
+| B（实验）· **主证据（按归属）** | `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本；**代码 `62b80ed` + 脚本 `ce094d7d…`（+34/−7）**） | **已删**（整行移除；活代码 pin **0**） | **`Development`** | `cf7b5542b12142d18c5349496d720292` | 17:48 |
+| B′（同格，**第二份独立运行**） | `C:/tmp/pzd-fin`（李总） | **也是 un-pin**：`:85` 是注释态，活代码 pin **0**（`mtime 01:47:53.771`、sha256 `f1ea6ffc…`，比探针首行早 18 秒） | `Development` | `968c1848dbe84ebd89294b33662749d8` | 17:48 |
 
-> **主证据为什么只认 `pzd-envtest`（老登，2026-10-28）**：`pzd-fin` 现在 `pin_hits=1`，说明这棵树在 17:48 之后又被改回去过；于是「跑的时候确实删了 pin」已经**不可复核**——探针只能证明当时读到 `development`，证不了当时树是 un-pin。**只有 `pzd-envtest`（实测 `pin_hits=0`）能当主证据。** 顺带一个陷阱（旺总）：`grep -c 'WithEnvironment("NODE_ENV"'` **分不出「活代码」和「被注释掉的代码」**，判 pin 到底生效没有，得看那行的**原文**，别只看计数。
+> **两棵树都是真 un-pin，两条运行各自成立、互不依赖（2026-10-28 定稿，中间经过一次撤回）**：
+>
+> - 一度以为 `pzd-fin` 现在「命中 1」= 带 pin，据此把李总那轮降为参照。**这个判断错了，已撤回**：那个「1」命中的是**注释行** `// web = web.WithEnvironment("NODE_ENV", "development");`。
+> - **正确判据（旺总给，已固定）**：`grep -c 'WithEnvironment("NODE_ENV"'` **作废**——它分不出活代码和被注释的代码，正好会把有无 pin 判反。改用**活代码行** `grep -n '^\s*web = web\.WithEnvironment("NODE_ENV"'`，再配**当轮 diff/启动记录**和 **runId**，三样齐才算「这棵树的证词」。
+> - 按新判据复核：`pzd-envtest` = 整行已删、活代码 pin **0**；`pzd-fin:85` = 注释态、活代码 pin **0**。**两棵都是 un-pin**，李总那轮（`968c1848…`）成立，老登已书面撤回降档。
+> - **引主证据按「归属」记、不按「强度」记**（老登/李总/张一一一致）：主证据引 `pzd-envtest` 是因为**那是张一一的树、他的 runId**，不是因为另一条弱。
+> - **`.bak` 别写成「两棵树里都有」**：两棵树内 `find` 都找不到 `Program.cs.orig.bak`；李总那份备份放在**树外** `artifacts/a5-evidence/devenv-62b80ed/Program.cs.orig.bak`。
 
 ## 2. 结果并排
 
