@@ -100,12 +100,23 @@
 
 ## 5. 环境约束（踩过的坑，别再踩）
 
-- **测试运行方式**：`E:\pzd` 是 Low Mandatory Level，`dotnet test` 会因 MTP 命名管道握手失败而报错（不是测试失败）。工作区内用 `dotnet run --project tests/<工程>/<工程>.csproj`；普通目录/CI 用 `dotnet test Pzd.slnx`。
+- **测试运行方式**：`E:\pzd` 当前是 Low Mandatory Level（**注意：这个标签是下面那条 ACL 污染的产物，不是「环境天生如此」**），`dotnet test` 会因 MTP 命名管道握手失败而报错（不是测试失败）。工作区内用 `dotnet run --project tests/<工程>/<工程>.csproj`；普通目录/CI 用 `dotnet test Pzd.slnx`。**ACL 修好后应重验一次 `dotnet test` 是否恢复**——若恢复，这条就只是污染期现象，别长期当成规矩。
+- **主仓 aspire 跑不起来＝仓库根目录被 Aspire 加固污染（自伤，不是环境天生不行）**：`scripts/verify-apphost.ps1` `:221` 把 `TEMP`/`TMP` 指到**仓库内**的 `E:\pzd\.aspire-tmp`，Aspire 的 `SocketPermissionHelper` 给「临时目录」做加固时**把 ACL 加到了仓库根上**。实测 `icacls E:\pzd`（2026-10-27 23:5x）：
+
+  ```
+  Everyone:(CI)(DENY)(DC)                         ← 继承来的 Deny
+  S-1-4-679037864-1046299354:(OI)(CI)(W,D,DC)     ← AppContainer SID
+  SJ\q1887:(WO,S)                                 ← 我的完全控制被换成只剩「改所有者+同步」
+  Mandatory Label\Low Mandatory Level:(OI)(CI)(NW) ← 整个仓库被打低完整性标签
+  ```
+
+  对比能跑通的副本（`E:\pzd-webcheck`）：`Authenticated Users:(I)(M)`、**无 Deny、无低完整性标签**。所以症状链是：DCP 想在仓库下建日志套接字 → `SetSecurityInfo` 被拒（`UnauthorizedAccessException`）→ 两分钟 Polly 超时、资源一个都没创建。**删 `.aspire-tmp` 修不好**：那两条受限 ACE 是 `(I)` 继承自根目录，重建后原样回来（张一一实测过这一点，别重复踩）。
+- **修 ACL 要用户点头**：改的是共享仓库权限，且属于「改完必须复验」的操作。两条路——① 用 DSH 自带的 ACL 修复脚本（只对 `E:\pzd` 补回 `q1887` 完全控制，不动 Deny、不递归改子项、逐条打印回滚命令）；② 用户/管理员手工恢复继承并去掉低完整性标签。**在修好之前，主仓只能用 `-Mode api`（不需要 DCP）；要跑 aspire 全链路就开干净 worktree**（李总那次 `EXIT=0` 就是这么来的）。
+- **修好后应顺手改脚本**：`:221` 的 `TEMP` 不要再指向仓库内，改到仓库**同级**目录（如 `E:\pzd-aspire-tmp`），否则下一次加固还会给仓库根打标签——这是同一类自伤的唯一根治点（属于票 11 脚本改动，改前先在群里说）。
 - **干净副本验证**：`git archive` 出来的目录没有 `.git`，MinVer 会因 `MINVER1001`（不是 Git 仓库）报错导致 `-warnaserror` 构建失败，但测试仍可跑。要验证 build 0/0，用 `git worktree add --detach` 而不是 `git archive`。
 - **aspire 的启动方式决定成败（本机实测）**：从 **bash 工具**启动 AppHost 会立刻失败——默认 `%TEMP%` 下 `Directory.CreateTempSubdirectoryCore` → `Dcp.Locations.GetOrCreateDcpSessionDir` 抛 `System.UnauthorizedAccessException: Access to the path 'C:\Users\…\Temp\aspire-dcp<rand>.<rand>' is denied.`，外层就是 `Hosting failed to start`。换成**从 pwsh 启动**、并让 `TEMP`/`TMP` 都指向仓库内临时目录（`scripts/verify-apphost.ps1` `:221` 已这么做）后，DCP 才真的起来（`Starting DCP with arguments: start-apiserver --monitor … --detach --kubeconfig …`）。**别把「起不来」当成代码缺陷**，先看是谁在跑、用哪个 shell 跑的。
 - **DCP 启动成功 ≠ 编排成功（这才是大多数「卡住」的真因）**：DCP 起来之后仍可能死在 `CreateDcpObjectsAsync` → `KubernetesService.EnsureKubernetesAsync` 的 **Polly 两分钟超时**（`TimeoutRejectedException: The operation didn't complete within the allowed timeout of '00:02:00'`，最终 `AggregateException` 冒到 `Program.Main` 的 `app.Run()`）。典型现场：`state=(unknown)`、**一条资源事件都没有**、`环境变量共 0 项`——因为**资源根本没被创建**，不是事件被吞、也不是环境变量没传。证据：[wz-aspire2.log](../../artifacts/wz-aspire2.log)（57KB，含完整调用栈）。所以「DCP 日志里什么都没有」有两种完全不同的成因：① web 崩在监听前（A5，旧形态 `Running` 后立刻 `Finished exitCode=1`）；② 编排层压根没走到资源创建（本节这条）。
 - **`[pzd-diag] env` 出现 `0 项` 时先分两种成因再下结论**：正常启动中 `(unknown)`/`Starting`/`Waiting` 阶段本来就是 0 项（实测 5 次 0 项、`Running` 后才 103 项）——这是**时序没到**；而如果整轮日志里状态始终 `(unknown)`、没有任何迁移、最后以 2 分钟 Polly 超时收尾，那是**资源没创建**。两种都会打「0 项」，别用同一个结论套。
-- **`.aspire-tmp` 不是「修一次就永远好」**：张一一清过一次（`rm -rf .aspire-tmp` 成功——之前删不掉是因为子项被 MSBuild 持久进程持着，不是目录权限本身），但**每次 aspire 运行都会重建**，而且旧轮次留下的受限 ACE（`Deny Everyone DeleteSubdirectoriesAndFiles` + AppContainer SID）会让下一次的 `SetSecurityInfo` 报 `UnauthorizedAccessException`。当前进程 `Elevated=False`、无 `SeSecurityPrivilege`，改不动别人留下的 Deny；遇到就先删目录重来，删不掉再找人清。**这条不要记成 A5 或脚本缺陷**。
 - **探活用过 HEAD 就必须只看 GET 的状态码**：`entry.server.tsx` 的 `:57` 在渲染**之前**就为 HEAD 短路返回（`return new Response(null, { status: responseStatusCode })`），那时 `responseStatusCode` 还是初始 `200`——所以**HEAD 恒 200，哪怕渲染会失败**。不严谨的探活（先 `curl -sSI` 看 200 就以为好了）会直接读出假绿；脚本里没有 HEAD 用法，判据都走 GET。
 - **版本查询**：必须 `-t:Build`，否则得 `1.0.0`；期望值以 tag 为基准，不要硬编码 `0.1.0`。
 - **MySQL 时区**：`@@time_zone=SYSTEM`（东八区），不是 UTC。`MySqlConnector 2.6.2` 不支持 `ServerTimeZone` / `ConnectionTimeZone`（未知关键字直接抛 `ArgumentException`），`DateTimeKind=Utc` 也不改会话时区；正确做法是**每次取连接后** `SET time_zone = '+00:00'` 并断言 `@@session.time_zone`（连接池重置会话，不能只在 fixture 里 SET 一次），或在查询里显式 `CONVERT_TZ`。禁止「写 `UtcNow` 读回相等」这种吃服务器默认值的断言。
