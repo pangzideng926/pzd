@@ -100,6 +100,11 @@ _ = Task.Run(async () =>
 
     try
     {
+        // 先打一行「订阅已建立」：这样「零输出」能立刻分成两类——连这行都没有说明 AppHost
+        // 根本没走到订阅点（多半死在 app.Run() 的启动阶段），有这行却没有资源事件，
+        // 才是「资源没被创建」或「事件没来」。
+        Console.WriteLine($"[pzd-diag] 已订阅资源状态流：{string.Join(", ", watched)}");
+
         await foreach (var resourceEvent in notifications.WatchAsync())
         {
             var name = resourceEvent.Resource.Name;
@@ -132,6 +137,12 @@ _ = Task.Run(async () =>
     catch (OperationCanceledException)
     {
         // 宿主退出：正常收尾，不打印噪声。
+    }
+    catch (Exception exception)
+    {
+        // 订阅自身抛错如果被静默吞掉，「一行都没有」就会和「资源真的没创建」混成同一个现象
+        // （雨哥 2026-10-27 指出）。这里必须留下痕迹，否则下一个人还要在零输出上卡一次。
+        Console.WriteLine($"[pzd-diag] 订阅中断：{exception.GetType().Name}: {exception.Message}");
     }
 });
 
