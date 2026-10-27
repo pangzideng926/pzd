@@ -40,7 +40,7 @@
 - **票面 F-07-4（已修，`0c29633`）**：规则从匹配字面量 `".GetCurrentConnectionScopeAsync("` 改为匹配**标识符** `GetCurrentConnectionScopeAsync`——容忍任意空白、不要求括号（方法组引用同样算）；`IsBackgroundPath` 并入 `Jobs/**` 与 `*Job.cs`；三条反向用例拆成独立 Fact，各断言**恰好 1 条违规**（断行/空格、方法组、`Jobs/` 路径）。旺总用三处真实源码探针（非合成源码）各验 1 红后删除探针。**误报说明**：改标识符级后，后台文件里 `nameof(...)`、XML doc `<see cref=...>` 提及也会报——按「宁可误报注释，也不漏」的口径接受。
 - **票面 F-07-5（已修，`7f699c5`；老登报告记作 F-07-10/11）**：新增 `OutboxOptions`（配置节 `Outbox`、键 `MaxAttempts`、默认值只在 `OutboxOptions.DefaultMaxAttempts` 一处），启动期读取并校验，非法值（`0`/`-1`/`abc`）直接抛；`OutboxDispatcher` 的 `MaxAttempts` 常量已删除，判断改走 `_options.MaxAttempts`；`RejectAsync` 进终态时同时写 `RejectionReason` 与 `LastError`。用例：注入 2 验证「第 2 次失败即拒」、上限 1 验证「毒消息不饿死同批后面的健康消息」、反射断言类内无 `MaxAttempts` 常量字段。变异：硬编码回 5 → 2 红、不写 `LastError` → 1 红、加回常量 → 1 红。
 - **测试侧已收口（李总，`7f699c5`）**：build 0 警告 0 错误、185 条全绿；F-07-4 用四条**真实源码**探针验证（空格断行、换行断行、方法组引用、`Jobs/*Job.cs`）各恰好 1 条违规，删探针后架构 30 条回绿、`git status` 无残留；F-07-5 三个变异全抓到（硬编码回 5 → 2 红、终态不写 `LastError` → 2 红、加回 `MaxAttempts` 常量 → 1 红），另有真实启动冒烟（`Outbox__MaxAttempts=0` 启动即抛 `InvalidOperationException`，`=2` 正常 `Now listening`）。明细见 [`test-report-07.md`](test-report-07.md) §9。
-- **终审（老登，`7f699c5`）**：独立 worktree 复跑 build 0/0 与 185 条全绿；F-07-5 四条变异全部被抓（硬编码 `>= 5` → 2 红、不写 `LastError` → 1 红、加回 `MaxAttempts` 常量 → 1 红、`Load` 放宽 `< 1` → `< 0` → 1 红）；「单处来源」成立（判定只用 `_options.MaxAttempts`，默认值只在 `OutboxOptions.DefaultMaxAttempts`，`Program.cs:35` 启动期 `Load`，非法值直接抛）。剩 2 条 low 观察项不阻塞：`appsettings.json:14` 显式写了 `"MaxAttempts": 5`，与 `DefaultMaxAttempts` 是两处字面值（改默认值时容易漏改，建议删键让默认生效或注明为运行时覆盖）；规则边界见 §6.8——**类型系统是唯一强保证，字符串规则拦误用、不防蓄意规避**。
+- **终审（老登，`7f699c5`）**：独立 worktree 复跑 build 0/0 与 185 条全绿；F-07-5 四条变异全部被抓（硬编码 `>= 5` → 2 红、不写 `LastError` → 1 红、加回 `MaxAttempts` 常量 → 1 红、`Load` 放宽 `< 1` → `< 0` → 1 红）；「单处来源」成立（判定只用 `_options.MaxAttempts`，默认值只在 `OutboxOptions.DefaultMaxAttempts`，`Program.cs:35` 启动期 `Load`，非法值直接抛）。剩 2 条 low 观察项不阻塞：`appsettings.json:14` 显式写了 `"MaxAttempts": 5`（与 `DefaultMaxAttempts` 两处字面值）——**已在 `2f48e7d` 删键收口**，见本文件「下一步顺序」第 4 条；规则边界见 §6.8——**类型系统是唯一强保证，字符串规则拦误用、不防蓄意规避**。
 - **明确遗留（不是已解决）**：多处理器部分失败会重放已成功的处理器（老登首轮 F-07-6，消息级幂等 ≠ 处理器级幂等）。要按处理器维度记进度，**与 Outbox 落库同批做**；在那之前契约写「处理器必须幂等」。**本票只用补偿删除，不等于「事务回滚已验证」**，步骤 3 换真实事务并删补偿代码。
 
 ### 票 06 遗留 low（已修，`837117f`）
@@ -74,7 +74,8 @@
 1. **老登 / 李总 / 旺总**：票 **02** 已提交 `aaf077f`（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、`host: "127.0.0.1"` + `port: 5199`），[`test-report-02.md`](test-report-02.md) 已按该 hash 在干净 worktree 定稿。**四条验收全过**（install/build/typecheck/dev 200、构建不污染工作区），但票面 `b761c94` 的「build 无噪音」**未满足**：`--force` 实建后仍有 3 条 `no output files`（`@pzd/api|realtime|ui#build`），修法是给这三个 echo 包各加 `"turbo": { "tasks": { "build": { "outputs": [] } } }`，改完只需复核这一条。老登审计以修完的 hash 为准。
 2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
 3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
-4. **已定收尾小项（不阻塞、不重开票，票面 `f8b886c`）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 要删掉，让「缺键走 `OutboxOptions.DefaultMaxAttempts`」成为唯一路径；删后跑一次 `Pzd.Infrastructure.UnitTests` 确认「缺键回默认 5」用例仍绿即可，**不需要新 hash 终审**。README 已补 `Outbox:MaxAttempts`（缺省 5）。
+4. **收尾小项已做（`2f48e7d`，不重开票）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 已删，缺键走 `OutboxOptions.DefaultMaxAttempts`（=5）成为唯一路径，默认值只剩一处来源；删后 `dotnet build -warnaserror` 0/0、`Pzd.Infrastructure.UnitTests` 86 条全绿，其中 `Max_attempts_defaults_to_five_when_the_key_is_absent` 正守着这条路径。
+5. **别把 `pnpm -w lint` 当质量证据**：票 02 的四个包 lint 全是 echo 占位（`web: no linter yet` 之类），`lint --force` 4/4 只说明脚本存在；真正的 lint 规则随前端外壳在步骤 4 落地，票 11 的一键脚本不要把这条当门禁。
 5. 依赖关系：02 是 03/11 的前置；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
 
 ## 4. 关键文件
