@@ -92,7 +92,7 @@
   - 无法解析且端点要求租户 → 400/403 ProblemDetails（错误码 `Tenant.NotFound`）。
   - `ITenantStore` 校验状态与到期：停用 → 403 `Tenant.Disabled`，过期 → 403 `Tenant.Expired`；每次请求都校验（不缓存「已通过」结论超过请求生命周期）。
 - **免租户豁免（F-05-4）**：`/health/live`、`/health/ready`、`/api/version`（以及后续登录类端点）标记 `AllowAnonymousTenant` metadata，中间件跳过租户解析与状态校验；这些端点无 claim / `X-Tenant` / 子域时返回 200。豁免端点之外，缺租户仍返回 400 `Tenant.NotFound`。**票 03 开工硬前置**，由票 03 / 09 实现。
-- `ITenantDbProvider`：按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、**连接创建只查一次 `ITenantStore`（显式重载为校验状态按次查库）**；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
+- `ITenantDbProvider`：两个入口——请求路径 `GetCurrentConnectionScopeAsync(ct)`（信任 `ITenantContext`）、显式 `GetConnectionScopeAsync(tenantId, ct)`（先校验停用/到期，按次查库）。按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、**连接创建只查一次 `ITenantStore`（显式重载为校验状态按次查库）**；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`；后台路径不得用 `GetCurrentConnectionScopeAsync`（F-05-8）。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
 - `master` 连接始终存在（`ConfigId = "master"`）；租户库表仍保留 `TenantId` 与全局 QueryFilter（纵深防御）。
 
 ### 4.4 异常处理与 Result
@@ -273,7 +273,7 @@
   - 票 05 交付时全仓 90 条全绿（35 + 15 + 30 + 9 + 1）；返工后 **`e593225` 终审通过**，116 条全绿（35 + 16 + 54 + 10 + 1），见 [`review-05.md`](../reports/review-05.md)。票面状态、测试数与「连接创建只查一次；显式重载按次校验查库」措辞已回填。
 - **票 05 终审与跨票前置（2026-10-27，`e593225`）**：
   - **F-05-4**（`/health`、`/api/version` 免租户）→ 已写入 §4.3、票 03（开工硬前置）与票 09；实现为 `AllowAnonymousTenant` metadata，验收要求无租户访问三端点均 200。
-  - **F-05-8**（后台任务取连接）→ 已写入票 07 验收：必须用带状态校验的显式重载 `GetConnectionScopeAsync(tenantId)`，禁止无参裸取；停用/过期租户消息拒绝处理并记录理由。
+  - **F-05-8**（后台任务取连接）→ 已写入票 07 验收：必须用带状态校验的显式重载 `GetConnectionScopeAsync(long tenantId, CancellationToken)`，禁止在后台路径使用请求路径专用的 `GetCurrentConnectionScopeAsync(CancellationToken)`（原无参重载更名，误用编译不过，另由架构规则守护）；停用/过期租户消息拒绝处理并记录理由。
   - 票 05 口径：`Tenants` 为空允许启动但请求 400（不做启动期 fail-fast）；`ExpiresAt = null` 视为永不过期，空字符串为配置错误、启动失败。
 - **票 06 预审与口径决策（2026-10-27，`dee779d`）**：
   - 基线 132 条全绿（35 + 54 + 26 + 16 + 1）；映射主路径、`type` kebab、404/405、生产不泄漏、F7「恰好 3 条」成立，判需修改的点在下面三条。
