@@ -1,6 +1,6 @@
 # PZD 工程底座与横切能力 — 规格（§18 步骤 1–2）
 
-> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01 审计通过、票 04 返工中；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
+> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04 审计通过；新增票 12（F8）；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
 > 上游：[`docs/architecture.md`](../architecture.md)（已确认），本规格只覆盖 §18 步骤 1「工程底座」与步骤 2「横切能力」
 > 票：[`docs/specs/tickets.md`](./tickets.md)
 > 依据方法论：to-spec / to-tickets（Matt Pocock），测试接缝取最高层
@@ -97,6 +97,7 @@
 ### 4.4 异常处理与 Result
 
 - `Result` / `Result<T>` / `Error`（`Code`、`Type`、`Message`、`Metadata`）与 `ErrorType`（Validation、Unauthorized、Forbidden、NotFound、Conflict、BusinessRule、ClientTooOld、TenantUpgrading、Unexpected）位于 SharedKernel。
+- `Error.Metadata` 是**构造时复制的只读快照**（`ReadOnlyDictionary`，`StringComparer.Ordinal`），不直接持有调用方字典；`EmptyMetadata` 不可被强转改写（F8，票 12）。
 - 端点统一 `result.ToHttpResult()`，映射严格按架构 §8.3：400/401/403/404/409/422/426/503；`type` = `https://pzd/errors/{kebab-code}`。
 - 全局 `IExceptionHandler` 链只处理意外异常：500、生产不返回堆栈、`traceId` 取 `Activity.Current?.Id`；`AddProblemDetails(o => o.CustomizeProblemDetails = ...)` 统一补 `traceId`、`code`。
 - FluentValidation 失败在 Application 层转 Validation 类型 Result，`errors` 字典键与前端字段名一致（camelCase）。
@@ -176,7 +177,7 @@
 
 - [ ] **AC1** `pwsh -NoProfile -File scripts/verify.ps1` 在本机（MySQL 8.0.46 / Redis Memurai 可用）退出码 0，并打印 4 段结果：build / architecture tests / unit tests / integration tests（连真实 MySQL 运行；凭据缺失时 Skip 也视为通过）
 - [ ] **AC2** `dotnet build Pzd.slnx -warnaserror` 通过（含 `TreatWarningsAsErrors`），MinVer 版本写入程序集与 `/api/version`；**版本以 git tag 为基准**（tag 提交 `0.1.0`，之后为 `0.1.1-alpha.0.<height>`），不在票/测试里硬编码具体版本值（F6）
-- [ ] **AC3** 架构测试通过，且存在**反向用例**：故意构造的违规类型必须让规则失败（证明规则非空跑）
+- [ ] **AC3** 架构测试通过；证据口径 = **规则③反向用例**（故意构造的 Domain→SqlSugar 违规类型必须让规则失败）+ **规则④单元级反例**（证明允许集非全放行）；① ② 是对真实程序集的直接断言，不声称「四条都有反向用例」（老登 §2.5）
 - [ ] **AC4** 多租户单元测试通过：claim `tid` 优先、匿名 `X-Tenant`/子域、停用 403 `Tenant.Disabled`、过期 403 `Tenant.Expired`、请求间上下文隔离、无上下文取连接报明确错误
 - [ ] **AC5** 异常处理单元测试通过：§8.3 全部状态码映射逐条断言；未知异常 500 不含堆栈且含 `traceId`
 - [ ] **AC6** `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（普通目录等价 `dotnet test`）在**本机 MySQL 可用**时真跑：自动建/清 `pzd_it_a`、`pzd_it_b`，A/B 两库数据互不可见、QueryFilter 生效、停用租户 403 `Tenant.Disabled`；无凭据 / 实例不可达时动态 Skip 且 exit 0（CI 兜底）
@@ -185,6 +186,7 @@
 - [ ] **AC9** Serilog 请求摘要、OTel 注册、审计日志通道、Antiforgery、Data Protection、Quartz **AdoJobStore 落库与重启持久化**、`/health/ready` 真实 Up、`/api/version` 均有对应单测或启动验证（写入票内验证命令与证据）
 - [ ] **AC10** `CLAUDE.md` 落地：命名、分层、错误码、权限码、测试、Conventional Commits 约定
 - [ ] **AC11** 本轮无业务模块、无登录/会话/权限实现（范围守卫，审计确认）
+- [ ] **AC12** `Error.Metadata` 为只读快照（F8）：构造后修改原字典不影响 `Error`，强转写入抛异常；票 12 用例通过
 
 ## 6. 假设（需确认）
 
@@ -202,7 +204,7 @@
 ## 7. Testing Decisions
 
 - **好测试的定义**：只测外部可观察行为（HTTP 状态码/响应体、DI 解析结果、跳过原因），不测私有方法与内部调用次数；每个测试自带 setup，不共享可变状态。
-- **架构测试**（`tests/Pzd.ArchitectureTests`）：NetArchTest 断言 ① SharedKernel 不引用 Infrastructure / Api；② Infrastructure 不引用 Api；③ `*.Domain` 命名空间不引用 `Pzd.Infrastructure`、`Pzd.Api`、`SqlSugar`、`Microsoft.AspNetCore`（F7）；④ 模块间只能引用对方 `.Contracts`，允许集必须包含「其他模块的 `*.Contracts`」（F5），模块为空时允许空集。四条规则抽成共享断言方法，生产测试与反向用例跑同一方法并断言恰好 1 条违规（F1）；模块发现读 `src/Pzd.*/*.csproj` 的 `ProjectReference`，不扫输出目录 DLL（F2）。附 1 条反向用例（测试程序集内构造违规类型，断言规则报出违规）。
+- **架构测试**（`tests/Pzd.ArchitectureTests`）：NetArchTest 断言 ① SharedKernel 不引用 Infrastructure / Api；② Infrastructure 不引用 Api；③ `*.Domain` 命名空间不引用 `Pzd.Infrastructure`、`Pzd.Api`、`SqlSugar`、`Microsoft.AspNetCore`（F7）；④ 模块间只能引用对方 `.Contracts`，允许集必须包含「其他模块的 `*.Contracts`」（F5），模块为空时允许空集。四条规则抽成共享断言方法，生产测试与反向用例跑同一方法并断言恰好 1 条违规（F1）；模块发现读 `src/Pzd.*/*.csproj` 的 `ProjectReference`，不扫输出目录 DLL（F2）。附 1 条反向用例（测试程序集内构造违规类型，断言规则报出违规）。规则③的扫描范围自票 05 起扩展为「底座程序集 + `DiscoverModules()` 结果」，模块 Domain 自动纳入（老登 §2.2）；`*.Contracts` 工程自身暂不受规则④约束，步骤 3 补「Contracts 只能引用 SharedKernel / 其他 Contracts」（老登 §2.3）。F7 的 `Pzd.Infrastructure` / `Pzd.Api` 两条禁依赖断言当前不可证伪，补测条件见票 05 / 06（`FakeInfrastructureDependency` 恰好 2 条违规、`FakeApiDependency` 恰好 3 条）（老登 §2.4）。
   - 风险：NetArchTest.Rules 对 net10.0 的兼容性；若不兼容改用 `TngTech.ArchUnitNET`，验收标准不变。
 - **单元测试**：`Pzd.SharedKernel.UnitTests`（Result/Error/值对象/聚合事件收集）、`Pzd.Infrastructure.UnitTests`（租户上下文、解析策略、TenantDbProvider 连接选择与缓存、UoW 事件分发与 Outbox 写入、审计通道）、`Pzd.Api.UnitTests`（WebApplicationFactory：中间件顺序、ProblemDetails 映射全表、Antiforgery、`/health`、`/api/version`）。
 - **集成测试**：`Pzd.IntegrationTests` 连**本机 MySQL**（Testcontainers 容器方式从主路径移除）；fixture 探测 `SELECT VERSION()` 与 `CREATE DATABASE` 权限，按 §4.12 决定「自动建库 / 用既有库前缀 / 动态 Skip」；真跑时验证 A/B 两库互不可见、QueryFilter 生效、停用租户 403。无凭据或实例不可达时 Skip 且退出码 0；**本机实例可用时必须真跑**，AC1 的集成测试段允许 Skip 仅限兜底场景。
@@ -244,4 +246,10 @@
   - **F7 归属决定**：`Domain → Infrastructure` 规则并入票 04 的规则 ③ 禁止列表（不单开票、不延后到步骤 3）；旺总本轮返工范围 = F1 / F2 / F5 / F4 + F7。
   - 凭据红线见 §4.12；仓库推送到 `github.com/pangzideng926/pzd` 前按 §4.12 做推送安全检查。
   - `docs/reports/` 两份审计/测试报告当前未跟踪，待返工收尾与测试复核后一并提交（提交内容不得含密码或连接串秘密）。
+- **收口记录（2026-10-27，票 01/04 审计通过后）**：
+  - 票 01 / 票 04 审计结论均为**通过**（[`review-01-04-final.md`](../reports/review-01-04-final.md)），票面状态与顶部进度已回填；返工范围 F1/F2/F5/F4/F7 全部经变异复核。
+  - **F8 落票**：新增票 12「`Error.Metadata` 只读快照」（`Error.cs:33`），要求构造时复制 `ReadOnlyDictionary`（Ordinal）并补「构造后改原字典不影响 Error」用例；`EmptyMetadata` 不可强转改写。
+  - **F7 补测条件**：`*.Domain` 禁依赖 `Pzd.Infrastructure` / `Pzd.Api` 当前不可证伪（无公共类型可引用），已写入票 05（`FakeInfrastructureDependency`，恰好 2 条违规）与票 06（`FakeApiDependency`，恰好 3 条违规）。
+  - **规则③范围（老登 §2.2）**：票 05 起改为「底座程序集 + `DiscoverModules()`」，模块 Domain 自动纳入；**`*.Contracts` 自身约束（§2.3）**本轮无 Contracts 工程，留步骤 3 首次出现模块时补。
+  - **票面措辞（老登 §2.5）**：tickets.md 原「四条规则都有反向用例」已改为「规则③反向用例 + 规则④单元级反例」，① ② 明确为对真实程序集的直接断言。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

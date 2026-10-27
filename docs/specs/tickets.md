@@ -1,8 +1,8 @@
 # PZD 底座 — 票（§18 步骤 1–2）
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
-> 状态：执行中（2026-10-27 第二轮）｜共 11 张
-> 进度：01 ✅ 审计通过｜04 🔧 返工中（F1/F2/F5/F4/F7）｜02/03 未开工｜05–10 ready-for-agent
+> 状态：执行中（2026-10-27 第二轮）｜共 12 张
+> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜02/03 未开工｜05–10、12 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -23,7 +23,8 @@
 │  ├─ 05 多租户内核 + 单测 ──┬─ 07 UoW + Outbox + 领域事件
 │  ├─ 06 异常处理 + Result→HTTP ─┘  08 可观测性 + 审计 + 安全横切（←06）
 │  ├─ 09 Quartz + 健康检查 + 版本
-│  └─ 10 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip）
+│  ├─ 10 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip）
+│  └─ 12 Error.Metadata 只读快照（F8）
 ├─ 02 前端 monorepo 骨架
 └─ 03 Aspire 编排与一键启动（引用本机实例，←01,02）
 11 CLAUDE.md + 一键验收脚本（←02,03,05,06,07,08,09,10）
@@ -41,7 +42,8 @@
 | 08 | 可观测性 + 审计 + 安全横切 | 06 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
 | 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` + 启动验证 |
 | 10 | 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip） | 05 | `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` |
-| 11 | CLAUDE.md + 一键验收脚本 | 02,03,05,06,07,08,09,10 | `pwsh -NoProfile -File scripts/verify.ps1` |
+| 11 | CLAUDE.md + 一键验收脚本 | 02,03,05,06,07,08,09,10,12 | `pwsh -NoProfile -File scripts/verify.ps1` |
+| 12 | Error.Metadata 只读快照（F8） | 04 | `dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj` |
 
 ---
 
@@ -61,7 +63,7 @@
 - 测试模板：优先 `dotnet new install xunit.v3.templates` 后 `dotnet new xunit3`；不可用则手写 csproj（验收只看 csproj 里的包与测试执行结果）
 - `docs/specs/tickets.md` 已存在，本票只读
 
-**Status:** ready-for-agent
+**Status:** ✅ 通过（审计：[`review-01-04-final.md`](../reports/review-01-04-final.md) §1，commit `e0ec679`）
 
 - [ ] `git init` 完成，初始提交存在，工作区无未跟踪的 `bin/obj`
 - [ ] `git tag` 含 `v0.1.0`（MinVer 可产出 `0.1.0`）
@@ -155,7 +157,7 @@ pwsh -NoProfile -File scripts/verify-apphost.ps1
 
 # 04: SharedKernel + 架构测试基线
 
-**What to build:** 领域层最小原语可用（Entity / AggregateRoot / ValueObject / DomainEvent / Result / Error），且架构测试能自动拦截分层违规并带反向用例证明规则有效；后续所有模块直接复用。本轮按审计报告 §4 返工：F1 四条规则抽成共享断言方法（生产测试与反向用例跑同一方法，断言恰好 1 条违规）、F2 模块发现改读 `src/Pzd.*/*.csproj` 的 `ProjectReference`、F5 规则④允许集加入「其他模块的 `*.Contracts`」并补正向用例、F7 规则③禁止列表并入 `Pzd.Infrastructure` / `Pzd.Api`、F4 补跨类型同 Id 用例（`Order`/`Invoice` 同 Id 不相等）。**只改测试资产，不动实现**。
+**What to build:** 领域层最小原语可用（Entity / AggregateRoot / ValueObject / DomainEvent / Result / Error），且架构测试能自动拦截分层违规（**规则③有反向用例、规则④有单元级反例**，① ② 是对真实程序集的直接断言）；后续所有模块直接复用。本轮按审计报告 §4 返工：F1 四条规则抽成共享断言方法（生产测试与反向用例跑同一方法，断言恰好 1 条违规）、F2 模块发现改读 `src/Pzd.*/*.csproj` 的 `ProjectReference`、F5 规则④允许集加入「其他模块的 `*.Contracts`」并补正向用例、F7 规则③禁止列表并入 `Pzd.Infrastructure` / `Pzd.Api`、F4 补跨类型同 Id 用例（`Order`/`Invoice` 同 Id 不相等）。**只改测试资产，不动实现**。返工结果已由 [`review-01-04-final.md`](../reports/review-01-04-final.md) 复核通过。
 
 **文件路径**
 
@@ -167,16 +169,16 @@ pwsh -NoProfile -File scripts/verify-apphost.ps1
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent（返工中：F1/F2/F5/F4/F7；测试先行）
+**Status:** ✅ 通过（返工 F1/F2/F5/F4/F7 已复核，审计 [`review-01-04-final.md`](../reports/review-01-04-final.md)；代码 commit `49ee09a`）
 
 - [ ] `Result.Success` / `Result.Failure(Error)` 不可同时成立；`Result<T>` 泛型转换正确
 - [ ] `Error` 按 Code 相等，含 `Type` / `Metadata`；错误码格式 `模块.实体.原因` 有测试
 - [ ] `AggregateRoot` 收集领域事件且 `ClearEvents()` 后为空；`ValueObject` 按值相等；**F4**：不同实体类型同 Id 不相等（`Order`/`Invoice`）
 - [ ] `ITenantContext.TenantId` 为 `long`（与雪花主键一致）；`IClock`、`ICurrentUser` 接口就位
-- [ ] 架构规则 4 条，均通过**共享断言方法**（F1）：① SharedKernel 不引用 Infrastructure/Api；② Infrastructure 不引用 Api；③ `*.Domain` 不引用 `SqlSugar` / `Microsoft.AspNetCore` / `Pzd.Infrastructure` / `Pzd.Api`（F7）；④ 模块间只能引用对方 `*.Contracts`，允许集包含「其他模块的 `*.Contracts`」（F5，模块为空时允许空集）
+- [ ] 架构规则 4 条，均通过**共享断言方法**（F1）；证据口径 = **规则③反向用例 + 规则④单元级反例**，① ② 是对真实程序集的直接断言：① SharedKernel 不引用 Infrastructure/Api；② Infrastructure 不引用 Api；③ `*.Domain` 不引用 `SqlSugar` / `Microsoft.AspNetCore` / `Pzd.Infrastructure` / `Pzd.Api`（F7）；④ 模块间只能引用对方 `*.Contracts`，允许集包含「其他模块的 `*.Contracts`」（F5，模块为空时允许空集）
 - [ ] **F2**：模块发现遍历 `src/Pzd.*/*.csproj` 的 `ProjectReference`，不扫输出目录 DLL；两模块未接测试引用时也能检出违规
 - [ ] **F5 正向用例**：`Pzd.Platform -> Pzd.Identity.Contracts` 判为合法（不误报）；反向用例仍断言恰好 1 条违规
-- [ ] 反向用例：测试程序集内构造 `Pzd.SharedKernel.Domain.Fake` 类型引用 `SqlSugar`，规则必须报违规，证明规则非空跑
+- [ ] **规则③反向用例**：测试程序集内构造 `Pzd.SharedKernel.Domain.Fake` 引用 `SqlSugar`，规则必须报违规且恰好 1 条；**规则④单元级反例**：`Modules_must_not_reference_other_modules_directly` 证明允许集不是全放行；**F7 待补测（票 05/06 触发）**：`Pzd.Infrastructure` / `Pzd.Api` 有公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` / `FakeApiDependency` 并断言恰好 2 / 3 条违规
 - [ ] `dotnet run --project tests/Pzd.SharedKernel.UnitTests/...` 与 `tests/Pzd.ArchitectureTests/...` 均退出码 0，贴出 `TEST EXECUTION SUMMARY`
 - [ ] 若 NetArchTest 对 net10 不兼容，改用 ArchUnitNET 并保持规则语义与反向用例
 
@@ -214,6 +216,8 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
 - [ ] `TenantDbProvider`：不存在连接时加锁双检、只 `AddConnection` 一次、返回 `GetConnectionScope(tid)`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
 - [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
+- [ ] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（老登 §2.2；本票搭好机制，模块出现后自动生效）
+- [ ] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（老登 §2.4）
 - [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）在无实例/无凭据时也绿（单测不依赖数据库）
 
 **验证命令**
@@ -247,6 +251,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] FluentValidation 失败 → 400，`errors` 键为 camelCase，与前端字段名一致
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
+- [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（老登 §2.4）
 
 **验证命令**
 
@@ -412,7 +417,7 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 - `.gitignore`（补齐 `node_modules/`、`.turbo/`、`*.user`、`artifacts/`、**`local.env`**）
 - `docs/specs/foundation.md`（状态改为「已验收（日期）」+ 偏差回填）
 
-**Blocked by:** 02, 03, 05, 06, 07, 08, 09, 10
+**Blocked by:** 02, 03, 05, 06, 07, 08, 09, 10, 12
 
 **Status:** ready-for-agent
 
@@ -430,6 +435,35 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 
 ```powershell
 pwsh -NoProfile -File scripts/verify.ps1
+```
+
+---
+
+# 12: Error.Metadata 只读快照（F8）
+
+**What to build:** `Error.Metadata` 不再直接持有调用方传入的字典（[`Error.cs:33`](../../src/Pzd.SharedKernel/Results/Error.cs#L33)），构造时复制成只读快照（`ReadOnlyDictionary`，`StringComparer.Ordinal`）；构造后修改原字典、或尝试写入 `Metadata`，都不改变已创建的 `Error`；共享的 `EmptyMetadata` 不能被强转改写。只改 SharedKernel 这一处实现 + 用例，不动架构测试。
+
+**文件路径**
+
+- `src/Pzd.SharedKernel/Results/Error.cs`
+- `tests/Pzd.SharedKernel.UnitTests/Results/ErrorTests.cs`（或新增 `ErrorMetadataTests.cs`）
+
+**Blocked by:** 04
+
+**Status:** ready-for-agent（测试先行；来源：老登交接 §2.1）
+
+- [ ] 构造后修改传入字典（增 / 改 / 删键）不影响 `Error.Metadata`
+- [ ] `Error.Metadata` 是只读快照：底层为 `ReadOnlyDictionary<string, object?>`（或等价的只读实现），强转写入抛 `NotSupportedException`
+- [ ] 键比较为 `StringComparer.Ordinal`（大小写不同的键视为不同键）
+- [ ] `EmptyMetadata` 不可被改写（强转写入抛异常），且保持单例、不因空元数据重复分配
+- [ ] 现有 SharedKernel 单测全绿（当前 31 条）+ 新增用例，贴 `=== TEST EXECUTION SUMMARY ===`
+- [ ] 不改变 `Error.Equals` / `Code` / `ErrorType` 语义与错误码校验
+- [ ] 不改架构测试与其它工程
+
+**验证命令**
+
+```powershell
+dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
 ```
 
 ---
