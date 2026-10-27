@@ -2,21 +2,21 @@
 
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
 > 文件名沿用首轮，内容已覆盖票 01–12；下一轮请从本文件第 2、3 节接着走。
-> 状态快照：代码基线 `40f016a`（票 07 返工提交）；HEAD 为最新文档提交。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 35+25+75+30+1 = **166 条全绿**（我于 2026-10-27 在 `40f016a` 的干净 worktree 复跑确认）。
-> 结论：**票 01、04、05、06、12 已收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、[12 审计](review-12.md)）。**票 07 返工已提交 `40f016a`**（F-07-1/F-07-2 + 补偿顺序），李总尚未复测、老登尚未终审，`review-07.md` 仍是首轮「需修改」结论。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
+> 状态快照：代码基线 `837117f`（06 残余 low 修复；07 返工 `40f016a` 之后）；HEAD 为最新文档提交。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 35+25+75+33+1 = **169 条全绿**（我于 2026-10-27 在 `837117f` 的干净 worktree 复跑确认）。
+> 结论：**票 01、04、05、06、12 已收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、[12 审计](review-12.md)）。**票 07 返工已提交 `40f016a`**（F-07-1/F-07-2 + 补偿顺序），06 的 `ToCamelCaseKeys` low 已随 `837117f` 修毕；07 的 F-07-3/F-07-4 收尾在工作区（未提交），李总复测与老登终审在最终 hash 上做。`review-07.md` 仍是首轮「需修改」结论。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
 | 项 | 值 |
 |---|---|
-| 分支 / 代码基线 | `main` / `40f016a`（票 07 返工提交；其后仅文档提交） |
+| 分支 / 代码基线 | `main` / `837117f`（06 low 修复；07 返工 `40f016a`；07 收尾未提交） |
 | tag | `v0.1.0`（MinVer 基准） |
-| 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`；`40f016a` 实测 `.35`） |
+| 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`） |
-| 测试 | 166 条、0 失败（35+25+75+30+1；见 [`test-report-01-04.md`](test-report-01-04.md)、[`test-report-05.md`](test-report-05.md)、[`test-report-06.md`](test-report-06.md) 与 07/12 报告） |
+| 测试 | 169 条、0 失败（35+25+75+33+1；见各票测试报告） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*` |
-| 进行中 | 票 06 low 顺手修（`ProblemDetailsWriter` + `ErrorMappingTests` 工作区未提交）；票 07 待李总复测、老登终审 |
-| 下一张票 | 李总按 `40f016a` 复测 07 → 老登终审 → 之后 08/09/10 |
+| 进行中 | 07 收尾（工作区 `InMemoryOutboxStore`/`OutboxMessage` 等未提交，对应 F-07-3/F-07-4）；最终 hash 以 07 收尾提交为准 |
+| 下一张票 | 李总按 07 最终 hash 复测 → 老登终审 → 之后 08/09/10 |
 
 ## 2. 未完成项 / 待办与已落票约束
 
@@ -27,12 +27,12 @@
 - **F-07-1** 已按「认 API 形状」落地：请求路径专用的无参重载改名为 `GetCurrentConnectionScopeAsync`，`GetConnectionScopeAsync` 只剩带 `long tenantId` 的重载——类型系统本身阻止「裸取」，改名 token 传 `CancellationToken` 也无法编译；架构规则改为「后台路径（`Persistence/**`、`*HostedService.cs`、`*Dispatcher.cs`）不得出现 `.GetCurrentConnectionScopeAsync(`」，反向用例补了改名 token 样本与 6 条 `IsBackgroundPath` Theory。
 - **F-07-2** 已补 `DomainEventDispatcherTests.cs`（133 行）：同一事件实例、按 DI 注册顺序、零处理器视为成功、同步抛出等。
 - 另修正 `UnitOfWork` 的补偿删除顺序。
-- **待办**：李总按 `40f016a` 复测、老登按 hash 终审并更新 [`review-07.md`](review-07.md)（当前仍是首轮「需修改」结论）；F-07-3/F-07-4 是否随本次修，以终审为准。
+- **待办**：07 先完成 F-07-3/F-07-4 收尾并提交；李总按最终 hash 复测、老登按 hash 终审并更新 [`review-07.md`](review-07.md)（当前仍是首轮「需修改」结论）。
 - **落步骤 3**：F-07-5（`TargetInvocationException` 解包）、F-07-6（处理器级幂等）；**本票只用补偿删除，不等于「事务回滚已验证」**，步骤 3 换真实事务并删补偿代码。
 
-### 票 06 遗留 low（旺总，工作区正在改）
+### 票 06 遗留 low（已修，`837117f`）
 
-- `ToCamelCaseKeys` 只认 `IDictionary<string, object?>` / `IDictionary<string, string[]>`，`ReadOnlyDictionary` 等形态会静默不转换；camelCase 撞键会抛。`6922421` 已定口径：**落点在出口、不用全局 `DictionaryKeyPolicy`，改用非泛型 `IDictionary` 重建 + Ordinal 去重（后写覆盖先写）**；补两条用例（只读字典、`List` 值字典）。交接时工作区已有 `ProblemDetailsWriter.cs` + `ErrorMappingTests.cs` 的在途修改，未提交。
+- `ToCamelCaseKeys` 原只认 `IDictionary<string, object?>` / `IDictionary<string, string[]>`，`ReadOnlyDictionary` 等形态静默不转换；camelCase 撞键会抛。`6922421` 定的口径已落地：**落点在出口、不用全局 `DictionaryKeyPolicy`，改非泛型 `IDictionary` 重建 + Ordinal 去重（后写覆盖先写）**，并补了只读字典、`List` 值字典用例。`837117f` 上 169 条全绿。
 
 ### 已落票 · F-05-4（票 03 开工硬前置，`73f02e4`）
 
@@ -58,9 +58,9 @@
 
 ## 3. 下一步顺序
 
-1. **李总**：按 `40f016a` 复测票 07（重点：改名 token / 后台路径规则必须红、`DomainEventDispatcher` 改坏必须红、补偿顺序），随后 08/09/10。
-2. **老登**：按 `40f016a` 终审票 07，并把 [`review-07.md`](review-07.md) 的结论从首轮「需修改」更新为终审；08 起继续按票审计。
-3. **旺总**：先把 06 的 `ToCamelCaseKeys` low 修完提交（按 `6922421` 口径），再开 08/09；票 07 代码在终审前不再动。
+1. **李总**：按 07 最终 hash 复测（重点：改名 token / 后台路径规则必须红、`DomainEventDispatcher` 改坏必须红、补偿顺序），随后 08/09/10。
+2. **老登**：按 07 最终 hash 终审，并把 [`review-07.md`](review-07.md) 的结论从首轮「需修改」更新为终审；08 起继续按票审计。
+3. **旺总**：完成 07 的 F-07-3（零消费者不静默消费）/F-07-4（失败原因 + 最大尝试次数/防饿死）收尾并提交，给出最终 hash；之后开 08/09。
 4. **老何**：规格侧无待办（06 已回填）；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
 5. 票 02（前端）与 03（Aspire）可并行（03 受 F-05-4 约束，已落票）；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
 
