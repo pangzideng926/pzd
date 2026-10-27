@@ -28,11 +28,38 @@ public class DependencyRulesTests
     [InlineData(ArchRules.ApiProject)]
     public void Domain_namespaces_do_not_depend_on_persistence_web_or_infrastructure_libraries(string forbiddenDependency)
     {
-        var result = ArchRules.DomainDependencyViolations(ArchRules.ProductAssemblies, forbiddenDependency);
+        var result = ArchRules.DomainDependencyViolations(
+            ArchRules.DomainScanAssemblies(RepositoryRoot),
+            forbiddenDependency);
 
         Assert.True(
             result.IsSuccessful,
             "违规类型：" + string.Join(", ", ArchRules.FailingTypeNames(result)));
+    }
+
+    [Fact]
+    public void Domain_scan_covers_base_assemblies_and_fails_loudly_for_unloadable_modules()
+    {
+        var scan = ArchRules.DomainScanAssemblies(RepositoryRoot);
+
+        Assert.Contains(scan, assembly => assembly.GetName().Name == "Pzd.SharedKernel");
+        Assert.Contains(scan, assembly => assembly.GetName().Name == "Pzd.Infrastructure");
+        Assert.Contains(scan, assembly => assembly.GetName().Name == "Pzd.Api");
+
+        var fixtureRoot = CreateTemporaryRepositoryRoot(
+            ("src/Pzd.Platform/Pzd.Platform.csproj", "<Project />"));
+
+        try
+        {
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => ArchRules.DomainScanAssemblies(fixtureRoot));
+
+            Assert.Contains("Pzd.Platform", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixtureRoot, recursive: true);
+        }
     }
 
     [Fact]

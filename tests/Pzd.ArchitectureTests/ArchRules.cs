@@ -41,16 +41,34 @@ internal static class ArchRules
             .ToArray();
 
     /// <summary>
-    /// 规则③：Domain 命名空间不得依赖持久化 / Web 库。
-    /// 传入程序集集合，生产用例传底座程序集，反向用例把违规的测试程序集一起传进来。
+    /// 规则③：Domain 命名空间不得依赖持久化 / Web 库 / 其他分层工程。
+    /// 传入程序集集合与禁止项；生产用例传 <see cref="DomainScanAssemblies"/>，反向用例把违规的测试程序集一起传进来。
     /// </summary>
-    internal static TestResult DomainDependencyViolations(IEnumerable<Assembly> assemblies, string forbiddenDependency) =>
+    internal static TestResult DomainDependencyViolations(
+        IEnumerable<Assembly> assemblies,
+        params string[] forbiddenDependencies) =>
         Types.InAssemblies(assemblies)
             .That()
             .ResideInNamespaceEndingWith(".Domain")
             .Should()
-            .NotHaveDependencyOn(forbiddenDependency)
+            .NotHaveDependencyOnAny(forbiddenDependencies)
             .GetResult();
+
+    /// <summary>
+    /// 规则③的扫描范围：底座程序集 + 源树里发现的全部模块程序集（老登 §2.2）。
+    /// 模块程序集不可加载时直接失败并提示接引用，不允许静默漏检。
+    /// </summary>
+    internal static IReadOnlyCollection<Assembly> DomainScanAssemblies(string repositoryRoot)
+    {
+        var assemblies = new List<Assembly>(ProductAssemblies);
+
+        foreach (var module in DiscoverModules(repositoryRoot))
+        {
+            assemblies.Add(LoadModuleAssembly(module.Name));
+        }
+
+        return assemblies;
+    }
 
     internal static IReadOnlyCollection<string> FailingTypeNames(TestResult result) =>
         result.FailingTypeNames ?? [];
@@ -124,6 +142,21 @@ internal static class ArchRules
         || string.Equals(referencedProjectName, InfrastructureProject, StringComparison.Ordinal)
         || string.Equals(referencedProjectName, moduleName, StringComparison.Ordinal)
         || referencedProjectName.EndsWith(ContractsSuffix, StringComparison.Ordinal);
+
+    private static Assembly LoadModuleAssembly(string moduleName)
+    {
+        try
+        {
+            return Assembly.Load(moduleName);
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or FileLoadException)
+        {
+            throw new InvalidOperationException(
+                $"模块工程 {moduleName} 存在但其程序集不可加载：请把 {moduleName} 的 ProjectReference 加进 "
+                + "Pzd.ArchitectureTests（或先构建解决方案），否则规则③会漏检该模块。",
+                exception);
+        }
+    }
 
     private static bool IsCoreProject(string projectName) => projectName is
         SharedKernelProject or InfrastructureProject or ApiProject or AppHostProject;

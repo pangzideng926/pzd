@@ -5,6 +5,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SqlSugarCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pzd.Infrastructure.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../Pzd.SharedKernel/Pzd.SharedKernel.csproj" />
   </ItemGroup>
 
