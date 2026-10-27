@@ -1,9 +1,16 @@
 # PZD 底座 — 票（§18 步骤 1–2）
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
-> 状态：待确认（2026-10-27）｜共 11 张｜先做无阻塞的 01、04，02/03 可并行
+> 状态：执行中（2026-10-27）｜共 11 张｜先做无阻塞的 01、04，02/03 可并行
+> 进度：01 ✅ 已交付（`e0ec679`，待测）｜04 ✅ 已交付（`50ac4ec`，待测）｜其余 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
+
+> **环境适配（2026-10-27 实测，票 01/04 回填）**
+> ① 测试运行器改为 `xunit.v3.mtp-v2`（Microsoft.Testing.Platform），`global.json` 含 `"test": { "runner": "Microsoft.Testing.Platform" }`，测试工程统一在 `tests/Directory.Build.props` 配置，不再引用 `Microsoft.NET.Test.Sdk`（xUnit v3 + VSTest 在 .NET 10 SDK 已不兼容）。
+> ② `E:\pzd` 被标了 Low Mandatory Level，MTP `dotnet test` 的命名管道握手失败（报 handshake failure，非测试失败）：**工作区内**用 `dotnet run --project tests/<工程>/<工程>.csproj`（同一批测试、同一退出码）；普通目录 / CI 用 `dotnet test Pzd.slnx` 等价（`E:\pzd-copy` 实测 39 passed、退出码 0）。
+> ③ 版本号查询必须带 Build target：`dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version` → `0.1.0`；不加 `-t:Build` 只得 MSBuild 求值默认值 `1.0.0`。
+> 下文各票里的 `dotnet test` 命令，在工作区内一律按 ② 替换为等价 `dotnet run --project` 形式；这不降低验收标准。
 
 ## 依赖图
 
@@ -24,13 +31,13 @@
 | 01 | 仓库与 .NET 骨架 | 无 | `dotnet build Pzd.slnx -warnaserror` |
 | 02 | 前端 monorepo 骨架 | 01 | `pnpm install --frozen-lockfile && pnpm -w build` |
 | 03 | Aspire 编排与一键启动 | 01, 02 | `pwsh -NoProfile -File scripts/verify-apphost.ps1` |
-| 04 | SharedKernel + 架构测试基线 | 01 | `dotnet test tests/Pzd.ArchitectureTests/...` |
-| 05 | 多租户内核 + 单测 | 04 | `dotnet test tests/Pzd.Infrastructure.UnitTests/...` |
-| 06 | 异常处理 + Result→HTTP | 04 | `dotnet test tests/Pzd.Api.UnitTests/...` |
-| 07 | UoW + Outbox + 领域事件 | 05, 06 | `dotnet test tests/Pzd.Infrastructure.UnitTests/...` |
-| 08 | 可观测性 + 审计 + 安全横切 | 06 | `dotnet test tests/Pzd.Api.UnitTests/...` |
-| 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet test tests/Pzd.Api.UnitTests/...` |
-| 10 | Testcontainers 跳过 + 租户隔离集成测试 | 05 | `dotnet test tests/Pzd.IntegrationTests/...` |
+| 04 | SharedKernel + 架构测试基线 | 01 | `dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj` |
+| 05 | 多租户内核 + 单测 | 04 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
+| 06 | 异常处理 + Result→HTTP | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
+| 07 | UoW + Outbox + 领域事件 | 05, 06 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
+| 08 | 可观测性 + 审计 + 安全横切 | 06 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
+| 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
+| 10 | Testcontainers 跳过 + 租户隔离集成测试 | 05 | `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` |
 | 11 | CLAUDE.md + 一键验收脚本 | 02,03,05,06,07,08,09,10 | `pwsh -NoProfile -File scripts/verify.ps1` |
 
 ---
@@ -41,13 +48,14 @@
 
 **文件路径**
 
-- `.gitignore`、`.editorconfig`、`global.json`（锁 `10.0.4xx`）、`Directory.Build.props`（Nullable、ImplicitUsings、TreatWarningsAsErrors、MinVer）、`Directory.Packages.props`（NuGet 中央包管理）
+- `.gitignore`、`.editorconfig`、`global.json`（锁 `10.0.4xx`，含 `"test": { "runner": "Microsoft.Testing.Platform" }`）、`Directory.Build.props`（Nullable、ImplicitUsings、TreatWarningsAsErrors、MinVer）、`Directory.Packages.props`（NuGet 中央包管理）、`NuGet.config`（`<clear />` + `packageSourceMapping`，规避 CPM 的 NU1507 并保证 restore 可复现）
 - `Pzd.slnx`（解决方案文件夹 `src` / `tests`）
 - `src/Pzd.SharedKernel/Pzd.SharedKernel.csproj`（classlib，零依赖）
 - `src/Pzd.Infrastructure/Pzd.Infrastructure.csproj`（引用 SharedKernel）
 - `src/Pzd.Api/Pzd.Api.csproj`（Microsoft.NET.Sdk.Web，引用 Infrastructure）
-- `tests/Pzd.ArchitectureTests/`、`tests/Pzd.SharedKernel.UnitTests/`、`tests/Pzd.Infrastructure.UnitTests/`、`tests/Pzd.Api.UnitTests/`、`tests/Pzd.IntegrationTests/`（各含 `*.csproj` + 1 个 smoke test；xUnit v3 + `Microsoft.NET.Test.Sdk`）
-- 测试模板：优先 `dotnet new install xunit.v3.templates` 后 `dotnet new xunit3`；不可用则手写 csproj（验收只看 csproj 里的包与 `dotnet test` 结果）
+- `tests/Directory.Build.props`（统一测试工程配置：`IsTestProject`、`OutputType=Exe`、`TestingPlatformDotnetTestSupport`、`xunit.v3.mtp-v2`）
+- `tests/Pzd.ArchitectureTests/`、`tests/Pzd.SharedKernel.UnitTests/`、`tests/Pzd.Infrastructure.UnitTests/`、`tests/Pzd.Api.UnitTests/`、`tests/Pzd.IntegrationTests/`（各含 `*.csproj` + 1 个 smoke test；**`xunit.v3.mtp-v2`，不引用 `Microsoft.NET.Test.Sdk`**）
+- 测试模板：优先 `dotnet new install xunit.v3.templates` 后 `dotnet new xunit3`；不可用则手写 csproj（验收只看 csproj 里的包与测试执行结果）
 - `docs/specs/tickets.md` 已存在，本票只读
 
 **Status:** ready-for-agent
@@ -55,8 +63,8 @@
 - [ ] `git init` 完成，初始提交存在，工作区无未跟踪的 `bin/obj`
 - [ ] `git tag` 含 `v0.1.0`（MinVer 可产出 `0.1.0`）
 - [ ] `dotnet build Pzd.slnx -warnaserror` 退出码 0，无警告
-- [ ] `dotnet test Pzd.slnx` 退出码 0（5 个 smoke test 全绿）
-- [ ] `dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -getProperty:Version` 输出 `0.1.0`
+- [ ] 5 个测试工程各自 `dotnet run --project tests/<工程>/<工程>.csproj` 退出码 0（5 个 smoke test 全绿）；普通目录 `dotnet test Pzd.slnx` 等价通过（工作区 Low IL 限制见顶部环境适配 ②）
+- [ ] `dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version` 输出 `0.1.0`（必须带 `-t:Build`，否则得 `1.0.0`）
 - [ ] 所有 NuGet 版本只出现在 `Directory.Packages.props`，csproj 用 `Version` 省略写法
 - [ ] 本票不含 AppHost / 前端 / 任何业务类型
 
@@ -64,8 +72,12 @@
 
 ```powershell
 dotnet build Pzd.slnx -warnaserror
-dotnet test Pzd.slnx
-dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -getProperty:Version
+dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
+dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
+dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
+dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
+dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
+dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 git log --oneline -1; git tag
 ```
 
@@ -146,7 +158,7 @@ pwsh -NoProfile -File scripts/verify-apphost.ps1
 - `src/Pzd.SharedKernel/Results/Result.cs`、`Result{T}.cs`、`Error.cs`、`ErrorType.cs`
 - `src/Pzd.SharedKernel/Abstractions/IClock.cs`、`ICurrentUser.cs`、`ITenantContext.cs`（接口放 SharedKernel，实现放 05）
 - `tests/Pzd.SharedKernel.UnitTests/Results/*.cs`、`Domain/*.cs`
-- `tests/Pzd.ArchitectureTests/DependencyRulesTests.cs`、`ReverseCaseTests.cs`、`ArchitectureTestAssembly.cs`（反向用例用的违规类型）
+- `tests/Pzd.ArchitectureTests/DependencyRulesTests.cs`、`ReverseCaseTests.cs`、`ArchitectureTestAssembly.cs`（反向用例用的违规类型）、`Pzd.ArchitectureTests.csproj`（反向用例对 `SqlSugarCore` 的真实引用；显式提版 `Pkcs 10.0.14` 以过 `-warnaserror`）
 
 **Blocked by:** 01
 
@@ -155,16 +167,17 @@ pwsh -NoProfile -File scripts/verify-apphost.ps1
 - [ ] `Result.Success` / `Result.Failure(Error)` 不可同时成立；`Result<T>` 泛型转换正确
 - [ ] `Error` 按 Code 相等，含 `Type` / `Metadata`；错误码格式 `模块.实体.原因` 有测试
 - [ ] `AggregateRoot` 收集领域事件且 `ClearEvents()` 后为空；`ValueObject` 按值相等
+- [ ] `ITenantContext.TenantId` 为 `long`（与雪花主键一致）；`IClock`、`ICurrentUser` 接口就位
 - [ ] 架构规则 4 条：① SharedKernel 不引用 Infrastructure/Api；② Infrastructure 不引用 Api；③ `*.Domain` 命名空间不引用 SqlSugar / ASP.NET Core；④ 模块间只能引用 `*.Contracts`（模块为空时允许空集）
 - [ ] 反向用例：测试程序集内构造 `Pzd.SharedKernel.Domain.Fake` 类型引用 `SqlSugar`，规则必须报违规（测试断言"检测到 1 处违规"），证明规则非空跑
-- [ ] `dotnet test tests/Pzd.SharedKernel.UnitTests/...` 与 `tests/Pzd.ArchitectureTests/...` 均绿
+- [ ] `dotnet run --project tests/Pzd.SharedKernel.UnitTests/...`（29 passed）与 `tests/Pzd.ArchitectureTests/...`（7 passed）均退出码 0
 - [ ] 若 NetArchTest 对 net10 不兼容，改用 ArchUnitNET 并保持规则语义与反向用例
 
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
-dotnet test tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
+dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
+dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 ```
 
 ---
@@ -194,13 +207,13 @@ dotnet test tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
 - [ ] `TenantDbProvider`：不存在连接时加锁双检、只 `AddConnection` 一次、返回 `GetConnectionScope(tid)`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
 - [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
-- [ ] 上述全部为单测/HTTP 接缝测试，`dotnet test` 无 Docker 绿
+- [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）无 Docker 也绿
 
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
-dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
+dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
+dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 ```
 
 ---
@@ -231,7 +244,7 @@ dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
+dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 ```
 
 ---
@@ -262,7 +275,7 @@ dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
+dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
 ```
 
 ---
@@ -297,7 +310,7 @@ dotnet test tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.cspr
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
+dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 ```
 
 ---
@@ -328,7 +341,7 @@ dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
+dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 dotnet run --project src/Pzd.AppHost
 # 另开终端：curl http://127.0.0.1:5080/health/live ; curl http://127.0.0.1:5080/api/version
 ```
@@ -337,7 +350,7 @@ dotnet run --project src/Pzd.AppHost
 
 # 10: Testcontainers 优雅跳过 + 租户隔离集成测试
 
-**What to build:** 无 Docker 的机器上集成测试明确 Skipped 且 `dotnet test` 退出码 0，不阻塞验收；有 Docker 时用两个真实 MySQL 租户库验证跨租户隔离、QueryFilter 与停用租户 403。
+**What to build:** 无 Docker 的机器上集成测试明确 Skipped 且测试命令退出码 0，不阻塞验收；有 Docker 时用两个真实 MySQL 租户库验证跨租户隔离、QueryFilter 与停用租户 403。
 
 **文件路径**
 
@@ -351,7 +364,7 @@ dotnet run --project src/Pzd.AppHost
 
 **Status:** ready-for-agent
 
-- [ ] 无 Docker：`dotnet test tests/Pzd.IntegrationTests/...` 退出码 0，输出中含 Skip 与原因（`Docker unavailable`），测试报告状态为 Skipped 而非 Passed
+- [ ] 无 Docker：`dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` 退出码 0，输出中含 Skip 与原因（`Docker unavailable`），测试报告状态为 Skipped 而非 Passed
 - [ ] 跳过机制是**动态探测**（`DockerFactAttribute`），不是写死 `Skip="…"`
 - [ ] 有 Docker：创建 `pzd_t_a` / `pzd_t_b` 两库 → 各插一行同结构数据 → A 租户查询只返回 A 数据，B 同样；`QueryFilter` 生效
 - [ ] 有 Docker：租户停用后请求得到 403 `Tenant.Disabled`（走 HTTP 接缝）
@@ -361,8 +374,9 @@ dotnet run --project src/Pzd.AppHost
 **验证命令**
 
 ```powershell
-dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
+dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 # 期望本机：退出码 0，Skipped ≥ 2，原因含 Docker unavailable
+# 普通目录（非 Low IL）等价：dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 ```
 
 ---
@@ -374,7 +388,7 @@ dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 **文件路径**
 
 - `CLAUDE.md`（命名、分层、错误码、权限码、测试、Conventional Commits、AI 协作规则）
-- `scripts/verify.ps1`（build → architecture tests → 单测 → 集成测试（允许全 Skip）→ 汇总；任一段失败即非 0）
+- `scripts/verify.ps1`（build → architecture tests → 单测 → 集成测试（允许全 Skip）→ 汇总；任一段失败即非 0；运行器按顶部环境适配 ①② 选择：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`）
 - `README.md`（如何起、如何验、环境前提：.NET 10 / Node 24 / pnpm、Docker 可选）
 - `docs/specs/foundation.md`（状态改为「已验收（日期）」+ 偏差回填）
 - `.gitignore`（补齐 `node_modules/`、`.turbo/`、`*.user`、`artifacts/`）
@@ -384,6 +398,7 @@ dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 **Status:** ready-for-agent
 
 - [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在无 Docker 机器上退出码 0，打印 4 段结果与耗时
+- [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
 - [ ] `CLAUDE.md` 覆盖：工程结构、分层依赖、命名、Result/ProblemDetails、权限码格式、测试分层与 Skip 规则、提交规范
 - [ ] `README.md` 的一键命令与脚本实际一致（经实测）
@@ -401,6 +416,7 @@ pwsh -NoProfile -File scripts/verify.ps1
 ## 交接检查单（每张票完成时贴出）
 
 1. 验证命令 + 真实输出摘要（不是"应该通过"）
-2. 改动文件清单（与票内路径对照，超出范围需说明）
-3. 未完成项/偏离项（若无写「无」）
-4. 下一票可开始（依赖已满足）
+2. 测试类票贴 `=== TEST EXECUTION SUMMARY ===` 行（`dotnet run --project` 形式）；若用 `dotnet test`，注明运行目录不是 Low IL（如 `E:\pzd-copy`）
+3. 改动文件清单（与票内路径对照，超出范围需说明）
+4. 未完成项/偏离项（若无写「无」）
+5. 下一票可开始（依赖已满足）

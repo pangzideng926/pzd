@@ -1,6 +1,6 @@
 # PZD 工程底座与横切能力 — 规格（§18 步骤 1–2）
 
-> 状态：待确认（2026-10-27）
+> 状态：执行中（2026-10-27）｜假设 A1–A7 待确认｜票 01/04 已交付待测，环境适配见 §4.10 / §9 实测记录
 > 上游：[`docs/architecture.md`](../architecture.md)（已确认），本规格只覆盖 §18 步骤 1「工程底座」与步骤 2「横切能力」
 > 票：[`docs/specs/tickets.md`](./tickets.md)
 > 依据方法论：to-spec / to-tickets（Matt Pocock），测试接缝取最高层
@@ -85,7 +85,7 @@
 
 ### 4.3 多租户内核
 
-- `ITenantContext`（放 SharedKernel 抽象）：`TenantId`、`HasTenant`、`Set(tid)`、`Clear()`；实现 Scoped，禁止静态单例保存租户。
+- `ITenantContext`（放 SharedKernel 抽象）：`TenantId`（**`long`**，与雪花主键一致）、`HasTenant`、`Set(tid)`、`Clear()`；实现 Scoped，禁止静态单例保存租户。`X-Tenant` 头的租户 code → id 解析由 `ITenantStore` 负责（票 05）。
 - 解析中间件顺序：`UseAuthentication` → `TenantResolutionMiddleware` → `UseAuthorization`。
   - 已登录：claim `tid` 优先，忽略 `X-Tenant` 头。
   - 匿名：子域名或 `X-Tenant` 头（仅匿名端点可用），二者同时存在时子域名优先。
@@ -139,6 +139,25 @@
 - 根 `package.json` 脚本：`build`、`dev`、`lint`、`typecheck`；`turbo.json` 任务依赖 `api#generate → web#build`（本轮 `api#generate` 为占位，读取 `openapi.json` 时若缺失则输出提示并跳过，不阻塞 `web#build`）。
 - 若 shadcn preset 拉取失败（网络/沙箱），退化为**最小 React Router v7 SPA + 空 `packages/*`**，并在本规格「Further Notes」记录偏差待下一轮补齐（假设 A3）。
 
+### 4.10 测试运行器与执行方式（2026-10-27 实测修订）
+
+实施中发现原定的 xUnit v3 + `Microsoft.NET.Test.Sdk`（VSTest）组合在 .NET 10 SDK 上不兼容（VSTest 目标被禁用），按规格 §9 风险④走替代方案，验收标准不变：
+
+- 测试包改为 **`xunit.v3.mtp-v2`**（Microsoft.Testing.Platform，MTP），`global.json` 增加 `"test": { "runner": "Microsoft.Testing.Platform" }`；测试工程统一在 `tests/Directory.Build.props` 配置（`IsTestProject`、`OutputType=Exe`、`TestingPlatformDotnetTestSupport`），不再引用 `Microsoft.NET.Test.Sdk`。
+- 当前工作区 `E:\pzd` 被 DSH 打了 Low Mandatory Level 完整性标签，MTP 的 `dotnet test` 走命名管道时子进程连不上（handshake failure，非测试失败）。因此：
+  - **工作区内**统一用 `dotnet run --project tests/<工程>/<工程>.csproj`（xunit 进程内 runner，同一批测试、同一退出码与汇总输出）；
+  - **普通目录 / CI** 用 `dotnet test Pzd.slnx`（已在 `E:\pzd-copy` 验证 39 passed、退出码 0，等价）。
+- 版本号查询必须带 Build target：`dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version`；不加 `-t:Build` 只会拿到 MSBuild 求值默认值 `1.0.0`（MinVer 在 target 内计算）。
+- 以上三条属于票 01 的环境适配，已回填票 01 / 04 及全部票的验证命令；**不属于验收降低**。
+
+### 4.11 允许的环境适配产物
+
+票 01/04 允许且已在交付中出现的额外文件（审计不应判为超范围）：
+
+- `NuGet.config`：仓库级源映射。CPM 遇到机器上多个 NuGet 源会报 NU1507，显式 `<clear />` + `packageSourceMapping` 是 CPM 的必需配置，同时保证 restore 可复现。
+- `tests/Directory.Build.props`：统一测试工程配置（见 4.10），避免 5 个 csproj 复制粘贴。
+- `tests/Pzd.ArchitectureTests` 对 `SqlSugarCore` 的真实引用，以及显式提版 `Pkcs 10.0.14`：反向用例必须引用真实 SqlSugar 类型；Pkcs 是其漏洞版传递依赖，不提版过不了 `-warnaserror`。
+
 ## 5. 验收标准（本轮 Definition of Done）
 
 - [ ] **AC1** `pwsh -NoProfile -File scripts/verify.ps1` 在无 Docker 的当前机器上退出码 0，并打印 4 段结果：build / architecture tests / unit tests / integration tests(skipped)
@@ -146,7 +165,7 @@
 - [ ] **AC3** 架构测试通过，且存在**反向用例**：故意构造的违规类型必须让规则失败（证明规则非空跑）
 - [ ] **AC4** 多租户单元测试通过：claim `tid` 优先、匿名 `X-Tenant`/子域、停用 403 `Tenant.Disabled`、过期 403 `Tenant.Expired`、请求间上下文隔离、无上下文取连接报明确错误
 - [ ] **AC5** 异常处理单元测试通过：§8.3 全部状态码映射逐条断言；未知异常 500 不含堆栈且含 `traceId`
-- [ ] **AC6** `dotnet test tests/Pzd.IntegrationTests` 无 Docker 时 exit 0 且输出 Skip 原因；提供 Docker 后同一命令跑通两租户隔离用例（不要求本轮机器执行）
+- [ ] **AC6** `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（普通目录等价 `dotnet test`）无 Docker 时 exit 0 且输出 Skip 原因；提供 Docker 后同一命令跑通两租户隔离用例（不要求本轮机器执行）
 - [ ] **AC7** `dotnet run --project src/Pzd.AppHost` 一条命令启动 API（无 Docker 降级并打印 Warning），`/health` 与 `/api/version` 可访问，Ctrl+C 优雅退出
 - [ ] **AC8** `pnpm install` + `pnpm -w build` 通过（空壳 SPA，无登录页）
 - [ ] **AC9** Serilog 请求摘要、OTel 注册、审计日志通道、Antiforgery、Data Protection、Quartz 示例任务、`/health`、`/api/version` 均有对应单测或启动验证（写入票内验证命令）
@@ -173,15 +192,16 @@
 - **单元测试**：`Pzd.SharedKernel.UnitTests`（Result/Error/值对象/聚合事件收集）、`Pzd.Infrastructure.UnitTests`（租户上下文、解析策略、TenantDbProvider 连接选择与缓存、UoW 事件分发与 Outbox 写入、审计通道）、`Pzd.Api.UnitTests`（WebApplicationFactory：中间件顺序、ProblemDetails 映射全表、Antiforgery、`/health`、`/api/version`）。
 - **集成测试**：`Pzd.IntegrationTests` 仅 Testcontainers MySQL；`DockerFactAttribute` 在探测不到 Docker 端点时 `Skip = "Docker unavailable: …"`；有 Docker 时建两个租户库验证 A 租户查不到 B 租户数据、QueryFilter 生效、停用租户 403。**不得**把集成测试放进 AC1 的必过集合。
 - **无 Mock 数据库**：不用 EF InMemory / SQLite 冒充 MySQL；租户隔离的真实性只由 Docker 门控用例证明，其余用端口替身证明逻辑。
-- **验证命令**（每票内重复，便于直接执行）：
+- **验证命令**（每票内重复，便于直接执行；工作区内按 4.10 用 `dotnet run --project`）：
   - `dotnet build Pzd.slnx -warnaserror`
-  - `dotnet test tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj`
-  - `dotnet test tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj`
-  - `dotnet test tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj`
-  - `dotnet test tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj`
-  - `dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`
+  - `dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version`（期望 `0.1.0`）
+  - `dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj`
+  - `dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj`
+  - `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj`
+  - `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj`
+  - `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（无 Docker：Skipped，退出码 0）
   - `pnpm install --frozen-lockfile`、`pnpm -w build`
-  - `pwsh -NoProfile -File scripts/verify.ps1`
+  - `pwsh -NoProfile -File scripts/verify.ps1`（内部按 4.10 选择运行器）
 
 ## 8. Out of Scope
 
@@ -197,4 +217,10 @@
 
 - 范围守卫：本轮任何票都不应修改 `docs/architecture.md`；架构文档是已确认输入，发现矛盾走本规格的假设表升级，而不是静默改架构。
 - 风险清单：① NetArchTest 与 net10 兼容性；② Aspire 13 SDK + AppHost 与 net10 / 无 Docker 组合；③ shadcn preset 为在线交互命令；④ xUnit v3 与 `Microsoft.NET.Test.Sdk` 组合；⑤ MinVer 在无 tag / shallow clone 时的版本。实施中遇到风险按「票内验证命令失败 → 最小替代方案 → 记录到本文件 Further Notes」处理，不得静默降低验收标准。
+- **实测记录（2026-10-27，票 01/04 交付时回填）**：
+  - ④ 已发生：xUnit v3 + VSTest 在 .NET 10 SDK 不兼容 → 改用 `xunit.v3.mtp-v2` + `global.json` 的 `test.runner=Microsoft.Testing.Platform`（见 4.10）。验收标准未变，测试数量 39（SharedKernel 29 + Architecture 7 + Infrastructure/Api/Integration 各 1）全绿。
+  - 新增环境限制：工作区 `E:\pzd` 为 Low Mandatory Level，MTP `dotnet test` 的命名管道握手失败；工作区内改用 `dotnet run --project tests/<工程>` 执行（同一批测试、退出码等价），`dotnet test` 在普通目录 `E:\pzd-copy` 验证通过（39 passed）。此限制不影响代码与验收结论。
+  - ⑤ 已处理：`git init` + 初始提交 + `v0.1.0` tag 落地（假设 A4 成立），`Pzd.Api` ProductVersion = `0.1.0+50ac4ec`。
+  - 架构反向用例已实测：测试程序集构造 `Pzd.SharedKernel.Domain.Fake` 引用 SqlSugar，4 条规则断言到 1 处违规，规则非空跑（AC3 满足）。
+  - CPM 与机器多 NuGet 源冲突 → 新增仓库级 `NuGet.config`（源映射），详见 4.11。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
