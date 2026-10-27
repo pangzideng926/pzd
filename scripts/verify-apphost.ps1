@@ -177,16 +177,6 @@ else {
     # 直接起 API 时没有 Aspire 的 WithHttpEndpoint，端口靠 ASPNETCORE_URLS 定死，否则会用默认 5000。
     [Environment]::SetEnvironmentVariable("ASPNETCORE_URLS", $ApiBaseUrl, "Process")
     Write-Host "模式 api：dotnet run --project $target（$ApiBaseUrl，日志 $logPath）"
-
-    # 前端单独起一个进程，等价于 Aspire 里的 AddViteApp（本模式不编排，只保证同一条命令能验到前端）。
-    if (-not $SkipWeb) {
-        $webLog = Join-Path $logDir "verify-web.log"
-        Write-Host "同一起动 web：pnpm --filter @pzd/web dev（日志 $webLog）"
-        # Windows 上 pnpm 是 .cmd 垫片，Start-Process 必须点名 pnpm.cmd，直接写 "pnpm" 会报「不是有效的 Win32 应用」。
-        $webProcess = Start-Process -FilePath "pnpm.cmd" -ArgumentList @("--filter", "@pzd/web", "dev") `
-            -WorkingDirectory $repoRoot -PassThru -NoNewWindow `
-            -RedirectStandardOutput $webLog -RedirectStandardError "$webLog.err"
-    }
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -265,6 +255,19 @@ if ($LASTEXITCODE -ne 0) {
     # 构建失败是本票缺陷（产品/代码问题），按老何的三档归 1，不占环境预检的 2。
     Write-Host "[fail] 构建失败（$target）：先修编译再验票。" -ForegroundColor Red
     exit 1
+}
+
+# F-03-B1：预检在前、启动在后。原来 api 模式在预检之前就把 pnpm dev 拉起来了，
+# 于是 `Assert-PortFree 5199` 必然命中脚本自己的前端，报「端口已被占用（pid … node）」并 exit 2
+# ——完整路径（含前端的那条）从一开始就不可能通过，还被误读成环境问题。
+# 前端单独起一个进程，等价于 Aspire 里的 AddViteApp（本模式不编排，只保证同一条命令能验到前端）。
+if ($Mode -ne "aspire" -and -not $SkipWeb) {
+    $webLog = Join-Path $logDir "verify-web.log"
+    Write-Host "同一起动 web：pnpm --filter @pzd/web dev（日志 $webLog）"
+    # Windows 上 pnpm 是 .cmd 垫片，Start-Process 必须点名 pnpm.cmd，直接写 "pnpm" 会报「不是有效的 Win32 应用」。
+    $webProcess = Start-Process -FilePath "pnpm.cmd" -ArgumentList @("--filter", "@pzd/web", "dev") `
+        -WorkingDirectory $repoRoot -PassThru -NoNewWindow `
+        -RedirectStandardOutput $webLog -RedirectStandardError "$webLog.err"
 }
 
 for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
