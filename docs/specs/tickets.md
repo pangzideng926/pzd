@@ -102,7 +102,7 @@ git log --oneline -1; git tag
 
 **Blocked by:** 01
 
-**Status:** 🔧 实现完成待测试/审计（`aaf077f`；dev `127.0.0.1:5199`、显式 host、`.react-router/` 已清出索引；shadcn 退化路径已记 foundation §9；**待补：`turbo.json` 的 `outputs: []` 消除 3 条 `no output files`**）
+**Status:** 🔧 实现完成待审计（代码基线 `aaf077f`；`57c226e` 补包级 `turbo.json` 后 `build --force` 零告警，验收清单已齐；shadcn 退化路径见 foundation §9，`lint` 为占位不作质量证据）
 
 - [ ] `pnpm install --frozen-lockfile` 退出码 0
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
@@ -478,6 +478,7 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 
 - [ ] `pwsh -NoProfile -File scripts/verify.ps1` 在**本机实例可用**时退出码 0，打印 4 段结果与耗时；集成测试段真跑（Total ≥ 3、Failed 0），不是全 Skip
 - [ ] 前端段探测用 `http://127.0.0.1:5199/`（票 02 已要求显式绑 `127.0.0.1`），后端段用 `http://127.0.0.1:5080`，两段统一 IPv4；若前端段连接失败，先查 `server.host` 是否留空（留空只绑 `::1`，会假红）
+- [ ] **等待必须轮询、不得固定 sleep**：`react-router dev` 冷启动要 15–20 秒（typegen + Vite 初始化），后端 Aspire/API 起步也非瞬时——脚本用「每 1 秒重试、总超时 60 秒」这类轮询等 200，**不许** `sleep 5` 后一次性 curl（会偶发假红，也是上一轮 5199 端口占用的同类误判来源）
 - [ ] 无凭据时同一脚本退出码 0，集成测试段打印 Skip 原因（CI 兜底），其余段照常必过
 - [ ] 脚本按环境适配 ①② 选运行器：工作区内逐工程 `dotnet run --project`，普通目录/CI 用 `dotnet test Pzd.slnx`；不因 MTP 命名管道失败
 - [ ] 脚本任一段失败时退出码非 0，且失败段号可定位
