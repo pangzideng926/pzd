@@ -305,9 +305,9 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 - **F-07-1（medium → 必修，已按方案①落地 `40f016a`）**：原规则认 token 变量名白名单，改名即绕过（`var ct2 = cancellationToken; await db.GetConnectionScopeAsync(ct2);` → 19 条全绿）。现方案：请求路径专用无参重载更名 `GetCurrentConnectionScopeAsync`，`GetConnectionScopeAsync` 只剩带 `long tenantId` 的重载（误用编译不可过），架构规则改为「后台路径不得出现该 API 调用」，并补改名 token 样本与 `IsBackgroundPath` Theory 用例。
 - **F-07-4（medium → 必修，`001a731` 之后仍需一笔；老登终审前探明三条漏检）**：现行规则匹配的是 `.GetCurrentConnectionScopeAsync(` 这个**字面串**，因此 ① 标识符与括号之间换行/加空格、② 方法组引用（`var f = db.GetCurrentConnectionScopeAsync;`）、③ 后台文件放在未列入清单的目录（如 `Jobs/`）都会漏检。**收紧要求**（按 foundation §9「F-07-1 规则适用边界」判定：这三条都不需要先伪造 `ITenantContext`，属真实可写绕过 → 必修）：
-  - 匹配改为**后台路径文件里出现 `GetCurrentConnectionScopeAsync` 标识符即违规**——不带括号、不要求紧邻点号、不做空白归一化（宁可误报注释，也不漏）。
-  - 后台路径清单显式并入 `Jobs/**` 与 `*Job.cs`（步骤 3 Quartz 会用到）。
-  - 补三条反向用例：换行/空格断行、方法组引用、`Jobs/` 路径下的调用，各断言**恰好 1 条违规**。
+  - 匹配改为**后台路径文件里出现 `GetCurrentConnectionScopeAsync` 标识符即违规**——**容忍任意空白**（`\.\s*GetCurrentConnectionScopeAsync`）、**不要求括号**（方法组引用同样算）、不要求紧邻点号（宁可误报注释，也不漏）。
+  - 后台路径清单显式并入 `Jobs/**` 与 `*Job.cs`（步骤 3 Quartz 会用到）。**老登的 F-07-8 我不按「步骤 3 前置」处理，就在这一笔里做完**：只是清单加两项 + 一条合成源码用例（`Jobs/*Job.cs` 下的调用断言恰好 1 条违规），成本一行；留到步骤 3 就是一个已知漏检，且开 Quartz 票时极易忘记。
+  - 补三条反向用例：换行/空格断行、方法组引用、`Jobs/` 路径下的调用，各断言**恰好 1 条违规**。其中前两条即老登的 F-07-7 / F-07-9（medium，必修），与他给的修法一致：匹配容忍空白（`\.\s*GetCurrentConnectionScopeAsync`）且不要求括号（方法组引用同样算）。
   - 修完这一笔即可终审，**不另开票**；不修则票 07 不开。
 - **F-07-2（medium → 必修，已落地 `40f016a`）**：`DomainEventDispatcher` 原零覆盖——把 `MakeGenericType(domainEvent.GetType())` 改成 `typeof(IDomainEvent)` 后 152 条仍全绿。现补 4 条：同一事件实例按运行时类型解析、两个处理器按 DI 注册顺序、无处理器也成功、一批两个不同事件各走各处理器；变异后 3 条红。
 - **F-07-3（low → 本轮顺手，已落地 `40f016a`）**：补偿删除顺序改为**先回滚、再补偿删除**，`UnitOfWorkTests` 断言调用序列 `dispatch → outbox-add → commit → rollback → outbox-remove`。
@@ -326,9 +326,9 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] 领域事件处理器抛异常 → UoW 不提交、Outbox 无残留消息
 - [ ] 聚合事件分发后从聚合清除，不重复分发
 - [ ] Outbox 消息带 `TenantId`；消费前 `ITenantContext.Set` 被调用（假消费者断言）
-- [ ] **F-05-8**：后台任务 / 消费者用带 `tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId, ct)` 取连接（先校验停用/到期），停用或过期租户的消息被拒绝处理并记录理由；后台路径（`Persistence/**`、`Jobs/**`、`*Job.cs`、`*HostedService.cs`、`*Dispatcher.cs`）**只要出现 `GetCurrentConnectionScopeAsync` 标识符即违规**（不看括号、不看空白、方法组引用同样算；架构规则 + 三条反向用例：断行、方法组、`Jobs/` 路径）
+- [ ] **F-05-8**：后台任务 / 消费者用带 `tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId, ct)` 取连接（先校验停用/到期），停用或过期租户的消息被拒绝处理并记录理由；后台路径（`Persistence/**`、`Jobs/**`、`*Job.cs`、`*HostedService.cs`、`*Dispatcher.cs`）**只要出现 `GetCurrentConnectionScopeAsync` 标识符即违规**（匹配容忍任意空白、不要求括号、方法组引用同样算；架构规则 + 三条反向用例：断行、方法组、`Jobs/` 路径）
 - [ ] 投递幂等：同一消息重复投递不产生重复副作用（消息 Id + 已处理集合）
-- [ ] 投递失败重试并记 Warning/Error，不阻塞主流程；后台服务随应用优雅停止
+- [ ] 投递失败重试并记 Warning/Error，不阻塞主流程；后台服务随应用优雅停止。**重试上限与拒绝语义（老何定，2026-10-27）**：重试次数**有限且可配置**（默认 5，不得焊死为常量判断依据）；达上限的消息进入**终态「已拒绝」**并记 `LastError` 与 **Error** 级日志，**不删除**该消息；拒绝后同批后续消息必须继续处理（不得饿死）。**「拒绝」≠「死信队列」**：本轮无死信表，`RejectAsync` 只是终态标记，交付与交接**不得**写成「已实现死信队列」；步骤 3 落库时须落成「死信/失败表 + 可人工重放」，`MaxAttempts` 与拒绝原因字段随同对齐（并入移交清单第 6 项）
 - [ ] 无跨库事务（master 与租户库不共享事务）；本票内存实现不引入 MySQL 依赖
 
 **验证命令**
