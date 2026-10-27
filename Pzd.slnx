@@ -3,6 +3,7 @@
     <Project Path="src/Pzd.SharedKernel/Pzd.SharedKernel.csproj" />
     <Project Path="src/Pzd.Infrastructure/Pzd.Infrastructure.csproj" />
     <Project Path="src/Pzd.Api/Pzd.Api.csproj" />
+    <Project Path="src/Pzd.AppHost/Pzd.AppHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj" />

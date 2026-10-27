@@ -24,7 +24,14 @@ public sealed class MySqlHealthCheck : IHealthCheck
 
         try
         {
-            await using var connection = new MySqlConnector.MySqlConnection(_connectionString);
+            // 就绪探针只回答「这台 MySQL 能连上吗」；具体库是否存在属步骤 3 的迁移职责，
+            // 不能因为 pzd_master 还没建就把整个实例判成不可用。
+            var probeBuilder = new MySqlConnector.MySqlConnectionStringBuilder(_connectionString)
+            {
+                Database = string.Empty,
+            };
+
+            await using var connection = new MySqlConnector.MySqlConnection(probeBuilder.ConnectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
             await using var command = connection.CreateCommand();

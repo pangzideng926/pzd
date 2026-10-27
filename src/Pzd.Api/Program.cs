@@ -10,6 +10,12 @@ using SqlSugar;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 只走控制台日志：Windows 上默认还会挂 EventLog provider，沙箱/服务账户无写权限时
+// 写日志本身会抛异常并打断请求（实测 /health/ready 降级路径直接 500→连接中断）。
+// Serilog + OTel 在票 08 接管，这里先保证「日志不成为故障源」。
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole();
+
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddPzdProblemDetails();
