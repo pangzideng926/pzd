@@ -1,108 +1,113 @@
-using System.Reflection;
-using NetArchTest.Rules;
-
 namespace Pzd.ArchitectureTests;
 
 /// <summary>
-/// 分层依赖规则（架构 §2 / §4）：不引用的方式由 NetArchTest 读取 IL 元数据判定。
-/// 规则 4 在业务模块为空时允许空集（本轮只有底座工程）。
+/// 分层依赖规则在**当前仓库**上的数据源与用例：规则本身定义在 <see cref="ArchRules"/>，
+/// 反向用例复用同一份定义（见 <see cref="ReverseCaseTests"/>）。
 /// </summary>
 public class DependencyRulesTests
 {
-    private const string SqlSugar = "SqlSugar";
-    private const string AspNetCore = "Microsoft.AspNetCore";
-
-    private static readonly Assembly SharedKernelAssembly = Assembly.Load("Pzd.SharedKernel");
-    private static readonly Assembly InfrastructureAssembly = Assembly.Load("Pzd.Infrastructure");
-    private static readonly Assembly ApiAssembly = Assembly.Load("Pzd.Api");
-
-    private static readonly Assembly[] ProductAssemblies =
-        [SharedKernelAssembly, InfrastructureAssembly, ApiAssembly];
+    private static readonly string RepositoryRoot = ArchRules.FindRepositoryRoot();
 
     [Fact]
-    public void SharedKernel_does_not_reference_Infrastructure_or_Api()
-    {
-        var references = ReferencedAssemblyNames(SharedKernelAssembly);
-
-        Assert.DoesNotContain("Pzd.Infrastructure", references);
-        Assert.DoesNotContain("Pzd.Api", references);
-    }
+    public void SharedKernel_does_not_reference_Infrastructure_or_Api() =>
+        Assert.Empty(ArchRules.ForbiddenReferences(
+            ArchRules.SharedKernelAssembly,
+            "Pzd.Infrastructure",
+            "Pzd.Api"));
 
     [Fact]
-    public void Infrastructure_does_not_reference_Api()
-    {
-        var references = ReferencedAssemblyNames(InfrastructureAssembly);
-
-        Assert.DoesNotContain("Pzd.Api", references);
-    }
+    public void Infrastructure_does_not_reference_Api() =>
+        Assert.Empty(ArchRules.ForbiddenReferences(
+            ArchRules.InfrastructureAssembly,
+            "Pzd.Api"));
 
     [Theory]
-    [InlineData(SqlSugar)]
-    [InlineData(AspNetCore)]
+    [InlineData(ArchRules.SqlSugarDependency)]
+    [InlineData(ArchRules.AspNetCoreDependency)]
     public void Domain_namespaces_do_not_depend_on_persistence_or_web_libraries(string forbiddenDependency)
     {
-        var result = Types.InAssemblies(ProductAssemblies)
-            .That()
-            .ResideInNamespaceEndingWith(".Domain")
-            .Should()
-            .NotHaveDependencyOn(forbiddenDependency)
-            .GetResult();
+        var result = ArchRules.DomainDependencyViolations(ArchRules.ProductAssemblies, forbiddenDependency);
 
         Assert.True(
             result.IsSuccessful,
-            "违规类型：" + string.Join(", ", result.FailingTypeNames ?? []));
+            "违规类型：" + string.Join(", ", ArchRules.FailingTypeNames(result)));
     }
 
     [Fact]
-    public void Modules_only_reference_their_own_contracts_plus_the_core_projects()
+    public void Modules_in_this_repository_only_reference_core_and_other_modules_contracts()
     {
-        var violations = new List<string>();
-
-        foreach (var module in ModuleAssemblies())
-        {
-            var moduleName = module.GetName().Name!;
-            var allowed = new HashSet<string>(StringComparer.Ordinal)
-            {
-                "Pzd.SharedKernel",
-                "Pzd.Infrastructure",
-                moduleName,
-                moduleName + ".Contracts",
-            };
-
-            violations.AddRange(ReferencedAssemblyNames(module)
-                .Where(name => name.StartsWith("Pzd.", StringComparison.Ordinal) && !allowed.Contains(name))
-                .Select(name => $"{moduleName} -> {name}"));
-        }
-
-        Assert.True(violations.Count == 0, "违规的模块引用：" + string.Join(", ", violations));
-    }
-
-    private static IReadOnlyCollection<string> ReferencedAssemblyNames(Assembly assembly) =>
-        assembly.GetReferencedAssemblies()
-            .Select(reference => reference.Name ?? string.Empty)
+        var violations = ArchRules.DiscoverModules(RepositoryRoot)
+            .SelectMany(module => ArchRules.ModuleReferenceViolations(module.Name, module.ReferencedProjects))
             .ToArray();
 
-    /// <summary>
-    /// 业务模块 = Pzd.* 程序集中除底座工程、Contracts 与测试程序集之外的部分；本轮为空集。
-    /// </summary>
-    private static IEnumerable<Assembly> ModuleAssemblies()
-    {
-        var core = new HashSet<string>(StringComparer.Ordinal)
-        {
-            "Pzd.SharedKernel",
-            "Pzd.Infrastructure",
-            "Pzd.Api",
-            "Pzd.AppHost",
-        };
+        Assert.True(violations.Length == 0, "违规的模块引用：" + string.Join(", ", violations));
+    }
 
-        return Directory
-            .GetFiles(AppContext.BaseDirectory, "Pzd.*.dll")
-            .Where(path => !path.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase))
-            .Select(Assembly.LoadFrom)
-            .Where(assembly => assembly.GetName().Name is { } name
-                && name.StartsWith("Pzd.", StringComparison.Ordinal)
-                && !core.Contains(name)
-                && !name.EndsWith(".Contracts", StringComparison.Ordinal)
-                && !name.Contains("Tests", StringComparison.Ordinal));
+    [Fact]
+    public void Module_discovery_reads_the_source_tree_and_skips_core_and_contracts_projects()
+    {
+        var repositoryRoot = CreateTemporaryRepositoryRoot(
+            ("src/Pzd.Platform/Pzd.Platform.csproj", ProjectWithReferences(@"..\Pzd.Identity.Contracts\Pzd.Identity.Contracts.csproj")),
+            ("src/Pzd.Identity/Pzd.Identity.csproj", ProjectWithReferences(@"..\Pzd.Identity.Contracts\Pzd.Identity.Contracts.csproj")),
+            ("src/Pzd.Identity.Contracts/Pzd.Identity.Contracts.csproj", "<Project />"),
+            ("src/Pzd.SharedKernel/Pzd.SharedKernel.csproj", "<Project />"));
+
+        try
+        {
+            var modules = ArchRules.DiscoverModules(repositoryRoot);
+
+            Assert.Equal(
+                ["Pzd.Identity", "Pzd.Platform"],
+                modules.Select(module => module.Name).Order(StringComparer.Ordinal));
+
+            var platform = Assert.Single(modules, module => module.Name == "Pzd.Platform");
+            Assert.Equal(["Pzd.Identity.Contracts"], platform.ReferencedProjects);
+        }
+        finally
+        {
+            Directory.Delete(repositoryRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Modules_may_reference_other_modules_contracts()
+    {
+        var violations = ArchRules.ModuleReferenceViolations(
+            "Pzd.Platform",
+            ["Pzd.SharedKernel", "Pzd.Infrastructure", "Pzd.Identity.Contracts"]);
+
+        Assert.Empty(violations);
+    }
+
+    [Fact]
+    public void Modules_must_not_reference_other_modules_directly()
+    {
+        var violations = ArchRules.ModuleReferenceViolations(
+            "Pzd.Platform",
+            ["Pzd.Identity", "Pzd.Api"]);
+
+        Assert.Equal(["Pzd.Platform -> Pzd.Identity", "Pzd.Platform -> Pzd.Api"], violations);
+    }
+
+    private static string ProjectWithReferences(params string[] references) =>
+        "<Project><ItemGroup>"
+        + string.Concat(references.Select(reference =>
+            $"<ProjectReference Include=\"{reference}\" />"))
+        + "</ItemGroup></Project>";
+
+    private static string CreateTemporaryRepositoryRoot(params (string RelativePath, string Content)[] files)
+    {
+        // Low IL 沙箱只允许写工作区，夹具目录放在测试输出目录下（bin/ 已被 .gitignore 忽略）。
+        var root = Path.Combine(AppContext.BaseDirectory, "arch-fixtures", Guid.NewGuid().ToString("N"));
+
+        foreach (var (relativePath, content) in files)
+        {
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+        }
+
+        return root;
     }
 }

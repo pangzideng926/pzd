@@ -54,6 +54,27 @@ public class AggregateRootTests
         Assert.Equal(first.GetHashCode(), second.GetHashCode());
     }
 
+    [Fact]
+    public void Entities_of_different_types_with_the_same_id_are_not_equal()
+    {
+        var order = new Order(5);
+        var invoice = new Invoice(5);
+        var anotherInvoice = new Invoice(5);
+
+        Assert.NotEqual<Entity<long>>(order, invoice);
+        Assert.False(order.Equals((object)invoice));
+        Assert.False(order == invoice);
+        Assert.Equal(invoice, anotherInvoice);
+    }
+
+    [Fact]
+    public void Adding_a_null_domain_event_throws()
+    {
+        var order = new Order(1);
+
+        Assert.Throws<ArgumentNullException>(() => order.AddNullEvent());
+    }
+
     private sealed class Order : AggregateRoot<long>
     {
         public Order(long id)
@@ -62,6 +83,16 @@ public class AggregateRootTests
         }
 
         public void Place(string number) => AddDomainEvent(new OrderPlaced(number, Id));
+
+        public void AddNullEvent() => AddDomainEvent(null!);
+    }
+
+    private sealed class Invoice : AggregateRoot<long>
+    {
+        public Invoice(long id)
+            : base(id)
+        {
+        }
     }
 
     private sealed record OrderPlaced(string Number, long OrderId) : IDomainEvent
