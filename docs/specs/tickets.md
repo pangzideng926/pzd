@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 ✅ 审计通过（`e593225`，[`review-05.md`](../reports/review-05.md)，116 条）｜02/03 未开工｜06–10 ready-for-agent
+> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 ✅ 审计通过（`e593225`，[`review-05.md`](../reports/review-05.md)，116 条）｜06 🔧 返工中（预审需修改，[`review-06.md`](../reports/review-06.md)）｜02/03 未开工｜07–10 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -229,6 +229,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - 「只查一次 `ITenantStore`」精确化为：**连接创建只查一次；显式重载 `GetConnectionScopeAsync(tenantId)` 为校验状态按次查库**（实测同租户两次调用 `FindByIdCalls=2`）。
 - `Tenants` 为空：允许启动，请求返回 400（不在启动期 fail-fast）；`Tenants:0:ExpiresAt` 为 `null` = 永不过期，为空字符串 = 配置错误、启动失败。此口径写进票面，README 由老卫同步。
 - 本票遗留的前置项不属 05 未完成：**F-05-4** 已落票 03/09 + foundation §4.3；**F-05-8** 已落票 07 验收。
+- 跨票补丁（老登 F-06-1）：租户 400/403 的 `traceId` / `X-Trace-Id` 与 kebab 去重由**票 06 收口**，票 05 不重开。
 
 **验证命令**
 
@@ -241,24 +242,27 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 # 06: 异常处理 + Result→HTTP
 
-**What to build:** 端点只需 `return result.ToHttpResult()` 就得到准确状态码与统一 ProblemDetails（`type` / `title` / `status` / `code` / `traceId` / `errors`）；意外异常统一走 `IExceptionHandler`，生产不泄堆栈。
+**What to build:** 端点只需 `return result.ToHttpResult()` 就得到准确状态码与统一 ProblemDetails（`type` / `title` / `status` / `code` / `traceId` / `errors`）；意外异常统一走 `IExceptionHandler`，生产不泄堆栈。**本轮收口三项（预审 F-06）**：① 租户中间件的 400/403 手写 ProblemDetails 必须补 `traceId` + 响应头 `X-Trace-Id`，并与统一出口共用同一份 kebab 转换（删掉重复实现）；② `errors` 键统一转 camelCase（PascalCase 入参断言响应里是 `userName`），本轮由 `Create` 手工转换，步骤 3 换成 FluentValidation 管道后保持同一行为；③ 框架裸 401/403（status code pages 路径）必须映射为 ProblemDetails（`Auth.Unauthorized` / `Auth.Forbidden`），不得落成 `System.Unexpected` /「服务器内部错误」。
 
 **文件路径**
 
 - `src/Pzd.SharedKernel/Results/ErrorType.cs`（与 04 对齐，必要时补 `ClientTooOld`、`TenantUpgrading`）
 - `src/Pzd.Api/Errors/ResultHttpExtensions.cs`（`ToHttpResult()`）、`ProblemDetailsCustomization.cs`、`GlobalExceptionHandler.cs`、`ProblemDetailsSetup.cs`
-- `src/Pzd.Api/Program.cs`（`AddProblemDetails` + `IExceptionHandler` 链 + 中间件顺序）
+- `src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs`（补 `traceId` / `X-Trace-Id`，复用统一 kebab 转换）
+- `src/Pzd.Api/Program.cs`（`AddProblemDetails` + `IExceptionHandler` 链 + status code pages + 中间件顺序）
 - `tests/Pzd.Api.UnitTests/Errors/ErrorMappingTests.cs`、`UnexpectedExceptionTests.cs`
 - 测试辅助：`tests/Pzd.Api.UnitTests/TestEndpoints.cs`（仅测试用最小端点，生产代码不加调试端点）
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent（测试先行，§8.3 映射表逐条先写）
+**Status:** 🔧 返工中（预审需修改：[`review-06.md`](../reports/review-06.md)；F-06 三项见 What to build）
 
 - [ ] 映射全表通过 HTTP 接缝逐条断言：400（含 `errors` 字典）、401、403、404、409（乐观锁/唯一键语义）、422、426、503
-- [ ] `type` = `https://pzd/errors/{kebab-code}`；`code` 与 `Error.Code` 一致；`traceId` 与响应头/`Activity.Id` 一致
+- [ ] `type` = `https://pzd/errors/{kebab-code}`；`code` 与 `Error.Code` 一致；`traceId` 与响应头 `X-Trace-Id` 同源
 - [ ] 未知异常 → 500，响应体无堆栈、无异常类型名，含 `traceId`；开发环境与生产环境行为差异有测试或明确断言
-- [ ] FluentValidation 失败 → 400，`errors` 键为 camelCase，与前端字段名一致
+- [ ] `errors` 键统一 camelCase：Validation 类型 Result（本轮由测试端点手工构造，步骤 3 由 FluentValidation 管道产生）→ 400；**用例必须以 PascalCase 键入参**并断言响应里出现 `userName`，不得把 `UserName` 原样透传
+- [ ] 租户 400/403（[`TenantResolutionMiddleware`](src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs#L121) 手写路径）同样带 `traceId` 与响应头 `X-Trace-Id`；kebab 转换只有一份实现（中间件与 `ToHttpResult` 共用）；403 用例断言 `traceId` 非空
+- [ ] 框架裸 401/403（status code pages 路径）返回 ProblemDetails：`code = Auth.Unauthorized` / `Auth.Forbidden`、`status` 401/403、带 `traceId`，**不得**出现 `System.Unexpected` /「服务器内部错误」
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
 - [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（交接记录「F7 补测条件」项）

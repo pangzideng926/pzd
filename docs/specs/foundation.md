@@ -1,6 +1,6 @@
 # PZD 工程底座与横切能力 — 规格（§18 步骤 1–2）
 
-> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/05/12 审计通过；票 06 待开工；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
+> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/05/12 审计通过；票 06 返工中（预审 F-06 三项）；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
 > 上游：[`docs/architecture.md`](../architecture.md)（已确认），本规格只覆盖 §18 步骤 1「工程底座」与步骤 2「横切能力」
 > 票：[`docs/specs/tickets.md`](./tickets.md)
 > 依据方法论：to-spec / to-tickets（Matt Pocock），测试接缝取最高层
@@ -101,7 +101,9 @@
 - `Error.Metadata` 是**构造时复制的只读快照**（`ReadOnlyDictionary`，`StringComparer.Ordinal`），不直接持有调用方字典；`EmptyMetadata` 不可被强转改写（F8，票 12）。
 - 端点统一 `result.ToHttpResult()`，映射严格按架构 §8.3：400/401/403/404/409/422/426/503；`type` = `https://pzd/errors/{kebab-code}`。
 - 全局 `IExceptionHandler` 链只处理意外异常：500、生产不返回堆栈、`traceId` 取 `Activity.Current?.Id`；`AddProblemDetails(o => o.CustomizeProblemDetails = ...)` 统一补 `traceId`、`code`。
-- FluentValidation 失败在 Application 层转 Validation 类型 Result，`errors` 字典键与前端字段名一致（camelCase）。
+- 租户中间件手写的 400/403（`Tenant.NotFound` / `Tenant.Disabled` / `Tenant.Expired`）必须与 `ToHttpResult()` 共用同一出口：响应体带 `traceId`、响应头带 `X-Trace-Id`、kebab 转换只有一份实现（F-06-1，票 06 收口）。
+- 框架裸 401/403（status code pages 路径）必须映射为 ProblemDetails：`Auth.Unauthorized` / `Auth.Forbidden`，不得落成 `System.Unexpected` /「服务器内部错误」（F-06-3，本轮修）。
+- `errors` 键统一 camelCase（`userName`），由 Result→ProblemDetails 出口转换；本轮**没有** Application 层与 FluentValidation，Validation 错误由测试手工构造，**管道与校验规则属步骤 3 另开票**（F-06-2 口径调整），上线后保持同一行为与断言。
 - 前端侧错误拦截（orval mutator）属步骤 4，本轮只留 `packages/api` 目录与 README 占位。
 
 ### 4.5 UoW + Outbox + 领域事件
@@ -180,7 +182,7 @@
 - [ ] **AC2** `dotnet build Pzd.slnx -warnaserror` 通过（含 `TreatWarningsAsErrors`），MinVer 版本写入程序集与 `/api/version`；**版本以 git tag 为基准**（tag 提交 `0.1.0`，之后为 `0.1.1-alpha.0.<height>`），不在票/测试里硬编码具体版本值（F6）
 - [ ] **AC3** 架构测试通过；证据口径 = **规则③反向用例**（故意构造的 Domain→SqlSugar 违规类型必须让规则失败）+ **规则④单元级反例**（证明允许集非全放行）；① ② 是对真实程序集的直接断言，不声称「四条都有反向用例」（交接记录「票面措辞」项，已于 `8e1a1a3` 修正）
 - [ ] **AC4** 多租户单元测试通过：claim `tid` 优先、匿名 `X-Tenant`/子域、停用 403 `Tenant.Disabled`、过期 403 `Tenant.Expired`、请求间上下文隔离、无上下文取连接报明确错误；显式重载对停用/过期租户拒绝取连接（F-05-8）；`/health/*`、`/api/version` 无租户返回 200（F-05-4）
-- [ ] **AC5** 异常处理单元测试通过：§8.3 全部状态码映射逐条断言；未知异常 500 不含堆栈且含 `traceId`
+- [ ] **AC5** 异常处理单元测试通过：§8.3 全部状态码映射逐条断言；未知异常 500 不含堆栈且含 `traceId`；租户 400/403 亦带 `traceId` / `X-Trace-Id`；框架裸 401/403 映射为 `Auth.Unauthorized` / `Auth.Forbidden`（不落 `System.Unexpected`）；`errors` 键 camelCase（PascalCase 入参断言 `userName`）
 - [ ] **AC6** `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（普通目录等价 `dotnet test`）在**本机 MySQL 可用**时真跑：自动建/清 `pzd_it_a`、`pzd_it_b`，A/B 两库数据互不可见、QueryFilter 生效、停用租户 403 `Tenant.Disabled`；无凭据 / 实例不可达时动态 Skip 且 exit 0（CI 兜底）
 - [ ] **AC7** `dotnet run --project src/Pzd.AppHost` 一条命令启动 API + 前端并连本机 MySQL/Redis，`/health/ready` 为 Healthy（明细 mysql/redis Up），`/api/version` 可访问，Ctrl+C 优雅退出；实例缺失时降级 200 Degraded（兜底路径，非主验收）
 - [ ] **AC8** `pnpm install` + `pnpm -w build` 通过（空壳 SPA，无登录页）
@@ -266,4 +268,10 @@
   - **F-05-4**（`/health`、`/api/version` 免租户）→ 已写入 §4.3、票 03（开工硬前置）与票 09；实现为 `AllowAnonymousTenant` metadata，验收要求无租户访问三端点均 200。
   - **F-05-8**（后台任务取连接）→ 已写入票 07 验收：必须用带状态校验的显式重载 `GetConnectionScopeAsync(tenantId)`，禁止无参裸取；停用/过期租户消息拒绝处理并记录理由。
   - 票 05 口径：`Tenants` 为空允许启动但请求 400（不做启动期 fail-fast）；`ExpiresAt = null` 视为永不过期，空字符串为配置错误、启动失败。
+- **票 06 预审与口径决策（2026-10-27，`dee779d`）**：
+  - 基线 132 条全绿（35 + 54 + 26 + 16 + 1）；映射主路径、`type` kebab、404/405、生产不泄漏、F7「恰好 3 条」成立，判需修改的点在下面三条。
+  - **traceId（老登 F-06-1，跨票 05）** → 纳入票 06 返工：租户 400/403 补 `traceId` + 响应头 `X-Trace-Id`，kebab 转换去重为一份实现；**票 05 不重开**，票面加跨票补丁说明。
+  - **errors camelCase（李总 F-06-1）** → 仍要求实现：出口统一转 camelCase，用例必须以 PascalCase 键入参并断言 `userName`（防止再出现「用例自己喂期望输入」）；但因本轮无 FluentValidation / Application 层，**FluentValidation 管道与校验规则属步骤 3 另开票**，交付报告不得写成「管道已验证」（老登 F-06-2 的口径诉求以此满足）。
+  - **框架裸 401/403（老登 F-06-3）** → 纳入本轮票 06：status code pages 映射为 `Auth.Unauthorized` / `Auth.Forbidden` ProblemDetails 并带 `traceId`，补用例；避免步骤 3 一上授权就出现 `System.Unexpected`。
+  - 命名消歧：李总「F-06-1」= errors camelCase；老登「F-06-1」= traceId。票面按内容命名（traceId / errors / 401-403），不再按编号，避免复审时对不上。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
