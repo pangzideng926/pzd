@@ -33,12 +33,17 @@ public class TenantConnectionRuleTests
             (
                 "src/Pzd.Api/Endpoints/Users.cs",
                 "await _dbProvider.GetCurrentConnectionScopeAsync(cancellationToken);"),
+            // 认形状、不认名字：哪怕将来在非后台文件里重新加回无参 GetConnectionScopeAsync() 并调用，也会报。
+            (
+                "src/Pzd.Api/Endpoints/Legacy.cs",
+                "await _dbProvider.GetConnectionScopeAsync();"),
         ];
 
         var violations = ArchRules.ParameterlessTenantConnectionViolationsFromSource(sources);
 
         Assert.Equal(
             [
+                "src/Pzd.Api/Endpoints/Legacy.cs",
                 "src/Pzd.Infrastructure/Persistence/Caller.cs",
                 "src/Pzd.Infrastructure/Persistence/CallerRenamedToken.cs",
             ],

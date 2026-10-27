@@ -180,19 +180,37 @@ internal static class ArchRules
         return ParameterlessTenantConnectionViolationsFromSource(sources);
     }
 
-    /// <summary>F-05-8 规则本体：纯函数版本，反向用例用合成源码验证规则确实会报。</summary>
+    /// <summary>
+    /// F-05-8 规则本体（纯函数版本，反向用例用合成源码验证）。两层判定，认的是「调用形状」而不是名字：
+    /// <list type="number">
+    /// <item>后台路径出现请求路径专用 API <c>GetCurrentConnectionScopeAsync</c>；</item>
+    /// <item>任何源码里出现<b>零实参</b>的 <c>GetConnectionScopeAsync()</c> 调用——若将来有人重新加回
+    /// 无参重载，这条仍会报（不依赖新名字，也不依赖实参叫 ct 还是 ct2）。</item>
+    /// </list>
+    /// </summary>
     internal static IReadOnlyCollection<string> ParameterlessTenantConnectionViolationsFromSource(
         IEnumerable<(string Path, string Content)> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
 
         return sources
-            .Where(source => IsBackgroundPath(source.Path))
-            .Where(source => source.Content.Contains(RequestPathConnectionApi, StringComparison.Ordinal))
+            .Where(source => RequestPathApiInBackground(source.Path, source.Content)
+                || ZeroArgumentTenantConnectionCall(source.Content))
             .Select(source => source.Path)
             .Order(StringComparer.Ordinal)
             .ToArray();
     }
+
+    private static bool RequestPathApiInBackground(string path, string content) =>
+        IsBackgroundPath(path) && content.Contains(RequestPathConnectionApi, StringComparison.Ordinal);
+
+    /// <summary>零实参调用：<c>.GetConnectionScopeAsync()</c> / <c>.GetConnectionScopeAsync( )</c>；方法声明不算（无点号）。</summary>
+    private static bool ZeroArgumentTenantConnectionCall(string content) =>
+        ZeroArgumentConnectionCallPattern.IsMatch(content);
+
+    private static readonly System.Text.RegularExpressions.Regex ZeroArgumentConnectionCallPattern = new(
+        @"\.\s*GetConnectionScopeAsync\s*\(\s*\)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>后台路径判定：Persistence 目录，或文件名以 HostedService / Dispatcher 结尾。</summary>
     internal static bool IsBackgroundPath(string path)
