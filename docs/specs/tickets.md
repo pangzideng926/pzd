@@ -229,8 +229,8 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 - 「只查一次 `ITenantStore`」精确化为：**连接创建只查一次；显式重载 `GetConnectionScopeAsync(tenantId)` 为校验状态按次查库**（实测同租户两次调用 `FindByIdCalls=2`）。
 - `Tenants` 为空：允许启动，请求返回 400（不在启动期 fail-fast）；`Tenants:0:ExpiresAt` 为 `null` = 永不过期，为空字符串 = 配置错误、启动失败。此口径写进票面，README 由老卫同步。
 - 本票遗留的前置项不属 05 未完成：**F-05-4** 已落票 03/09 + foundation §4.3；**F-05-8** 已落票 07 验收。
-- 跨票补丁（老登 F-06-1）：租户 400/403 的 `traceId` / `X-Trace-Id` 与 kebab 去重由**票 06 收口**，票 05 不重开。
-- 编号歧义说明：李总的「F-06-1」指 errors camelCase，老登的「F-06-1」指 traceId；票面统一按内容称呼（traceId / errors / 401-403），复审时勿按编号对。
+- 跨票补丁（F-06-2，traceId）：租户 400/403 的 `traceId` / `X-Trace-Id` 与 kebab 去重由**票 06 收口**，票 05 不重开。
+- 编号口径以终审报告 [`review-06.md`](../reports/review-06.md) 为准：**F-06-1** = errors camelCase、**F-06-2** = 租户 traceId、**F-06-3** = 框架 401/403。
 
 **验证命令**
 
@@ -243,7 +243,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 # 06: 异常处理 + Result→HTTP
 
-**What to build:** 端点只需 `return result.ToHttpResult()` 就得到准确状态码与统一 ProblemDetails（`type` / `title` / `status` / `code` / `traceId` / `errors`）；意外异常统一走 `IExceptionHandler`，生产不泄堆栈。**本轮收口三项（预审 F-06）**：① 租户中间件的 400/403 手写 ProblemDetails 必须补 `traceId` + 响应头 `X-Trace-Id`，并与统一出口共用同一份 kebab 转换（删掉重复实现）；② `errors` 键统一转 camelCase（PascalCase 入参断言响应里是 `userName`），本轮由 `Create` 手工转换，步骤 3 换成 FluentValidation 管道后保持同一行为；③ 框架裸 401/403（status code pages 路径）必须映射为 ProblemDetails（`Auth.Unauthorized` / `Auth.Forbidden`），不得落成 `System.Unexpected` /「服务器内部错误」。
+**What to build:** 端点只需 `return result.ToHttpResult()` 就得到准确状态码与统一 ProblemDetails（`type` / `title` / `status` / `code` / `traceId` / `errors`）；意外异常统一走 `IExceptionHandler`，生产不泄堆栈。**本轮收口（终审口径，编号以 [`review-06.md`](../reports/review-06.md) 为准）**：**F-06-1** `errors` 的 PascalCase key 转 camelCase，并补一条**独立 PascalCase 入参**用例；**F-06-2** 租户 400/403 手写 ProblemDetails 补 `traceId` + 响应头 `X-Trace-Id`，两处 `ToKebabCase` 收成一份；**F-06-3** 框架裸 401/403（status code pages）映射为 `Auth.Unauthorized` / `Auth.Forbidden`，不得落成 `System.Unexpected` /「服务器内部错误」（建议项，本轮一并修）。FluentValidation 管道**不在本票**（见文末「步骤 3 移交清单」）。
 
 **文件路径**
 
@@ -256,14 +256,14 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 **Blocked by:** 04
 
-**Status:** 🔧 返工中（预审需修改：[`review-06.md`](../reports/review-06.md)；F-06 三项见 What to build）
+**Status:** 🔧 返工中（终审需修改：[`review-06.md`](../reports/review-06.md)；F-06-1/2 必修、F-06-3 顺带）
 
 - [ ] 映射全表通过 HTTP 接缝逐条断言：400（含 `errors` 字典）、401、403、404、409（乐观锁/唯一键语义）、422、426、503
 - [ ] `type` = `https://pzd/errors/{kebab-code}`；`code` 与 `Error.Code` 一致；`traceId` 与响应头 `X-Trace-Id` 同源
 - [ ] 未知异常 → 500，响应体无堆栈、无异常类型名，含 `traceId`；开发环境与生产环境行为差异有测试或明确断言
-- [ ] `errors` 键统一 camelCase：Validation 类型 Result（本轮由测试端点手工构造，步骤 3 由 FluentValidation 管道产生）→ 400；**用例必须以 PascalCase 键入参**并断言响应里出现 `userName`，不得把 `UserName` 原样透传
-- [ ] 租户 400/403（[`TenantResolutionMiddleware`](src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs#L121) 手写路径）同样带 `traceId` 与响应头 `X-Trace-Id`；kebab 转换只有一份实现（中间件与 `ToHttpResult` 共用）；403 用例断言 `traceId` 非空
-- [ ] 框架裸 401/403（status code pages 路径）返回 ProblemDetails：`code = Auth.Unauthorized` / `Auth.Forbidden`、`status` 401/403、带 `traceId`，**不得**出现 `System.Unexpected` /「服务器内部错误」
+- [ ] **F-06-1 · errors 透传 + camelCase**：Validation 类型 Result（本轮由测试端点手工构造）→ 400，`errors` 原样透传并把 key 转 camelCase；**用例必须以 PascalCase 键入参**并断言响应里出现 `userName`，不得把 `UserName` 原样透传。**本轮不验证 FluentValidation 管道**（见文末「步骤 3 移交清单」）
+- [ ] **F-06-2** 租户 400/403（[`TenantResolutionMiddleware`](src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs#L121) 手写路径）同样带 `traceId` 与响应头 `X-Trace-Id`；kebab 转换只有一份实现（中间件与 `ToHttpResult` 共用）；403 用例断言 `traceId` 非空
+- [ ] **F-06-3** 框架裸 401/403（status code pages 路径）返回 ProblemDetails：`code = Auth.Unauthorized` / `Auth.Forbidden`、`status` 401/403、带 `traceId`，**不得**出现 `System.Unexpected` /「服务器内部错误」
 - [ ] 404/405 等框架生成的问题响应同样带 `code`/`traceId`（自定义 ProblemDetails 覆盖到框架路径）
 - [ ] 不使用「永远 200 + {code,msg,data}」包装（代码审查 + 测试断言）
 - [ ] F7 补测条件：本票给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeApiDependency` 引用它，反向用例断言**恰好 3 条违规**（交接记录「F7 补测条件」项）
@@ -487,6 +487,19 @@ pwsh -NoProfile -File scripts/verify.ps1
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
 ```
+
+---
+
+## 步骤 3 移交清单（不在本轮 DoD，另开票）
+
+本轮为避免「假绿」主动下沉的事项，步骤 3 首次开模块 / 登录时逐条开票：
+
+1. **FluentValidation 管道 + Application 层校验**（票 06 F-06-1 的生成端）：pipeline behavior、Validation 类型 Result 生成、`errors` 键 camelCase 的端到端断言；票 06 只保证出口转换与透传，不声称管道已验证。
+2. **`*.Contracts` 自身引用约束**（规则④扩展）：Contracts 只能引用 SharedKernel / 其他 Contracts，堵住绕过模块隔离的后门。
+3. **登录类端点租户策略**：`AllowAnonymousTenant` 的完整匿名解析（子域 / `X-Tenant`）、登录端点豁免与限流。
+4. **权限码与授权**：`IAuthorizationPolicyProvider`、`.RequirePermission`、401/403 由授权中间件产生（依赖 F-06-3 已修）。
+5. **Platform / Identity 模块**：租户开通流程、登录、`/api/me`（§18 步骤 3）。
+6. **Outbox / 审计 / Quartz 的落库表**：`db/tenant` 迁移执行器与 `schema_versions`（假设 A6 的延后项）。
 
 ---
 

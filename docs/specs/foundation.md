@@ -101,9 +101,9 @@
 - `Error.Metadata` 是**构造时复制的只读快照**（`ReadOnlyDictionary`，`StringComparer.Ordinal`），不直接持有调用方字典；`EmptyMetadata` 不可被强转改写（F8，票 12）。
 - 端点统一 `result.ToHttpResult()`，映射严格按架构 §8.3：400/401/403/404/409/422/426/503；`type` = `https://pzd/errors/{kebab-code}`。
 - 全局 `IExceptionHandler` 链只处理意外异常：500、生产不返回堆栈、`traceId` 取 `Activity.Current?.Id`；`AddProblemDetails(o => o.CustomizeProblemDetails = ...)` 统一补 `traceId`、`code`。
-- 租户中间件手写的 400/403（`Tenant.NotFound` / `Tenant.Disabled` / `Tenant.Expired`）必须与 `ToHttpResult()` 共用同一出口：响应体带 `traceId`、响应头带 `X-Trace-Id`、kebab 转换只有一份实现（F-06-1，票 06 收口）。
+- 租户中间件手写的 400/403（`Tenant.NotFound` / `Tenant.Disabled` / `Tenant.Expired`）必须与 `ToHttpResult()` 共用同一出口：响应体带 `traceId`、响应头带 `X-Trace-Id`、kebab 转换只有一份实现（F-06-2，票 06 收口）。
 - 框架裸 401/403（status code pages 路径）必须映射为 ProblemDetails：`Auth.Unauthorized` / `Auth.Forbidden`，不得落成 `System.Unexpected` /「服务器内部错误」（F-06-3，本轮修）。
-- `errors` 键统一 camelCase（`userName`），由 Result→ProblemDetails 出口转换；本轮**没有** Application 层与 FluentValidation，Validation 错误由测试手工构造，**管道与校验规则属步骤 3 另开票**（F-06-2 口径调整），上线后保持同一行为与断言。
+- `errors` 键统一 camelCase（`userName`），由 Result→ProblemDetails 出口转换；本轮**没有** Application 层与 FluentValidation，Validation 错误由测试手工构造，**管道与校验规则属步骤 3 新票**（tickets.md「步骤 3 移交清单」第 1 项），上线后保持同一行为与断言。
 - 前端侧错误拦截（orval mutator）属步骤 4，本轮只留 `packages/api` 目录与 README 占位。
 
 ### 4.5 UoW + Outbox + 领域事件
@@ -270,8 +270,8 @@
   - 票 05 口径：`Tenants` 为空允许启动但请求 400（不做启动期 fail-fast）；`ExpiresAt = null` 视为永不过期，空字符串为配置错误、启动失败。
 - **票 06 预审与口径决策（2026-10-27，`dee779d`）**：
   - 基线 132 条全绿（35 + 54 + 26 + 16 + 1）；映射主路径、`type` kebab、404/405、生产不泄漏、F7「恰好 3 条」成立，判需修改的点在下面三条。
-  - **traceId（老登 F-06-1，跨票 05）** → 纳入票 06 返工：租户 400/403 补 `traceId` + 响应头 `X-Trace-Id`，kebab 转换去重为一份实现；**票 05 不重开**，票面加跨票补丁说明。
-  - **errors camelCase（李总 F-06-1）** → 仍要求实现：出口统一转 camelCase，用例必须以 PascalCase 键入参并断言 `userName`（防止再出现「用例自己喂期望输入」）；但因本轮无 FluentValidation / Application 层，**FluentValidation 管道与校验规则属步骤 3 另开票**，交付报告不得写成「管道已验证」（老登 F-06-2 的口径诉求以此满足）。
+  - **F-06-2 traceId（跨票 05）** → 纳入票 06 返工：租户 400/403 补 `traceId` + 响应头 `X-Trace-Id`，kebab 转换去重为一份实现；**票 05 不重开**，票面加跨票补丁说明。
+  - **F-06-1 errors camelCase** → 仍要求实现：出口统一转 camelCase，用例必须以 PascalCase 键入参并断言 `userName`（防止再出现「用例自己喂期望输入」）；本轮无 FluentValidation / Application 层，**管道与校验规则移交步骤 3**（tickets.md「步骤 3 移交清单」第 1 项），交付报告不得写成「管道已验证」。
   - **框架裸 401/403（老登 F-06-3）** → 纳入本轮票 06：status code pages 映射为 `Auth.Unauthorized` / `Auth.Forbidden` ProblemDetails 并带 `traceId`，补用例；避免步骤 3 一上授权就出现 `System.Unexpected`。
-  - 命名消歧：李总「F-06-1」= errors camelCase；老登「F-06-1」= traceId。票面按内容命名（traceId / errors / 401-403），不再按编号，避免复审时对不上。
+  - 编号以终审报告 [`review-06.md`](../reports/review-06.md) 为准：**F-06-1** = errors camelCase、**F-06-2** = 租户 traceId、**F-06-3** = 框架 401/403；F-06-4/5/6 为 low。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
