@@ -136,10 +136,8 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy" }))
 // 账号归属判定用它能区分「本次启动的进程」与「同一份构建的残留实例」（后者没有这个值）。
 app.MapGet("/api/version", (HttpContext context) =>
 {
-    if (ApiRunId.Current is { } runId)
-    {
-        context.Response.Headers[ApiRunId.HeaderName] = runId;
-    }
+    // 归属标记只走响应头，且仅在注入 PZD_RUN_ID 时输出；载荷保持三字段契约。
+    ApiRunId.Apply(ApiRunId.Current, context.Response.Headers);
 
     return Results.Ok(ApiVersionInfo.Current);
 }).WithMetadata(new AllowAnonymousTenantAttribute());

@@ -24,4 +24,19 @@ public static class ApiRunId
     /// <summary>空白视为未注入，避免把空串当成有效归属证据。</summary>
     internal static string? Normalize(string? runId) =>
         string.IsNullOrWhiteSpace(runId) ? null : runId;
+
+    /// <summary>
+    /// 把标记写进响应头：值为 null/空白时**什么都不写**（生产未注入就不该多出这个头）。
+    /// 抽成独立方法是为了能对“写/不写”本身写测试——<c>PZD_RUN_ID</c> 是进程级环境变量，
+    /// 而 <see cref="Current"/> 是静态只读，测试里改环境变量安排不了两条分支。
+    /// </summary>
+    public static void Apply(string? runId, IHeaderDictionary headers)
+    {
+        ArgumentNullException.ThrowIfNull(headers);
+
+        if (Normalize(runId) is { } value)
+        {
+            headers[HeaderName] = value;
+        }
+    }
 }

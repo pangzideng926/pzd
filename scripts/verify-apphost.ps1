@@ -120,7 +120,7 @@ $logDir = Join-Path $repoRoot "artifacts"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 # F-03-A11：本次运行的唯一标记。子进程（dotnet run / AppHost）继承进程环境变量，
-# AppHost 再把 PZD_RUN_ID 透传给 api 资源，API 从 /api/version 的 runId 原样回显。
+# AppHost 再把 PZD_RUN_ID 透传给 api 资源，API 以响应头 X-Pzd-Run-Id 原样回显。
 # 它只在本次进程树里有，同一 hash 的残留实例不会有——这是脚本判定「200 归属」的唯一依据。
 $runId = [guid]::NewGuid().ToString("N")
 [Environment]::SetEnvironmentVariable("PZD_RUN_ID", $runId, "Process")
@@ -334,7 +334,7 @@ try {
         # F-03-A1/A12：api 模式下 200 必须来自本次启动的进程树（残留实例顶端口时最容易踩；
         # 取不到监听 pid 也要判失败，不能让 `-and` 短路到 else 打印一个查不到的假事实）。
         # aspire 模式下 5080 由 DCP 代理持有，父链到不了本次宿主——那是「证据取错对象」（A11），
-        # 所以 aspire 不走进程树，改由 /api/version 回显的本次运行标记判定（见下方 runId 断言）。
+        # 所以 aspire 不走进程树，改由 X-Pzd-Run-Id 响应头携带的本次运行标记判定（见下方 runId 断言）。
         if ($Mode -eq "api") {
             $listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
             if (-not $listenerPid) {
@@ -348,7 +348,7 @@ try {
             }
         }
         else {
-            Write-Host "[note] aspire 模式：5080 由 DCP 代理持有，归属改用 /api/version 的 runId 判定（A11）。" -ForegroundColor DarkGray
+            Write-Host "[note] aspire 模式：5080 由 DCP 代理持有，归属改用 X-Pzd-Run-Id 响应头判定（A11）。" -ForegroundColor DarkGray
         }
 
     $ready = Invoke-WebRequest -Uri "$ApiBaseUrl/health/ready" -TimeoutSec 10 -SkipHttpErrorCheck
@@ -411,7 +411,9 @@ try {
     if ([string]::IsNullOrWhiteSpace($runIdHeader)) {
         $failures.Add("/api/version 没有 $ApiRunIdHeaderName 响应头：API 没收到本次运行的 PZD_RUN_ID，无法证明应答来自本次启动（F-03-A11）")
     }
-    elseif ($runIdHeader -ne $runId) {
+    elseif ($runIdHeader -cne $runId) {
+        # 用 -cne 而不是 -ne：PowerShell 的 -ne 对字符串大小写不敏感，
+        # 归属值一旦改成大小写混合（base64/UUID 大写形式）就会把不匹配判成匹配。
         $failures.Add("$ApiRunIdHeaderName '$runIdHeader' 与本次运行的 '$runId' 不符：$ApiBaseUrl 上是别的实例（同 hash 的残留也会这样）")
     }
     else {
