@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 ✅ 审计通过（`e593225`，[`review-05.md`](../reports/review-05.md)，116 条）｜06 🔧 返工中（预审需修改，[`review-06.md`](../reports/review-06.md)）｜02/03 未开工｜07–10 ready-for-agent
+> 进度：01 ✅｜04 ✅（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜05 ✅（`e593225`，116 条，[`review-05.md`](../reports/review-05.md)）｜06 ✅（`abde749`，156 条，[`review-06.md`](../reports/review-06.md)）｜07 ✅（`7f699c5`，185 条，[`review-07.md`](../reports/review-07.md)）｜12 ✅（[`review-12.md`](../reports/review-12.md)）｜02 ✅（`57c226e`，[`review-02.md`](../reports/review-02.md)）｜**03 开工中**（前置 01/02/05 已满足，F-05-4 硬前置）｜08/09/10 ready-for-agent｜11 待 02–10 收口
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
