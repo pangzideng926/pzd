@@ -33,7 +33,9 @@ public sealed class RedisHealthCheck : IHealthCheck
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _logger.LogWarning("Degraded mode: Redis unavailable（ConnectionStrings:redis 为空）。");
+            // 降级日志的唯一出处是启动期 Program.cs 那条 Warn（票 03 ④）；
+            // 探活自己每次被调（含轮询 /health/ready）都打 Warn 会刷屏，这里只留 Debug 备查（F-03-4）。
+            _logger.LogDebug("Redis 探活：ConnectionStrings:redis 为空，返回 Degraded。");
             return HealthCheckResult.Degraded("redis 未配置（ConnectionStrings:redis 为空）。");
         }
 
@@ -45,7 +47,7 @@ public sealed class RedisHealthCheck : IHealthCheck
 
             if (string.IsNullOrWhiteSpace(settings.Host))
             {
-                _logger.LogWarning("Degraded mode: Redis unavailable（连接串解析出的 host 为空）。");
+                _logger.LogDebug("Redis 探活：连接串解析出的 host 为空，返回 Degraded。");
                 return HealthCheckResult.Degraded("redis 连接串没有可用 host。");
             }
             using var client = new TcpClient();
@@ -75,7 +77,8 @@ public sealed class RedisHealthCheck : IHealthCheck
         {
             // 兜底到所有非取消异常：缺资源的探活失败只能是 Degraded，
             // 一旦冒到 HealthCheckService 就会变成 Unhealthy + 503，违反票 03 口径。
-            _logger.LogWarning(exception, "Degraded mode: Redis unavailable（{Reason}）。", exception.Message);
+            // 只打 Debug：Warn 由启动期统一发一次（F-03-4），否则每次 /health/ready 轮询都会刷一条。
+            _logger.LogDebug(exception, "Redis 探活失败，返回 Degraded：{Reason}", exception.Message);
             return HealthCheckResult.Degraded($"redis 不可用：{exception.Message}");
         }
     }

@@ -23,7 +23,8 @@ public sealed class MySqlHealthCheck : IHealthCheck
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
-            _logger.LogWarning("Degraded mode: MySQL unavailable（ConnectionStrings:mysql 为空）。");
+            // 降级 Warn 的唯一出处是启动期 Program.cs（票 03 ④）；探活里只留 Debug，避免轮询刷屏（F-03-4）。
+            _logger.LogDebug("MySQL 探活：ConnectionStrings:mysql 为空，返回 Degraded。");
             return HealthCheckResult.Degraded("mysql 未配置（ConnectionStrings:mysql 为空）。");
         }
 
@@ -51,7 +52,7 @@ public sealed class MySqlHealthCheck : IHealthCheck
         catch (Exception exception) when (exception is not OperationCanceledException
             || !cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(exception, "Degraded mode: MySQL unavailable（{Reason}）。", exception.Message);
+            _logger.LogDebug(exception, "MySQL 探活失败，返回 Degraded：{Reason}", exception.Message);
             return HealthCheckResult.Degraded($"mysql 不可用：{exception.Message}");
         }
     }
