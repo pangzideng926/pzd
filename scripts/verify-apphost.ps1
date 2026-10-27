@@ -374,12 +374,39 @@ try {
             else {
                 # F-03-A10（李总建议，与 F-03-A1 同一口径）：5199 的 200 也必须来自本次启动的进程树。
                 # 只断言「200 + SPA 标记」时，别人在这端口上跑的 dev 会让前端腿假绿。
+                # 三条互斥判定，不用 -and 串联：任何一环「无法确认」都算失败，宁可假红不可假绿
+                # （原实现把「取不到 pid」短路进 else 并打印「属本次进程树」，是主动断言假事实）。
                 $webAncestor = if ($Mode -eq "aspire") { $hostProcess.Id } elseif ($webProcess) { $webProcess.Id } else { $null }
                 $webListenerPid = Get-PortListenerPid 5199
-                if ($webAncestor -and $webListenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $webListenerPid -AncestorPid $webAncestor)) {
+
+                if (-not $webAncestor) {
+                    $failures.Add("前端 127.0.0.1:5199 无法确定本次启动的祖先进程（Mode=$Mode），不能证明 200 来自本次实例")
+                }
+                elseif (-not $webListenerPid) {
+                    $failures.Add("前端 127.0.0.1:5199 取不到监听者 pid，无法确认 200 是否来自本次实例（祖先 pid $webAncestor）")
+                }
+                elseif (-not (Test-ProcessDescendsFrom -ChildPid $webListenerPid -AncestorPid $webAncestor)) {
                     $failures.Add("前端 127.0.0.1:5199 的监听者 pid $webListenerPid 不属于本次启动的进程树（祖先 pid $webAncestor），200 不是本次实例给的")
                 }
-                else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳（监听者 pid $webListenerPid 属本次进程树）" }
+                else {
+                    # 归属成立之后再扫前端进程自己的 stderr：李总那次假绿的直接痕迹是
+                    # `Port 5199 is already in use` / `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`，
+                    # 只看 200 会被同端口的旧实例骗过去。
+                    $webErr = Join-Path $logDir "verify-web.log.err"
+                    $portClash = if ($Mode -eq "api" -and (Test-Path $webErr)) {
+                        Select-String -Path $webErr -Pattern "already in use", "EADDRINUSE", "ERR_PNPM" -SimpleMatch -ErrorAction SilentlyContinue
+                    }
+
+                    if ($portClash) {
+                        $failures.Add("前端进程自己的 stderr 里有端口冲突/启动失败痕迹（$($portClash[0].Line.Trim())），200 来自别的实例")
+                    }
+                    elseif ($Mode -eq "api" -and $webProcess -and $webProcess.HasExited) {
+                        $failures.Add("前端进程已退出（exit code $($webProcess.ExitCode)），5199 上的 200 不是它给的")
+                    }
+                    else {
+                        Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳（监听者 pid $webListenerPid 属本次进程树，stderr 无端口冲突）"
+                    }
+                }
             }
         }
         catch {
