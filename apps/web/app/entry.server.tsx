@@ -85,6 +85,11 @@ export default function handleRequest(
           );
         },
         onShellError(error: unknown) {
+          // 失败路径也要清定时器（默认 entry 只在成功 final 里清）：否则 6 秒后
+          // 定时器还会对着已经失败的流调 abort，制造一条与本因无关的二次错误。
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+
           console.error("[pzd/entry.server] 文档外壳渲染失败（这是真错误，不是 abort TDZ）：", error);
           reject(error);
         },
@@ -99,6 +104,10 @@ export default function handleRequest(
       });
     } catch (error) {
       // 同步抛出就是真错误：默认 entry 会把它吞到 6 秒后的 TDZ 后面，这里立刻暴露。
+      // 这条路径上定时器还没挂（它在渲染成功之后才挂），clearTimeout 只是显式兜底。
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+
       console.error(
         "[pzd/entry.server] renderToPipeableStream 同步抛出（默认 entry 会被 abort TDZ 掩盖 6 秒）：",
         error,
@@ -110,6 +119,13 @@ export default function handleRequest(
     abort = stream.abort;
 
     // 定时器必须在渲染成功之后挂：此时 abort 一定已初始化，不会再踩 TDZ。
-    timeoutId = setTimeout(() => abort?.(), streamTimeout + 1_000);
+    // 到点仍未决定响应时显式失败——超时保护要保住，但不能再变成「请求永久挂起」。
+    timeoutId = setTimeout(() => {
+      abort?.();
+
+      if (!shellRendered) {
+        reject(new Error(`SSR 流在 ${streamTimeout + 1_000}ms 内未就绪，已中止渲染（流超时保护）。`));
+      }
+    }, streamTimeout + 1_000);
   });
 }
