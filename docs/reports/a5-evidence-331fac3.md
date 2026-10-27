@@ -78,19 +78,26 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 **探活纪律**：`entry.server.tsx:57` 对 `HEAD` 在渲染前短路返回初始 200，所以**HEAD 恒 200**，任何探活只能用 GET 的状态码。
 
-## 7. 证据五：TDZ 已经终结（反证计数，老卫独立数过）
+## 7. 证据五：TDZ 已经终结 + 双调用在 aspire 侧也成立（计数，老卫独立数过）
 
-同目录 `web-stderr.log` 有 **10401 行 / 1.6MB**，几乎全是重复错误栈。按关键词计数：
+同目录 `web-stderr.log` 有 **10401 行 / 1.6MB**，跨度 `15:52:25.629Z` → `15:55:43.073Z`（约 **3 分 17 秒**），几乎全是重复错误栈。按关键词计数：
 
 | 关键词 | 命中 |
 | --- | --- |
 | `Cannot access`（TDZ 的报错形态） | **0** |
 | `ReferenceError` | **0** |
-| `jsxDEV` | **1040** |
+| `jsxDEV` | **1040**（= 520 次 × 2：消息里一次 + 栈帧里一次） |
 | `同步抛出` | **520** |
+| 抛出时间戳去重后 | 366（同一毫秒内成对时只算一个） |
 | 文件总行数 | 10401 |
 
-读法：**520 次真错误、0 次 TDZ**。也就是说在真实 DCP 编排下，自定义 entry 每次都在调用点把真错误打出来并回 500，**没有任何一次退化成「6 秒后 `Cannot access 'abort' before initialization` 带崩进程」**。1.6MB 是「每个请求几段栈 × 520 次」的结果，不是异常膨胀以外的第二种问题。
+**怎么读这 520**：抛出是**成对**出现的，两两间隔约 1ms，相邻两对之间约 **0.77 秒**；整轮约 260 个文档请求 × 每次 2 轮 entry 调用 = **520 次抛出**。也就是说 **双调用在 DCP 拉起的 vite 上全程成立**，不是只在本地 `pnpm dev` 成立，也不只在超时路径成立（对应同步抛出这条路径）。
+
+> **一处口径更正（避免后人拿小样本当全量）**：老登数到的是「8 次抛出、4 对时间戳」（`27.764/27.771`、`28.558/28.559`、`29.328/29.328`、`30.098/30.098`），那是**文件头部前 4 个请求的窗口**，不是全文；全文是 520 次 / 约 260 个请求。两个数都对，但引用「这轮到底发生了几次」时用 520。
+
+读法：**520 次真错误、0 次 TDZ**。在真实 DCP 编排下，自定义 entry 每次都在调用点把真错误打出来并回 500，**没有任何一次退化成「6 秒后 `Cannot access 'abort' before initialization` 带崩进程」**。1.6MB 不是某行特别长，而是**同一条完整栈被重复 520 次**——这就是缺陷态日志膨胀的直接原因，别据此判断 web 进程本身有异常。
+
+**边界**：aspire 侧只有成对的时间戳，**看不到请求头**，所以「发起方是上层重试」这个定性来自本机实验（锋哥：两次请求逐字节相同，含自定义 `x-probe-marker: first`），**不要写成「aspire 侧也验过请求头」**。
 
 ## 8. 通道边界（这条最容易判反）
 
@@ -111,11 +118,20 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 ## 9. 结论
 
-DCP/supervisor 向 web 资源注入 `NODE_ENV=production`；未钉住时 vite 进程拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
+**观测事实**：DCP 拉起的 vite 进程里 `NODE_ENV=production`（见 §3，进程级）；未钉住时它拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
 
 **四条证据链上的分工（按 §2 的强度）**：① 进程级字符串 `NODE_ENV=production`（最硬）→ ② 快照同值（互证）→ ③ 同一请求 106ms 后 `jsxDEV is not a function`（后果）→ ④ `GET /` 500 且归属头与本轮 runId 一致（排除残留实例）。
 
 对照另一侧由李总在含钉住行的树上跑出（`5682cd0` 干净副本）：进程级 `NODE_ENV=development`、`GET /` 200、`X-Pzd-Run-Id` 与 runId 一致、全链路 `EXIT=0`。**两边唯一差异就是那一行 `WithEnvironment`。**
+
+**来源层还没分出（这一条决定措辞，别跳过）**：仓库里**没有任何一处主动设置 `NODE_ENV`**——`apps/web/package.json` 的 `scripts.dev = "react-router dev"` 不带环境变量、`scripts/verify-apphost.ps1` 全文没有 `NODE_ENV`、shell / Windows 用户级 / 机器级三处都未设置（雨哥，2026-10-28）；全仓只有三处提到它：`entry.server.tsx:45`（打印）、`vite.config.ts:31/45`（打印）、`Program.cs:85`（现在的钉住）。所以「它从哪来」剩两种可能：
+
+1. **编排器侧**：`dcp.exe` 或它调起的 supervisor 塞给 web 资源（`Aspire.Hosting.dll` 字符串扫描证不了它，旺总自己标过这个边界）；
+2. **工具链侧**：`pnpm` → `corepack` → `cmd.exe` → `react-router dev` 链上某一层（最可疑是 react-router/vite 在 build 语义下的默认值）。
+
+**判别法（不用 aspire，几分钟）**：`cd apps/web && pnpm exec react-router dev --port 5231`，看 `vite.config.ts` 打印值或文件探针——出现 `production` 就是工具链翻的（②），`<unset>`/`development` 就只可能来自编排器（①）。
+
+**所以措辞卡死在这里**：可写「**DCP 拉起的 vite 进程里观测到 `NODE_ENV=production`（来源层未定）**」，**不要**直接写成「supervisor 注入」——那是两种不同根因，对应的修法也不同（② 该在 `vite.config.ts` 里显式声明 dev 语义，而不只是 `WithEnvironment` 压住症状）。
 
 **两条边界（引用时不能省）**：① 这一侧是 `331fac3` **手工删掉钉住行的对照件**（不是某个 un-pinned 提交，也不是 `git revert`）；② **两侧来自两次不同的运行**（`331fac3` 删行 vs `5682cd0` 含钉住），是「同一改动差异、不同运行现场」的对照，不是同一次运行里的 A/B 开关。
 
@@ -128,6 +144,15 @@ DCP/supervisor 向 web 资源注入 `NODE_ENV=production`；未钉住时 vite �
 - 不能把本包当成「仓库里的一次可复现运行」：它来自人工删行的对照件，复现需重建同一改动。
 - 不能把 `Cannot access` 计数为 0 读成「**TDZ 在全部场景都消失了**」：这只覆盖「该调用点同步抛出 → 失败回 500」这一类，且是 `331fac3` 的自定义 entry；别的失败形态（`onShellError`、卡死超时）各有各的实测，见交接 §5。
 
-## 11. 复制件位置（非权威，目录可能已被清理）
+## 11. 复制件位置与可复核性（原件已随 worktree 删除，副本留存）
 
-本文件内容抄自 `C:\tmp\a5-ab-331fac3-nopin\`（`web-stdout.log` 1.8KB、`web-stderr.log` 1.6MB、`verify-apphost.log` 4.7KB、`verify-apphost.log.err` 103B、`README-证据说明.txt`）。**该目录随时可能被删；以本文件正文为准。**
+本文件内容抄自 `C:/tmp/a5-ab-331fac3-nopin/`。**原件（`E:\pzd-a5pre\.aspire-tmp/aspire-dcp*/<guid>_out` / `_err`）已随那份 worktree 一起删除，不可再生**——所以别写「原件仍在盘上」，只能写「副本留存，sha256 如下」（锋哥，2026-10-28）。**该副本是整个 A5 定因唯一不可再生的物证，请勿清理 `C:/tmp`**；本文件正文已把关键原文抄全，即使副本没了也能复核。
+
+| 文件 | 大小 | sha256 |
+| --- | --- | --- |
+| `web-stdout.log` | 1878 B | `33cc091a2910fcd9bbc36ed13f6e8ab1aaab95367881ed5724ac30ead8cc586c` |
+| `web-stderr.log` | 1624876 B | `fdcd5c752d53036ad14afe24a3f1d5b00df67643a98092f5bc7f1fe3b7ef441e` |
+| `verify-apphost.log` | 4677 B | `e5438442ef6cda3a38450d13a01521540e6735a34bb6e56d8587582a7f885785` |
+| `README-证据说明.txt` | 3555 B | `75085d411ae76b3a8b86f56365ddb06be82e06cb2456f6cb172ca47da1273e14` |
+
+**「它确实来自 DCP 的资源 stdout 捕获通道」的格式证据**：`web-stdout.log:17` 的原始字节以 `1 7 ␠ 2 0 2 6 - 1 0 - 2 7 T 1 5 : 5 2 : 2 7 . 6 5 8 Z ␠ [ p z d - w e b ] …` 开头——**行号前缀 + ISO 时间戳是 DCP 捕获格式**，我们自己 `console.log` 只写 `[pzd-web] entry loaded（…）`，不会自己加这两样。所以这行不是拼出来的。
