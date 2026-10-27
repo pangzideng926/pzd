@@ -1,6 +1,6 @@
 # PZD 工程底座与横切能力 — 规格（§18 步骤 1–2）
 
-> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/12 审计通过；票 05 实现完成待测（`057f64a`）；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
+> 状态：执行中（2026-10-27）｜假设 A1–A8 待确认｜票 01/04/05/12 审计通过；票 06 待开工；票 03/09/10 口径已按本机实例升格（见 §4.6 / §4.8 / §4.12 / §9 修订记录）
 > 上游：[`docs/architecture.md`](../architecture.md)（已确认），本规格只覆盖 §18 步骤 1「工程底座」与步骤 2「横切能力」
 > 票：[`docs/specs/tickets.md`](./tickets.md)
 > 依据方法论：to-spec / to-tickets（Matt Pocock），测试接缝取最高层
@@ -91,7 +91,8 @@
   - 匿名：子域名或 `X-Tenant` 头（仅匿名端点可用），二者同时存在时子域名优先。
   - 无法解析且端点要求租户 → 400/403 ProblemDetails（错误码 `Tenant.NotFound`）。
   - `ITenantStore` 校验状态与到期：停用 → 403 `Tenant.Disabled`，过期 → 403 `Tenant.Expired`；每次请求都校验（不缓存「已通过」结论超过请求生命周期）。
-- `ITenantDbProvider`：按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、只查一次 `ITenantStore`；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
+- **免租户豁免（F-05-4）**：`/health/live`、`/health/ready`、`/api/version`（以及后续登录类端点）标记 `AllowAnonymousTenant` metadata，中间件跳过租户解析与状态校验；这些端点无 claim / `X-Tenant` / 子域时返回 200。豁免端点之外，缺租户仍返回 400 `Tenant.NotFound`。**票 03 开工硬前置**，由票 03 / 09 实现。
+- `ITenantDbProvider`：按 `TenantId` **每租户懒建一个独立 `SqlSugarScope`**（连接配置在构造期注入，AOP / 过滤器随配置挂载）+ 双检缓存；同一租户只建一次、**连接创建只查一次 `ITenantStore`（显式重载为校验状态按次查库）**；禁止全局单例 `AddConnection(tid)` 与 `ChangeDatabase`。原因：实测 `SqlSugarScope.AddConnection` 在 async 上下文里是上下文私有的，方法返回后对调用方不可见（票 05 偏差回填，见 §9）。租户连接串来自 `ITenantStore`（本轮内存实现 / 配置注入，加密与 KMS 属步骤 3）。
 - `master` 连接始终存在（`ConfigId = "master"`）；租户库表仍保留 `TenantId` 与全局 QueryFilter（纵深防御）。
 
 ### 4.4 异常处理与 Result
@@ -178,7 +179,7 @@
 - [ ] **AC1** `pwsh -NoProfile -File scripts/verify.ps1` 在本机（MySQL 8.0.46 / Redis Memurai 可用）退出码 0，并打印 4 段结果：build / architecture tests / unit tests / integration tests（连真实 MySQL 运行；凭据缺失时 Skip 也视为通过）
 - [ ] **AC2** `dotnet build Pzd.slnx -warnaserror` 通过（含 `TreatWarningsAsErrors`），MinVer 版本写入程序集与 `/api/version`；**版本以 git tag 为基准**（tag 提交 `0.1.0`，之后为 `0.1.1-alpha.0.<height>`），不在票/测试里硬编码具体版本值（F6）
 - [ ] **AC3** 架构测试通过；证据口径 = **规则③反向用例**（故意构造的 Domain→SqlSugar 违规类型必须让规则失败）+ **规则④单元级反例**（证明允许集非全放行）；① ② 是对真实程序集的直接断言，不声称「四条都有反向用例」（交接记录「票面措辞」项，已于 `8e1a1a3` 修正）
-- [ ] **AC4** 多租户单元测试通过：claim `tid` 优先、匿名 `X-Tenant`/子域、停用 403 `Tenant.Disabled`、过期 403 `Tenant.Expired`、请求间上下文隔离、无上下文取连接报明确错误
+- [ ] **AC4** 多租户单元测试通过：claim `tid` 优先、匿名 `X-Tenant`/子域、停用 403 `Tenant.Disabled`、过期 403 `Tenant.Expired`、请求间上下文隔离、无上下文取连接报明确错误；显式重载对停用/过期租户拒绝取连接（F-05-8）；`/health/*`、`/api/version` 无租户返回 200（F-05-4）
 - [ ] **AC5** 异常处理单元测试通过：§8.3 全部状态码映射逐条断言；未知异常 500 不含堆栈且含 `traceId`
 - [ ] **AC6** `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（普通目录等价 `dotnet test`）在**本机 MySQL 可用**时真跑：自动建/清 `pzd_it_a`、`pzd_it_b`，A/B 两库数据互不可见、QueryFilter 生效、停用租户 403 `Tenant.Disabled`；无凭据 / 实例不可达时动态 Skip 且 exit 0（CI 兜底）
 - [ ] **AC7** `dotnet run --project src/Pzd.AppHost` 一条命令启动 API + 前端并连本机 MySQL/Redis，`/health/ready` 为 Healthy（明细 mysql/redis Up），`/api/version` 可访问，Ctrl+C 优雅退出；实例缺失时降级 200 Degraded（兜底路径，非主验收）
@@ -257,8 +258,12 @@
   - 遗留 low（不阻塞）：`Error.Metadata` 只做**结构快照**，值为可变对象时仍会跟随变化——`Metadata` 的 XML 注释补「仅结构快照，值请使用不可变类型」（旺总随票 05 补）；可选补 `Clear()` / `ICollection.Add` 两路守卫。
   - 规则③的模块程序集范围（交接记录「规则③检查范围」项）确认**由票 05 承接**：`ProductAssemblies` 改为「底座程序集 + `DiscoverModules()`」，并在票 05 补 `FakeInfrastructureDependency` 反例（恰好 2 条违规）；票 06 补 `FakeApiDependency`（恰好 3 条）。
 - **票 05 实现偏差（2026-10-27，`057f64a`）**：
-  - `SqlSugarScope.AddConnection` 在 async 上下文里**上下文私有**（加完回到调用方即丢，`Task.Yield()` 可复现），原设计「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：只建一次、只查一次 store、不 `ChangeDatabase`、不跨租户；`ITenantDbProvider` 为 async API。票 05 票面与 §4.3 已回填。
+  - `SqlSugarScope.AddConnection` 在 async 上下文里**上下文私有**（加完回到调用方即丢，`Task.Yield()` 可复现），原设计「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：只建一次、**连接创建只查一次 store（显式重载按次校验查库）**、不 `ChangeDatabase`、不跨租户；`ITenantDbProvider` 为 async API。票 05 票面与 §4.3 已回填。
   - 票 05 新增文件：`TenantConnectionCache.cs`、`TenantConfiguration.cs`、`SystemClock.cs`、`src/Pzd.Api/appsettings.json`（无真实密码）；Infrastructure 加 `FrameworkReference Microsoft.AspNetCore.App`、`SqlSugarCore`、`InternalsVisibleTo`；测试包加 `Microsoft.AspNetCore.Mvc.Testing`。均属实现必需，审计不应判超范围。
   - 本轮**所有端点都要求租户**；登录类端点（`AllowAnonymousTenant`）与匿名租户解析的完整策略留步骤 3。
-  - 票 05 交付时全仓 90 条全绿（35 + 15 + 30 + 9 + 1），待李总复测、老登审计后再回填终态。
+  - 票 05 交付时全仓 90 条全绿（35 + 15 + 30 + 9 + 1）；返工后 **`e593225` 终审通过**，116 条全绿（35 + 16 + 54 + 10 + 1），见 [`review-05.md`](../reports/review-05.md)。票面状态、测试数与「连接创建只查一次；显式重载按次校验查库」措辞已回填。
+- **票 05 终审与跨票前置（2026-10-27，`e593225`）**：
+  - **F-05-4**（`/health`、`/api/version` 免租户）→ 已写入 §4.3、票 03（开工硬前置）与票 09；实现为 `AllowAnonymousTenant` metadata，验收要求无租户访问三端点均 200。
+  - **F-05-8**（后台任务取连接）→ 已写入票 07 验收：必须用带状态校验的显式重载 `GetConnectionScopeAsync(tenantId)`，禁止无参裸取；停用/过期租户消息拒绝处理并记录理由。
+  - 票 05 口径：`Tenants` 为空允许启动但请求 400（不做启动期 fail-fast）；`ExpiresAt = null` 视为永不过期，空字符串为配置错误、启动失败。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。

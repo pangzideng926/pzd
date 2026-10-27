@@ -2,7 +2,7 @@
 
 > 规格：[`docs/specs/foundation.md`](./foundation.md)
 > 状态：执行中（2026-10-27 第二轮）｜共 12 张
-> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 🔧 实现完成待测（`057f64a`，90 条全绿）｜02/03 未开工｜06–10 ready-for-agent
+> 进度：01 ✅ 审计通过｜04 ✅ 审计通过（返工 F1/F2/F5/F4/F7，[`review-01-04-final.md`](../reports/review-01-04-final.md)）｜12 ✅ 审计通过（[`review-12.md`](../reports/review-12.md)）｜05 ✅ 审计通过（`e593225`，[`review-05.md`](../reports/review-05.md)，116 条）｜02/03 未开工｜06–10 ready-for-agent
 > 交接：开发（旺总）→ 测试（李总）→ 审计（老登）→ 文档（老卫）
 > 规则：每张票完成后必须贴出「验证命令 + 实际输出摘要」；失败不许标完成。测试先行的票在票内注明。
 
@@ -34,13 +34,13 @@
 |---|---|---|---|
 | 01 | 仓库与 .NET 骨架 | 无 | `dotnet build Pzd.slnx -warnaserror` |
 | 02 | 前端 monorepo 骨架 | 01 | `pnpm install --frozen-lockfile && pnpm -w build` |
-| 03 | Aspire 编排与一键启动（引用本机实例） | 01, 02 | `pwsh -NoProfile -File scripts/verify-apphost.ps1`（需 env 连接串） |
+| 03 | Aspire 编排与一键启动（引用本机实例） | 01, 02, 05（F-05-4） | `pwsh -NoProfile -File scripts/verify-apphost.ps1`（需 env 连接串） |
 | 04 | SharedKernel + 架构测试基线 | 01 | `dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj` |
 | 05 | 多租户内核 + 单测 | 04 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
 | 06 | 异常处理 + Result→HTTP | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
 | 07 | UoW + Outbox + 领域事件 | 05, 06 | `dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj` |
 | 08 | 可观测性 + 审计 + 安全横切 | 06 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` |
-| 09 | Quartz + 健康检查 + 版本 | 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` + 启动验证 |
+| 09 | Quartz + 健康检查 + 版本 | 03, 04 | `dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj` + 启动验证 |
 | 10 | 租户隔离集成测试（本机 MySQL 真跑，缺失则 Skip） | 05 | `dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj` |
 | 11 | CLAUDE.md + 一键验收脚本 | 02,03,05,06,07,08,09,10,12 | `pwsh -NoProfile -File scripts/verify.ps1` |
 | 12 | Error.Metadata 只读快照（F8） | 04 | `dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj` |
@@ -123,17 +123,18 @@ pnpm -w typecheck
 
 # 03: Aspire 编排与一键启动（引用本机实例）
 
-**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server，并连上本机 MySQL 8.0.46 与 Redis(Memurai)；`/health/ready` 为 Healthy 且 mysql/redis 明细 Up，`/api/version` 可访问，Ctrl+C 优雅退出。凭据只从环境变量 / `local.env` 注入，仓库零密码；实例或凭据缺失时降级启动并打印 Warning（CI 兜底）。容器编排退出本轮验收。
+**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server，并连上本机 MySQL 8.0.46 与 Redis(Memurai)；`/health/ready` 为 Healthy 且 mysql/redis 明细 Up，`/api/version` 可访问，Ctrl+C 优雅退出。凭据只从环境变量 / `local.env` 注入，仓库零密码；实例或凭据缺失时降级启动并打印 Warning（CI 兜底）。容器编排退出本轮验收。**开工硬前置 F-05-4**：`/health/live`、`/health/ready`、`/api/version` 必须免租户，无 claim / `X-Tenant` / 子域时也返回 200，否则脚本轮询与版本端点会被票 05 的 `Tenant.NotFound` 400 拦掉。
 
 **文件路径**
 
 - `src/Pzd.AppHost/Pzd.AppHost.csproj`（Aspire AppHost SDK + `Aspire.Hosting.AppHost`）
 - `src/Pzd.AppHost/Program.cs`（以 `AddConnectionString` 引用本机实例并注入 API，**不建容器**）、`appsettings.json`、`Properties/launchSettings.json`
 - `src/Pzd.Api/appsettings.Development.json`（`ConnectionStrings:master` / `redis` 键缺省为空，不写真实值）
-- `src/Pzd.Api/Program.cs`（接受配置注入；**本票不实现**租户/异常/日志，仅启动骨架）
+- `src/Pzd.Api/Program.cs`（配置注入 + 给 `/health/*`、`/api/version` 标记 `AllowAnonymousTenant`）
+- `src/Pzd.Infrastructure/Tenancy/TenantResolutionMiddleware.cs`（识别豁免 metadata，跳过租户解析与状态校验）
 - `scripts/verify-apphost.ps1`（读 env 连接串 → 后台启动 AppHost → 轮询 `/health/ready` 断言 Healthy → 取 `/api/version` → 关闭进程；无 env 时断言降级 200）
 
-**Blocked by:** 01, 02
+**Blocked by:** 01, 02, 05（F-05-4 需在 05 的中间件上加豁免）
 
 **Status:** ready-for-agent
 
@@ -141,6 +142,7 @@ pnpm -w typecheck
 - [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**，明细 mysql=Up、redis=Up
 - [ ] 凭据只来自环境变量 / `local.env`：仓库内 `git grep` 无密码，`local.env` 已被 `.gitignore` 忽略
 - [ ] 实例或凭据缺失：降级启动，日志含 `Degraded mode: MySQL/Redis unavailable`，`/health/ready` 200 + Degraded，`/health/live` 200
+- [ ] **F-05-4（硬前置）**：无 claim / `X-Tenant` / 子域时，`/health/live`、`/health/ready`、`/api/version` 均返回 **200**；豁免端点之外的请求仍返回 400 `Tenant.NotFound`
 - [ ] `GET /api/version` 返回 `version`、`buildId`、`buildTime`，version 与 `dotnet msbuild -t:Build -getProperty:Version` 一致（以 tag 为基准，F6）
 - [ ] 不注册 MySQL / Redis 容器资源（无 Docker，容器编排不在本轮验收）
 - [ ] `scripts/verify-apphost.ps1` 在本机退出码 0，并贴出 Healthy（有 env）/ Degraded（无 env）证据
@@ -195,7 +197,7 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 
 **What to build:** 请求进入后能解析出可信租户上下文（登录 claim 优先，匿名头/子域次之），停用/过期立即 403；业务代码通过 Scoped 的 `ITenantDbProvider` 按需取租户连接，**每租户独立 `SqlSugarScope` + 双检缓存**，绝不串库。全部用单测证明，不依赖数据库。
 
-**实现偏差（票 05 实测回填）**：`SqlSugarScope.AddConnection` 在 async 上下文里是**上下文私有**的（加完回到调用方即丢，`Task.Yield()` 即复现），因此原票面「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建一个独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：每租户只建一次、只查一次 `ITenantStore`、不 `ChangeDatabase`、不跨租户。另：新增 `TenantConnectionCache.cs`、`TenantConfiguration.cs`、`SystemClock.cs`、`appsettings.json`（无真实凭据）；provider 为 async API；本轮所有端点都要求租户（登录类 `AllowAnonymousTenant` 留步骤 3）。
+**实现偏差（票 05 实测回填）**：`SqlSugarScope.AddConnection` 在 async 上下文里是**上下文私有**的（加完回到调用方即丢，`Task.Yield()` 即复现），因此原票面「单例 scope + `AddConnection(tid)` 只加一次 / `GetConnectionScope(tid)`」不可实现。改为**每租户懒建一个独立 `SqlSugarScope`**（构造期配置跨上下文可见）+ 双检缓存：每租户只建一次、**连接创建只查一次 `ITenantStore`（显式重载按次校验查库）**、不 `ChangeDatabase`、不跨租户。另：新增 `TenantConnectionCache.cs`、`TenantConfiguration.cs`、`SystemClock.cs`、`appsettings.json`（无真实凭据）；provider 为 async API；本轮所有端点都要求租户（登录类 `AllowAnonymousTenant` 留步骤 3）。
 
 **文件路径**
 
@@ -208,19 +210,25 @@ dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
 
 **Blocked by:** 04
 
-**Status:** 🔧 实现完成，待李总复测（commit `057f64a`，全仓 90 条全绿：35+15+30+9+1）
+**Status:** ✅ 通过（终审：[`review-05.md`](../reports/review-05.md)，实现 `e593225`，全仓 **116** 条全绿：35+16+54+10+1）
 
-- [ ] 已登录且 claim `tid` 存在：路由/端点拿到该租户，`X-Tenant` 头被忽略（有测试证明"忽略"）
-- [ ] 匿名 + `X-Tenant`：解析成功；匿名 + 子域名：解析成功；两者同时存在时子域名优先
-- [ ] 无任何租户来源且端点要求租户：400/403 ProblemDetails，错误码 `Tenant.NotFound`
-- [ ] 租户停用 → 403 + `code = Tenant.Disabled`；租户过期 → 403 + `code = Tenant.Expired`（精确断言响应体）
-- [ ] 每个请求都重新校验状态（`ITenantStore` 被再次调用，缓存不跨请求）
-- [ ] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
-- [ ] `TenantDbProvider`：每租户懒建**独立 `SqlSugarScope`**（构造期配置跨 async 上下文可见）+ 双检缓存——同一租户只建一次、只查一次 `ITenantStore`；禁止全局单例 `AddConnection(tid)` / `ChangeDatabase`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
-- [ ] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
-- [ ] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（交接记录「规则③检查范围」项；本票搭好机制，模块出现后自动生效）
-- [ ] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（交接记录「F7 补测条件」项）
-- [ ] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）在无实例/无凭据时也绿（单测不依赖数据库）
+- [x] 已登录且 claim `tid` 存在：路由/端点拿到该租户，`X-Tenant` 头被忽略（有测试证明"忽略"）
+- [x] 匿名 + `X-Tenant`：解析成功；匿名 + 子域名：解析成功；两者同时存在时子域名优先
+- [x] 无任何租户来源且端点要求租户：400/403 ProblemDetails，错误码 `Tenant.NotFound`
+- [x] 租户停用 → 403 + `code = Tenant.Disabled`；租户过期 → 403 + `code = Tenant.Expired`（精确断言响应体）
+- [x] 每个请求都重新校验状态（`ITenantStore` 被再次调用，缓存不跨请求）
+- [x] 同一 `ITenantContext` 不跨请求泄漏：两个并发/顺序 scope 各自 `Set` 后互不影响
+- [x] `TenantDbProvider`：每租户懒建**独立 `SqlSugarScope`**（构造期配置跨 async 上下文可见）+ 双检缓存——同一租户只建一次、**连接创建只查一次 `ITenantStore`**；禁止全局单例 `AddConnection(tid)` / `ChangeDatabase`；无租户上下文取连接抛明确异常（错误码 `Tenant.NotResolved`）
+- [x] 全局单例上不出现 `ChangeDatabase`（架构测试或代码检查断言）
+- [x] 架构规则③的检查范围纳入真实模块程序集（复用 `ArchRules.DiscoverModules()` 结果 + 底座程序集），不再只硬编码 3 个底座程序集（交接记录「规则③检查范围」项；本票搭好机制，模块出现后自动生效）
+- [x] F7 补测条件：本票给 `Pzd.Infrastructure` 加公共类型后，在测试程序集 `Pzd.SharedKernel.Domain` 下加 `FakeInfrastructureDependency` 引用它，反向用例断言**恰好 2 条违规**（交接记录「F7 补测条件」项）
+- [x] 上述全部为单测/HTTP 接缝测试，测试命令（工作区 `dotnet run --project`，见顶部环境适配 ②）在无实例/无凭据时也绿（单测不依赖数据库）
+
+**口径回填（审计 §5.2 措辞项）**
+
+- 「只查一次 `ITenantStore`」精确化为：**连接创建只查一次；显式重载 `GetConnectionScopeAsync(tenantId)` 为校验状态按次查库**（实测同租户两次调用 `FindByIdCalls=2`）。
+- `Tenants` 为空：允许启动，请求返回 400（不在启动期 fail-fast）；`Tenants:0:ExpiresAt` 为 `null` = 永不过期，为空字符串 = 配置错误、启动失败。此口径写进票面，README 由老卫同步。
+- 本票遗留的前置项不属 05 未完成：**F-05-4** 已落票 03/09 + foundation §4.3；**F-05-8** 已落票 07 验收。
 
 **验证命令**
 
@@ -265,7 +273,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 # 07: UoW + Outbox + 领域事件
 
-**What to build:** 一次 Command 提交时，聚合收集的领域事件先分发、再与 Outbox 一起提交；失败整体回滚；Outbox 由后台幂等投递。UoW 与 Outbox 存储可替换（本轮内存实现，步骤 3 换落库）。
+**What to build:** 一次 Command 提交时，聚合收集的领域事件先分发、再与 Outbox 一起提交；失败整体回滚；Outbox 由后台幂等投递。UoW 与 Outbox 存储可替换（本轮内存实现，步骤 3 换落库）。**F-05-8 约束**：后台任务 / Outbox 消费者取连接必须走带状态校验的显式重载 `GetConnectionScopeAsync(tenantId)`（先查 store 校验停用/到期再走缓存），**禁止**无参 `GetConnectionScopeAsync()` 裸取——后者只信任 `ITenantContext`，手工 `Set(停用租户)` 后仍会拿到连接，绕过状态校验。
 
 **文件路径**
 
@@ -282,6 +290,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] 领域事件处理器抛异常 → UoW 不提交、Outbox 无残留消息
 - [ ] 聚合事件分发后从聚合清除，不重复分发
 - [ ] Outbox 消息带 `TenantId`；消费前 `ITenantContext.Set` 被调用（假消费者断言）
+- [ ] **F-05-8**：后台任务 / 消费者用带 `tenantId` 的显式重载取连接（先校验停用/到期），停用或过期租户的消息被拒绝处理并记录理由；**不得**出现无参 `GetConnectionScopeAsync()` 裸取（代码检查 + 用例守护）
 - [ ] 投递幂等：同一消息重复投递不产生重复副作用（消息 Id + 已处理集合）
 - [ ] 投递失败重试并记 Warning/Error，不阻塞主流程；后台服务随应用优雅停止
 - [ ] 无跨库事务（master 与租户库不共享事务）；本票内存实现不引入 MySQL 依赖
@@ -331,7 +340,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 # 09: Quartz + 健康检查 + 版本端点（接本机 MySQL）
 
-**What to build:** Quartz 主路径用 **MySQL AdoJobStore**（表在 `pzd_master`），`HeartbeatJob` 注册后可在库中查到、重启后仍在；`/health` 分离存活/就绪，本机实例可用时 readiness 为 Healthy（mysql/redis 明细 Up）；`/api/version` 返回以 git tag 为基准的版本、buildId、构建时间。
+**What to build:** Quartz 主路径用 **MySQL AdoJobStore**（表在 `pzd_master`），`HeartbeatJob` 注册后可在库中查到、重启后仍在；`/health` 分离存活/就绪，本机实例可用时 readiness 为 Healthy（mysql/redis 明细 Up）；`/api/version` 返回以 git tag 为基准的版本、buildId、构建时间。**F-05-4（硬前置，与票 03 共用豁免）**：`/health/live`、`/health/ready`、`/api/version` 无 claim / `X-Tenant` / 子域时也必须 200，不得被 `Tenant.NotFound` 拦截。
 
 **文件路径**
 
@@ -339,21 +348,22 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - `db/master/quartz_tables.sql`（Quartz 官方 `tables_mysql_innodb.sql`，`pzd_master` 内建 `qrtz_*` 表）
 - `scripts/init-master-db.ps1`（读 env 凭据 → 幂等创建 `pzd_master` → 执行 `quartz_tables.sql`）
 - `src/Pzd.Api/Endpoints/VersionEndpoint.cs`、`HealthSetup.cs`
-- `src/Pzd.Api/Program.cs`（Quartz / health / version 注册；连接串来自 env）
+- `src/Pzd.Api/Program.cs`（Quartz / health / version 注册；豁免 metadata；连接串来自 env）
 - `src/Pzd.Api/Properties/AssemblyInfo.cs` 或 props（`buildId` / `buildTime` 由构建注入）
 - `tests/Pzd.Api.UnitTests/Endpoints/VersionEndpointTests.cs`、`HealthEndpointTests.cs`、`tests/Pzd.Infrastructure.UnitTests/Jobs/QuartzRegistrationTests.cs`
 
-**Blocked by:** 04（连接串注入方式复用票 03，实施顺序建议在 03 之后）
+**Blocked by:** 03, 04（健康检查与版本端点的豁免与配置来自票 03）
 
 **Status:** ready-for-agent
 
+- [ ] **F-05-4**：无 claim / `X-Tenant` / 子域时，`/health/live`、`/health/ready`、`/api/version` 均返回 200；豁免端点之外仍返回 400 `Tenant.NotFound`
 - [ ] 提供 master 连接串：启动 **MySQL AdoJobStore**（`SchedulerName = "pzd"` + 集群配置），`pzd_master` 内 `qrtz_*` 表存在
 - [ ] `HeartbeatJob` 按注册 cron（`Asia/Shanghai`，`[DisallowConcurrentExecution]`）注册，下次执行时间可查
 - [ ] **重启 API 后任务仍在**（查 `qrtz_job_details` 或 scheduler API，贴输出作为持久化证据）
 - [ ] 无连接串：内存存储 + Warning（CI 兜底），启动不失败
 - [ ] `/health/live` 永远 200；`/health/ready` 本机实例可用时 Healthy，明细 mysql=Up、redis=Up；无实例时 200 + Degraded，不因缺资源变 Unhealthy
 - [ ] `/api/version` 返回 `version`（MinVer，tag 基准，不硬编码）、`buildId`（git sha）、`buildTime`（ISO 8601），字段与架构 §15.1 一致
-- [ ] version 与 `dotnet msbuild ... -t:Build -getProperty:Version` 一致（当前 HEAD 期望 `0.1.1-alpha.0.1`，tag 提交上为 `0.1.0`）
+- [ ] version 与 `dotnet msbuild ... -t:Build -getProperty:Version` 一致；以 tag 为基准（tag 提交 `0.1.0`，HEAD 形如 `0.1.1-alpha.0.<height>+<sha>`），票面不写死具体值
 - [ ] `scripts/init-master-db.ps1` 幂等，只创建 `pzd_master` 与 `qrtz_*` 表，不碰其他库；密码不出现在脚本与输出
 - [ ] 本票不做 `version.json`、前端刷新提示、`X-Min-Client-Build`
 
