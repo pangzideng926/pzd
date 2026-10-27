@@ -17,6 +17,7 @@ public class TenantResolutionMiddlewareTests
         new(3, "halted", TenantStatus.Disabled, null, "Server=127.0.0.1;Database=pzd_t_halted"),
         new(4, "lapsed", TenantStatus.Active, Now.AddDays(-1), "Server=127.0.0.1;Database=pzd_t_lapsed"),
         new(5, "later", TenantStatus.Active, Now.AddDays(1), "Server=127.0.0.1;Database=pzd_t_later"),
+        new(6, "boundary", TenantStatus.Active, Now, "Server=127.0.0.1;Database=pzd_t_boundary"),
     ];
 
     [Fact]
@@ -119,6 +120,58 @@ public class TenantResolutionMiddlewareTests
     }
 
     [Fact]
+    public async Task Tenant_expiring_exactly_now_is_rejected()
+    {
+        var (context, _, nextCalled) = await InvokeAsync(new RecordingTenantStore(Tenants), header: "boundary");
+
+        Assert.False(nextCalled);
+        Assert.Equal(403, context.Response.StatusCode);
+
+        var problem = await ReadProblemAsync(context);
+
+        Assert.Equal("Tenant.Expired", problem.Code);
+    }
+
+    [Fact]
+    public async Task Logged_in_without_tid_claim_returns_400_tenant_not_found()
+    {
+        var (context, _, nextCalled) = await InvokeAsync(new RecordingTenantStore(Tenants), user: AuthenticatedUser(claim: null));
+
+        Assert.False(nextCalled);
+        Assert.Equal(400, context.Response.StatusCode);
+
+        var problem = await ReadProblemAsync(context);
+
+        Assert.Equal("Tenant.NotFound", problem.Code);
+    }
+
+    [Fact]
+    public async Task Logged_in_with_invalid_tid_claim_returns_400_tenant_not_found()
+    {
+        var (context, _, nextCalled) = await InvokeAsync(new RecordingTenantStore(Tenants), user: AuthenticatedUser(claim: "abc"));
+
+        Assert.False(nextCalled);
+        Assert.Equal(400, context.Response.StatusCode);
+
+        var problem = await ReadProblemAsync(context);
+
+        Assert.Equal("Tenant.NotFound", problem.Code);
+    }
+
+    [Fact]
+    public async Task Logged_in_with_unknown_tid_returns_400_tenant_not_found()
+    {
+        var (context, _, nextCalled) = await InvokeAsync(new RecordingTenantStore(Tenants), user: AuthenticatedUser(claim: "999"));
+
+        Assert.False(nextCalled);
+        Assert.Equal(400, context.Response.StatusCode);
+
+        var problem = await ReadProblemAsync(context);
+
+        Assert.Equal("Tenant.NotFound", problem.Code);
+    }
+
+    [Fact]
     public async Task Store_is_queried_on_every_request()
     {
         var store = new RecordingTenantStore(Tenants);
@@ -183,11 +236,15 @@ public class TenantResolutionMiddlewareTests
         return (context, tenantContext, nextCalled);
     }
 
-    internal static ClaimsPrincipal AuthenticatedUser(long tenantId)
+    internal static ClaimsPrincipal AuthenticatedUser(long tenantId) => AuthenticatedUser(tenantId.ToString());
+
+    internal static ClaimsPrincipal AuthenticatedUser(string? claim)
     {
-        var identity = new ClaimsIdentity(
-            [new Claim(TenantResolutionMiddleware.TenantClaimType, tenantId.ToString())],
-            authenticationType: "Test");
+        var claims = claim is null
+            ? Array.Empty<Claim>()
+            : [new Claim(TenantResolutionMiddleware.TenantClaimType, claim)];
+
+        var identity = new ClaimsIdentity(claims, authenticationType: "Test");
 
         return new ClaimsPrincipal(identity);
     }

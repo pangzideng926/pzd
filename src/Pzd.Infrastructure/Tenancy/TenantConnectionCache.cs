@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using SqlSugar;
 
@@ -5,7 +6,8 @@ namespace Pzd.Infrastructure.Tenancy;
 
 /// <summary>
 /// 租户连接缓存（Singleton）：每个租户一个 <see cref="SqlSugarScope"/>，首次使用时按需创建，
-/// 之后复用。锁内双检保证同一租户只建一次、只查一次租户库。
+/// 之后复用。<see cref="ConcurrentDictionary{TKey,TValue}"/> 保证读写并发安全，
+/// 信号量保证同一租户只创建一次、只查一次租户库（F-05-7）。
 /// </summary>
 /// <remarks>
 /// 为什么不是「单例 SqlSugarScope + AddConnection(tid)」：实测 <c>SqlSugarScope.AddConnection</c>
@@ -15,7 +17,7 @@ namespace Pzd.Infrastructure.Tenancy;
 /// </remarks>
 public sealed class TenantConnectionCache
 {
-    private readonly Dictionary<long, SqlSugarScope> _scopes = [];
+    private readonly ConcurrentDictionary<long, SqlSugarScope> _scopes = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task<SqlSugarScope> GetOrCreateAsync(
@@ -25,18 +27,18 @@ public sealed class TenantConnectionCache
     {
         ArgumentNullException.ThrowIfNull(connectionFactory);
 
-        if (TryGet(tenantId, out var existing))
+        if (_scopes.TryGetValue(tenantId, out var existing))
         {
-            return existing!;
+            return existing;
         }
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            if (TryGet(tenantId, out var created))
+            if (_scopes.TryGetValue(tenantId, out var created))
             {
-                return created!;
+                return created;
             }
 
             var config = await connectionFactory(cancellationToken).ConfigureAwait(false);
@@ -51,21 +53,7 @@ public sealed class TenantConnectionCache
         }
     }
 
-    internal bool IsCached(long tenantId)
-    {
-        lock (_scopes)
-        {
-            return _scopes.ContainsKey(tenantId);
-        }
-    }
-
-    private bool TryGet(long tenantId, out SqlSugarScope? scope)
-    {
-        lock (_scopes)
-        {
-            return _scopes.TryGetValue(tenantId, out scope);
-        }
-    }
+    internal bool IsCached(long tenantId) => _scopes.ContainsKey(tenantId);
 
     internal static string ConfigIdOf(long tenantId) => tenantId.ToString(CultureInfo.InvariantCulture);
 }

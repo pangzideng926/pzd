@@ -131,6 +131,25 @@ public class TenantResolutionApiTests
     }
 
     [Fact]
+    public async Task Store_is_queried_on_every_request_for_the_claim_path()
+    {
+        await using var factory = new PzdApiFactory();
+        using var client = factory.CreateClient();
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/");
+            request.Headers.Add(TestAuthenticationHandler.UserHeader, "42");
+            request.Headers.Add(TestAuthenticationHandler.TenantClaimHeader, "2");
+
+            using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        Assert.Equal(2, factory.TenantStore.FindByIdCalls);
+    }
+
+    [Fact]
     public async Task Store_is_queried_on_every_request()
     {
         await using var factory = new PzdApiFactory();

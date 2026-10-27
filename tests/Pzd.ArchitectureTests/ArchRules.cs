@@ -119,6 +119,33 @@ internal static class ArchRules
             .ToArray();
     }
 
+    /// <summary>
+    /// 代码检查：产品源码（<c>src/Pzd.*</c>，含未来模块，排除 *.Contracts 与 bin/obj）里不得出现
+    /// <c>.ChangeDatabase(</c> 调用——它会在共享客户端上切库、串租户（F-05-2）。
+    /// </summary>
+    internal static IReadOnlyCollection<string> ChangeDatabaseViolations(string repositoryRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
+
+        var sourceRoot = Path.Combine(repositoryRoot, "src");
+
+        if (!Directory.Exists(sourceRoot))
+        {
+            throw new InvalidOperationException(
+                $"No 'src' directory under repository root '{repositoryRoot}': ChangeDatabase scan would silently pass.");
+        }
+
+        return Directory.GetDirectories(sourceRoot)
+            .Where(directory => Path.GetFileName(directory).StartsWith("Pzd.", StringComparison.Ordinal))
+            .Where(directory => !Path.GetFileName(directory).EndsWith(ContractsSuffix, StringComparison.Ordinal))
+            .SelectMany(directory => Directory.GetFiles(directory, "*.cs", SearchOption.AllDirectories)
+                .Where(file => !IsBuildOutputOf(directory, file)))
+            .Where(path => File.ReadAllText(path).Contains(".ChangeDatabase(", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(repositoryRoot, path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
     /// <summary>仓库根目录：从测试输出目录向上查找 Pzd.slnx。</summary>
     internal static string FindRepositoryRoot()
     {
@@ -160,6 +187,14 @@ internal static class ArchRules
 
     private static bool IsCoreProject(string projectName) => projectName is
         SharedKernelProject or InfrastructureProject or ApiProject or AppHostProject;
+
+    private static bool IsBuildOutputOf(string projectDirectory, string file)
+    {
+        var relative = Path.GetRelativePath(projectDirectory, file);
+        var firstSegment = relative.Split(Path.DirectorySeparatorChar, 2)[0];
+
+        return firstSegment is "bin" or "obj";
+    }
 
     private static bool IsContractsProject(string projectName) =>
         projectName.EndsWith(ContractsSuffix, StringComparison.Ordinal);

@@ -1,13 +1,20 @@
+using System.Collections.Concurrent;
 using Pzd.Infrastructure.Tenancy;
+using SqlSugar;
 
 namespace Pzd.Infrastructure.UnitTests.Tenancy;
 
 public class TenantDbProviderTests
 {
+    private static readonly DateTimeOffset Now = new(2026, 10, 27, 2, 0, 0, TimeSpan.Zero);
+
     private static readonly TenantInfo[] Tenants =
     [
         new(1, "acme", TenantStatus.Active, null, "Server=127.0.0.1;Port=3306;User ID=root;Password=;Database=pzd_t_acme"),
         new(2, "beta", TenantStatus.Active, null, "Server=127.0.0.1;Port=3306;User ID=root;Password=;Database=pzd_t_beta"),
+        new(3, "halted", TenantStatus.Disabled, null, "Server=127.0.0.1;Port=3306;User ID=root;Password=;Database=pzd_t_halted"),
+        new(4, "lapsed", TenantStatus.Active, Now.AddDays(-1), "Server=127.0.0.1;Port=3306;User ID=root;Password=;Database=pzd_t_lapsed"),
+        new(5, "boundary", TenantStatus.Active, Now, "Server=127.0.0.1;Port=3306;User ID=root;Password=;Database=pzd_t_boundary"),
     ];
 
     private static CancellationToken CancellationToken => TestContext.Current.CancellationToken;
@@ -63,6 +70,34 @@ public class TenantDbProviderTests
     }
 
     [Fact]
+    public async Task Concurrent_creation_for_different_tenants_creates_one_scope_per_tenant()
+    {
+        var cache = new TenantConnectionCache();
+        var factoryCalls = new ConcurrentDictionary<long, int>();
+
+        Task<ConnectionConfig> Factory(long tenantId, CancellationToken _)
+        {
+            factoryCalls.AddOrUpdate(tenantId, 1, (_, count) => count + 1);
+
+            return Task.FromResult(new ConnectionConfig
+            {
+                ConfigId = tenantId.ToString(),
+                ConnectionString = $"Server=127.0.0.1;Database=pzd_t_{tenantId}",
+                DbType = DbType.MySql,
+            });
+        }
+
+        var scopes = await Task.WhenAll(
+            Enumerable.Range(1, 8)
+                .SelectMany(tenantId => Enumerable.Range(0, 4)
+                    .Select(_ => cache.GetOrCreateAsync(tenantId, token => Factory(tenantId, token), CancellationToken))));
+
+        Assert.Equal(8, factoryCalls.Count);
+        Assert.All(factoryCalls, pair => Assert.Equal(1, pair.Value));
+        Assert.Equal(32, scopes.Length);
+    }
+
+    [Fact]
     public async Task Explicit_tenant_does_not_need_request_context()
     {
         var (provider, store, _, _) = CreateProvider();
@@ -72,6 +107,20 @@ public class TenantDbProviderTests
         Assert.NotNull(client);
         Assert.Equal("2", client.CurrentConnectionConfig.ConfigId);
         Assert.Equal(1, store.FindByIdCalls);
+    }
+
+    [Theory]
+    [InlineData(3, "Tenant.Disabled")]
+    [InlineData(4, "Tenant.Expired")]
+    [InlineData(5, "Tenant.Expired")]
+    public async Task Explicit_tenant_validates_status_and_expiry(long tenantId, string expectedCode)
+    {
+        var (provider, _, _, _) = CreateProvider();
+
+        var exception = await Assert.ThrowsAsync<TenantNotResolvedException>(
+            () => provider.GetConnectionScopeAsync(tenantId, CancellationToken));
+
+        Assert.Equal(expectedCode, exception.Error.Code);
     }
 
     [Fact]
@@ -90,9 +139,16 @@ public class TenantDbProviderTests
         var store = new RecordingTenantStore(Tenants);
         var cache = new TenantConnectionCache();
         var context = new TenantContext();
-        var provider = new TenantDbProvider(cache, store, context);
+        var provider = new TenantDbProvider(cache, store, context, new FixedClock(Now));
 
         return (provider, store, cache, context);
+    }
+
+    private sealed class FixedClock : SharedKernel.Abstractions.IClock
+    {
+        public FixedClock(DateTimeOffset utcNow) => UtcNow = utcNow;
+
+        public DateTimeOffset UtcNow { get; }
     }
 
     private sealed class RecordingTenantStore : ITenantStore

@@ -8,7 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 
-// 全局单例只注册 master；租户连接由 ITenantDbProvider 按需加入（禁止 ChangeDatabase）。
+// 启动期加载并校验租户配置：非法配置直接启动失败，不等首个请求（F-05-1）。
+var tenants = TenantConfiguration.Load(builder.Configuration);
+
+// 全局单例只注册 master；租户连接由 ITenantDbProvider 按需建立独立 scope（禁止 ChangeDatabase）。
 builder.Services.AddSingleton(_ => new SqlSugarScope(new ConnectionConfig
 {
     ConfigId = "master",
@@ -19,7 +22,7 @@ builder.Services.AddSingleton(_ => new SqlSugarScope(new ConnectionConfig
 }));
 
 builder.Services.AddSingleton<IClock, SystemClock>();
-builder.Services.AddSingleton<ITenantStore>(_ => new InMemoryTenantStore(TenantConfiguration.Load(builder.Configuration)));
+builder.Services.AddSingleton<ITenantStore>(_ => new InMemoryTenantStore(tenants));
 builder.Services.AddSingleton<TenantConnectionCache>();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 builder.Services.AddScoped<ITenantDbProvider, TenantDbProvider>();
