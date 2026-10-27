@@ -14,39 +14,40 @@
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`） |
 | 测试 | 51 条、0 失败（35+13+1+1+1；见 [`test-report-01-04.md`](test-report-01-04.md)、[`test-report-12.md`](test-report-12.md)） |
 | 生产代码 | 票 04 返工只动测试资产；票 12 只动 [`Error.cs`](../../src/Pzd.SharedKernel/Results/Error.cs)（F8 已关闭） |
+| 进行中 | 票 05 多租户内核（旺总；交接时工作区有 `Tenancy/`、`SystemClock` 等在途改动，未提交） |
 
 ## 2. 未完成项 / 必须跟进（按优先级）
 
 > F8 已由票 12（`1463e9e`）修复并由审计关闭，见 [票 12 审计](review-12.md)；本节不再重复。
 
-### 2.1 规则③的检查范围只覆盖 3 个底座程序集（模块票必须处理）
+### 规则③检查范围（票 05 承接，进行中）
 
-`ArchRules.ProductAssemblies`（[`ArchRules.cs:28-29`](../../tests/Pzd.ArchitectureTests/ArchRules.cs#L28-L29)）硬编码 `Pzd.SharedKernel` / `Pzd.Infrastructure` / `Pzd.Api`。票 05 起出现真实模块后，模块的 Domain 程序集不在检查范围内，F7 对它们等于空转。落地票 05/06 时把模块程序集纳入（建议复用 `DiscoverModules` 的结果）。
+`ArchRules.ProductAssemblies`（[`ArchRules.cs:28-29`](../../tests/Pzd.ArchitectureTests/ArchRules.cs#L28-L29)）原先硬编码 3 个底座程序集。`9c3a971` 已把它正式划入票 05：验收要求改为「底座程序集 + `DiscoverModules()` 结果」，模块出现后自动纳入；票 05 同时补 `FakeInfrastructureDependency`（恰好 2 条违规），票 06 补 `FakeApiDependency`（恰好 3 条）。交接关注点：05 审计时确认机制真的随模块自动生效，而不是仍只查底座。
 
-### 2.2 `*.Contracts` 工程自身不受规则④约束
+### `*.Contracts` 工程不受规则④约束
 
 `DiscoverModules` 排除 `*.Contracts`（[`ArchRules.cs:79-80`](../../tests/Pzd.ArchitectureTests/ArchRules.cs#L79-L80)），老登实测 `Pzd.Identity.Contracts -> Pzd.Identity` 全绿。不在本轮票面，后续补一条「Contracts 只能引用 SharedKernel / 其他 Contracts」，否则 Contracts 会成为绕过模块隔离的后门。
 
-### 2.3 F7 的两条断言当前不可证伪（补测条件明确，不阻塞）
+### F7 补测条件（当前不可证伪，不阻塞）
 
 `*.Domain` 禁依赖 `Pzd.Infrastructure` / `Pzd.Api` 两条现在能跑且绿，但直接删掉后 12 条架构测试仍全绿——`SharedKernel -> Infrastructure` 会先报 `MSB4006` 循环依赖，`Pzd.Infrastructure` 无源文件、`Pzd.Api` 只有 internal `Program`，构造不出可引用的违规模块。
 
-补测条件（票 05/06 触发）：
+补测条件已写入票 05/06 验收（`9c3a971`）：
 - 票 05 给 `Pzd.Infrastructure` 加公共类型后，在测试程序集的 `Pzd.SharedKernel.Domain` 命名空间下加 `FakeInfrastructureDependency` 引用它，并入反向用例、断言恰好 2 条违规；
-- 票 06 给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后同理补 `Pzd.Api` 一条。
+- 票 06 给 `Pzd.Api` 加公共类型（如 `ResultHttpExtensions`）后同理补 `Pzd.Api` 一条，断言恰好 3 条。
 
-### 2.4 票 12 收尾（low）
+### 票 12 边界说明与可选补测（low）
 
-- **票 12 状态回填（老何）**：`tickets.md:453` 的 `Status` 仍为 ready-for-agent，应改为 ✅ 通过 + 审计链接 [`review-12.md`](review-12.md)，票面验收框可一并勾选。
-- **浅快照边界（旺总/老何）**：`Error.Metadata` 只做字典结构快照，值若为可变对象（`List<T>`、嵌套字典）仍会随外部修改而变化；`Error.cs` 现有注释只对「原字典」成立。建议在 `Metadata` 的 XML 注释补一句「仅结构快照，值请使用不可变类型」，或写进票 12 票面；不建议为 `object?` 做深拷贝。
+票 12 状态已于 `9c3a971` 回填 ✅（`tickets.md`），审计 low 建议也写进票面「边界说明」；剩余两项：
+- **浅快照边界（旺总随 05 补）**：`Error.Metadata` 只做字典结构快照，值若为可变对象（`List<T>`、嵌套字典）仍会随外部修改而变化；`Metadata` 的 XML 注释需写明「仅结构快照，值请使用不可变类型」，不做 `object?` 深拷贝。
 - **（可选）只读用例再补两路**：`Clear()` 与 `ICollection<KeyValuePair>.Add` 未覆盖，`ReadOnlyDictionary` 对这两条同样抛 `NotSupportedException`，不影响正确性。
 
 ## 3. 下一步顺序
 
-1. **老何**：回填票 12 状态（见 §2.4）；确认票 05 是否顺带接 §2.1 的规则③范围。票 01/04 状态与 158/176 措辞已于 `8e1a1a3` 回填，无需再改。
-2. **旺总**：开票 05（多租户内核，测试先行）。约束已在 [`foundation.md`](../specs/foundation.md) §4.3 与 [`tickets.md`](../specs/tickets.md) 票 05 写明：`ITenantContext.TenantId` 为 `long`、停用/过期 403、Scoped 不跨请求、`TenantDbProvider` 加锁双检；顺手在 `Error.Metadata` 注释补「仅结构快照」一句（§2.4）。
+1. **老何**：票 12 状态与票 05 范围已确认（`9c3a971`），无待办；票 01/04 状态与措辞也在 `8e1a1a3` 回填完毕。
+2. **旺总**：开票 05（多租户内核，测试先行）。约束已在 [`foundation.md`](../specs/foundation.md) §4.3 与 [`tickets.md`](../specs/tickets.md) 票 05 写明：`ITenantContext.TenantId` 为 `long`、停用/过期 403、Scoped 不跨请求、`TenantDbProvider` 加锁双检，以及规则③扩围与 F7 补测（见「规则③检查范围」「F7 补测条件」）；顺手在 `Error.Metadata` 注释补「仅结构快照」一句（见「票 12 边界说明」）。
 3. **李总**：票 10 的测试依据已核对（MySQL 8.0.46 + root 建库权限 + Memurai 8.2.10 + `PZD_REDIS_TEST_DB=15`），等 05 完成后按票面写集成测试。
-4. **老登**：05 完成后审计；若 §2.1 未在 05 处理，审计时按 blocker 提。
+4. **老登**：05 完成后审计；若「规则③检查范围」未在 05 落实，审计时按 blocker 提。
 5. 票 02（前端 monorepo）与 03（Aspire）可并行推进，互不依赖 05；票 11 最后。
 
 ## 4. 关键文件

@@ -12,7 +12,8 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
-| 05–10 | 多租户内核、异常处理、UoW、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
+| 05 | 多租户内核 + 单测 | 🔧 开工中（旺总） |
+| 06–10 | 异常处理、UoW + Outbox、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/05–10 |
 
 下一张票是 **05 多租户内核**（测试先行）。残余项与交接细节见 [交接记录](docs/reports/handover-01-04.md)。
