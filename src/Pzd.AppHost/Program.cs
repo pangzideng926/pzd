@@ -96,6 +96,7 @@ _ = Task.Run(async () =>
 {
     var notifications = app.Services.GetRequiredService<ResourceNotificationService>();
     var watched = new[] { "api", "web" };
+    var seenStates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     try
     {
@@ -113,6 +114,14 @@ _ = Task.Run(async () =>
 
             Console.WriteLine($"[pzd-diag] resource={name} state={state} exitCode={exitCode}");
 
+            // F-03-A5：手动 shell 能起、DCP 起就崩，唯一的差异面在进程环境。这里在 web 每次
+            // 进入新状态时打一份**白名单**环境快照——只列已知会分叉的几项，PATH 只留前三段，
+            // 连接串/密码/令牌一律不输出（老何的硬约束：不整包打印）。
+            if (EnvironmentDiagnostics.ShouldDump(name, state, seenStates))
+            {
+                EnvironmentDiagnostics.Dump(name, snapshot.EnvironmentVariables);
+            }
+
             if (!string.IsNullOrWhiteSpace(snapshot.State?.Text) &&
                 snapshot.State.Text.Contains("error", StringComparison.OrdinalIgnoreCase))
             {
@@ -127,3 +136,106 @@ _ = Task.Run(async () =>
 });
 
 app.Run();
+
+/// <summary>
+/// F-03-A5 诊断用的环境变量**白名单**渲染。唯一出口是 <see cref="Describe"/>：
+/// 名字不在白名单里一律返回 <c>null</c>，所以即使 DCP 快照里带了连接串，也流不到 stdout。
+/// </summary>
+internal static class EnvironmentDiagnostics
+{
+    // 只观察「手动 shell 能起、DCP 起就崩」最可能分叉的几项。新增名字前先想清它会不会携带凭据。
+    private static readonly string[] Watched =
+    [
+        "PORT",
+        "NODE_ENV",
+        "NODE_OPTIONS",
+        "CI",
+        "TZ",
+        "PZD_RUN_ID",
+        "PATH",
+    ];
+
+    // 兜底闸门：将来谁往白名单里加了带这些词的名字，也不会输出值。
+    private static readonly string[] SensitiveMarkers =
+    [
+        "PASSWORD",
+        "SECRET",
+        "TOKEN",
+        "CONNECTIONSTRING",
+        "CONNECTION_STRING",
+        "CREDENTIAL",
+        "SALT",
+    ];
+
+    public static bool ShouldDump(string resourceName, string state, Dictionary<string, string> seenStates)
+    {
+        // 只看 web：api 腿一直正常，多打一份只会淹没证据。
+        if (!string.Equals(resourceName, "web", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // WatchAsync 对 URL、健康等变化也会回调，按状态文本去重，避免刷屏。
+        if (seenStates.TryGetValue(resourceName, out var previous) && previous == state)
+        {
+            return false;
+        }
+
+        seenStates[resourceName] = state;
+        return true;
+    }
+
+    public static void Dump(string resourceName, IEnumerable<EnvironmentVariableSnapshot> variables)
+    {
+        var all = variables as IReadOnlyCollection<EnvironmentVariableSnapshot> ?? variables.ToArray();
+        Console.WriteLine($"[pzd-diag] resource={resourceName} 环境变量共 {all.Count} 项（下表仅白名单取值）");
+
+        foreach (var variable in all.OrderBy(static item => item.Name, StringComparer.Ordinal))
+        {
+            var rendered = Describe(variable.Name, variable.Value);
+            if (rendered is null)
+            {
+                continue;
+            }
+
+            Console.WriteLine($"[pzd-diag] env {variable.Name}={rendered}");
+        }
+    }
+
+    /// <summary>白名单 + 脱敏后的渲染；不需要或不该输出的一律返回 <c>null</c>。</summary>
+    public static string? Describe(string? name, string? value)
+    {
+        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        if (!Watched.Contains(name, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        if (SensitiveMarkers.Any(marker => name.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return name == "PATH" ? DescribePath(value) : Truncate(value);
+    }
+
+    private static string DescribePath(string path)
+    {
+        var segments = path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return "（空）";
+        }
+
+        // PATH 动辄几十段，全打印既没用又可能带出用户目录；只留前三段 + 总段数。
+        var head = string.Join(Path.PathSeparator, segments.Take(3));
+        return $"{head}{Path.PathSeparator}…（共 {segments.Length} 段）";
+    }
+
+    private static string Truncate(string value) =>
+        value.Length <= 96 ? value : $"{value.AsSpan(0, 96)}…（共 {value.Length} 字符，已截断）";
+}
