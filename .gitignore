@@ -25,6 +25,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# React Router typegen output
+.react-router/
+
 # OS
 .DS_Store
 Thumbs.db

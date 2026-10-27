@@ -9,7 +9,13 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [reactRouter(), tsconfigPaths()],
   server: {
-    port: 5173,
+    // 票 02：端口与绑定写死，不靠默认值漂移。
+    // host 显式绑 127.0.0.1：默认 "localhost" 在 Windows 上只监听 ::1，而 ::1 在部分环境
+    // （含本机 sandbox，WSAEACCES）连不出去，探测会假红；绑 IPv4 后
+    // `http://localhost:5199/` 与 `http://127.0.0.1:5199/` 两种探测都能通。
+    host: "127.0.0.1",
+    port: 5199,
+    strictPort: true,
     proxy: {
       "/api": {
         target: "http://127.0.0.1:5080",

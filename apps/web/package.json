@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "react-router dev --port 5173",
+    "dev": "react-router dev --port 5199",
     "build": "react-router build",
     "typecheck": "react-router typegen && tsc --noEmit",
     "lint": "echo \"web: no linter yet\""
