@@ -148,6 +148,11 @@ public class UnitOfWorkTests
         Assert.Empty(outbox.Added);
         Assert.Equal(1, transactions.RollbackCalls);
         Assert.NotEmpty(aggregate.DomainEvents);
+
+        // 补偿顺序与真实事务一致：先回滚，再删除已写入的消息（F-07-3）。
+        Assert.Equal(
+            ["dispatch:FakeEvent", "outbox-add:FakeEvent", "commit", "rollback", "outbox-remove"],
+            calls);
     }
 
     private static UnitOfWork CreateUnitOfWork(

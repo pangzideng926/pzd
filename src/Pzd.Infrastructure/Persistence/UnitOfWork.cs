@@ -90,13 +90,14 @@ public sealed class UnitOfWork : IUnitOfWork
         }
         catch
         {
-            // 内存存储没有真正的事务回滚，用补偿删除模拟；步骤 3 换成真实事务后删掉这段。
+            // 顺序与真实事务一致：先回滚（撤销本次事务边界），再补偿删除已写入的消息；
+            // 内存存储没有真正的事务回滚，删除是补偿手段，步骤 3 换成真实事务后删掉这段删除。
+            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
+
             foreach (var message in written)
             {
                 await _outbox.RemoveAsync(message.Id, CancellationToken.None).ConfigureAwait(false);
             }
-
-            await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
 
             throw;
         }

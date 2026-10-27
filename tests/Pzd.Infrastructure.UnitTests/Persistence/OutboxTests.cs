@@ -273,7 +273,7 @@ public class OutboxTests
 
         public Func<long, TenantNotResolvedException?>? Rejection { get; init; }
 
-        public Task<ISqlSugarClient> GetConnectionScopeAsync(CancellationToken cancellationToken = default)
+        public Task<ISqlSugarClient> GetCurrentConnectionScopeAsync(CancellationToken cancellationToken = default)
         {
             ParameterlessCalls++;
 

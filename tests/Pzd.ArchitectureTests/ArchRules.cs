@@ -147,9 +147,16 @@ internal static class ArchRules
     }
 
     /// <summary>
-    /// 代码检查（F-05-8）：后台路径不得用无参重载 <c>GetConnectionScopeAsync()</c> 裸取连接——
-    /// 它只信任 <see cref="Pzd.SharedKernel.Abstractions.ITenantContext"/>，绕过停用/到期校验。
-    /// 只认带点的调用（<c>.GetConnectionScopeAsync(</c>），接口与工厂里的方法声明不算。
+    /// 代码检查（F-05-8）：后台路径（<c>Persistence/**</c>、<c>*HostedService.cs</c>、<c>*Dispatcher.cs</c>）
+    /// 不得调用请求路径专用的 <c>GetCurrentConnectionScopeAsync</c>——它只信任
+    /// <see cref="Pzd.SharedKernel.Abstractions.ITenantContext"/>，手工 Set 停用租户后会绕过状态校验。
+    /// <para>
+    /// 为什么按 API 形状而不是实参名判断：上一版规则靠 <c>ct</c>/<c>token</c>/<c>stoppingToken</c> 之类
+    /// 的变量名白名单，换名（<c>var ct2 = cancellationToken;</c>）即可绕过。现在无参重载已改名为
+    /// <see cref="Pzd.Infrastructure.Tenancy.ITenantDbProvider.GetCurrentConnectionScopeAsync"/>，
+    /// 而 <c>GetConnectionScopeAsync</c> 只剩带 <c>long tenantId</c> 的重载——类型系统本身就堵住了裸取，
+    /// 规则只需禁止后台代码出现请求路径 API。
+    /// </para>
     /// </summary>
     internal static IReadOnlyCollection<string> ParameterlessTenantConnectionViolations(string repositoryRoot)
     {
@@ -180,15 +187,24 @@ internal static class ArchRules
         ArgumentNullException.ThrowIfNull(sources);
 
         return sources
-            .Where(source => ParameterlessTenantConnectionPattern.IsMatch(source.Content))
+            .Where(source => IsBackgroundPath(source.Path))
+            .Where(source => source.Content.Contains(RequestPathConnectionApi, StringComparison.Ordinal))
             .Select(source => source.Path)
             .Order(StringComparer.Ordinal)
             .ToArray();
     }
 
-    private static readonly System.Text.RegularExpressions.Regex ParameterlessTenantConnectionPattern = new(
-        @"\.\s*GetConnectionScopeAsync\s*\(\s*(?:\)|(?:CancellationToken|cancellationToken|ct|token|stoppingToken|default)\b)",
-        System.Text.RegularExpressions.RegexOptions.Compiled);
+    /// <summary>后台路径判定：Persistence 目录，或文件名以 HostedService / Dispatcher 结尾。</summary>
+    internal static bool IsBackgroundPath(string path)
+    {
+        var normalized = path.Replace('\\', '/');
+
+        return normalized.Contains("/Persistence/", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("HostedService.cs", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("Dispatcher.cs", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private const string RequestPathConnectionApi = ".GetCurrentConnectionScopeAsync(";
 
     /// <summary>仓库根目录：从测试输出目录向上查找 Pzd.slnx。</summary>
     internal static string FindRepositoryRoot()

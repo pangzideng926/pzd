@@ -8,8 +8,11 @@ namespace Pzd.Infrastructure.Tenancy;
 /// </summary>
 public interface ITenantDbProvider
 {
-    /// <summary>取当前请求租户的连接；没有租户上下文时抛 <see cref="TenantNotResolvedException"/>。</summary>
-    Task<ISqlSugarClient> GetConnectionScopeAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 取当前请求租户的连接（仅请求路径使用）；没有租户上下文时抛 <see cref="TenantNotResolvedException"/>。
+    /// 后台任务 / Outbox 消费者禁止调用本方法（F-05-8），必须走带 <c>tenantId</c> 的显式重载。
+    /// </summary>
+    Task<ISqlSugarClient> GetCurrentConnectionScopeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 取指定租户的连接（后台任务用）：每次都会校验停用/到期，并按需建立该租户连接。

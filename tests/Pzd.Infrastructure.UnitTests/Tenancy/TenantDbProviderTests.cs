@@ -25,7 +25,7 @@ public class TenantDbProviderTests
         var (provider, _, _, _) = CreateProvider();
 
         var exception = await Assert.ThrowsAsync<TenantNotResolvedException>(
-            () => provider.GetConnectionScopeAsync(CancellationToken));
+            () => provider.GetCurrentConnectionScopeAsync(CancellationToken));
 
         Assert.Equal("Tenant.NotResolved", exception.Error.Code);
     }
@@ -36,7 +36,7 @@ public class TenantDbProviderTests
         var (provider, store, _, context) = CreateProvider();
         context.Set(1);
 
-        var client = await provider.GetConnectionScopeAsync(CancellationToken);
+        var client = await provider.GetCurrentConnectionScopeAsync(CancellationToken);
 
         Assert.NotNull(client);
         Assert.Equal("1", client.CurrentConnectionConfig.ConfigId);
@@ -49,8 +49,8 @@ public class TenantDbProviderTests
         var (provider, store, cache, context) = CreateProvider();
         context.Set(1);
 
-        await provider.GetConnectionScopeAsync(CancellationToken);
-        await provider.GetConnectionScopeAsync(CancellationToken);
+        await provider.GetCurrentConnectionScopeAsync(CancellationToken);
+        await provider.GetCurrentConnectionScopeAsync(CancellationToken);
 
         Assert.Equal(1, store.FindByIdCalls);
         Assert.True(cache.IsCached(1));
@@ -63,7 +63,7 @@ public class TenantDbProviderTests
         context.Set(1);
 
         var clients = await Task.WhenAll(
-            Enumerable.Range(0, 16).Select(_ => provider.GetConnectionScopeAsync(CancellationToken)));
+            Enumerable.Range(0, 16).Select(_ => provider.GetCurrentConnectionScopeAsync(CancellationToken)));
 
         Assert.All(clients, Assert.NotNull);
         Assert.Equal(1, store.FindByIdCalls);

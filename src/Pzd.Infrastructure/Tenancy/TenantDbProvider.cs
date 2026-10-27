@@ -30,7 +30,7 @@ public sealed class TenantDbProvider : ITenantDbProvider
         _clock = clock;
     }
 
-    public Task<ISqlSugarClient> GetConnectionScopeAsync(CancellationToken cancellationToken = default)
+    public Task<ISqlSugarClient> GetCurrentConnectionScopeAsync(CancellationToken cancellationToken = default)
     {
         if (!_tenantContext.HasTenant)
         {
