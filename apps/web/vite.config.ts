@@ -19,6 +19,16 @@ declare const process: { env: Record<string, string | undefined> };
 const runId = process.env.PZD_RUN_ID?.trim() ?? "";
 
 /**
+ * F-03-A5 诊断锚点（临时探针，A5 结案后删除）。
+ *
+ * 为什么非要在这里打：AppHost 那行 `[pzd-diag] env` 读的是 `snapshot.EnvironmentVariables`，
+ * 那是**资源声明**的环境，不等于 vite **进程**的真实环境——supervisor 运行时塞进去的值
+ * 不会出现在快照里。所以「快照里没有 NODE_ENV」不能反证「进程里没有」。
+ * 这一行是 vite 进程自己的值，单一变量、不含任何秘密，符合「不做整包打印」的约束。
+ */
+console.log(`[pzd-web] NODE_ENV=${process.env.NODE_ENV ?? "<未设置>"}`);
+
+/**
  * 把标记加在**每一个** dev server 响应上。
  *
  * 不能用 `server.headers`：它只作用于 Vite 自身那层中间件，而 `/`（SPA 文档）是
