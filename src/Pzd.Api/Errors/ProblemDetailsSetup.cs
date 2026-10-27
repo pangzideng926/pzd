@@ -1,16 +1,17 @@
-using Pzd.Api.Errors;
+using Pzd.Infrastructure.Errors;
 
 namespace Pzd.Api.Errors;
 
 /// <summary>
-/// ProblemDetails 与框架状态码的接线：统一 <c>AddProblemDetails</c>、异常处理中间件、
+/// ProblemDetails 与框架状态码的接线：统一 <c>AddProblemDetails</c>、异常处理中间件，
 /// 以及把「空 body 的错误状态码」（404/405 等框架路径）补成带 code/traceId 的 ProblemDetails。
+/// 构造逻辑统一在 <see cref="ProblemDetailsWriter"/>，这里只做接线。
 /// </summary>
 public static class ProblemDetailsSetup
 {
     public static IServiceCollection AddPzdProblemDetails(this IServiceCollection services)
     {
-        services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemDetailsCustomization.Customize);
+        services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemDetailsWriter.Customize);
         services.AddExceptionHandler<GlobalExceptionHandler>();
 
         return services;
@@ -40,16 +41,11 @@ public static class ProblemDetailsSetup
                 _ => CommonErrors.Unexpected,
             };
 
-            var problem = ProblemDetailsCustomization.Create(error, statusCode, httpContext);
-
-            httpContext.Response.ContentType = "application/problem+json";
-            httpContext.Response.Headers[TraceIds.HeaderName] =
-                problem.Extensions["traceId"]?.ToString() ?? string.Empty;
-
-            await httpContext.Response.WriteAsJsonAsync(
-                problem,
-                options: null,
-                contentType: "application/problem+json",
-                httpContext.RequestAborted);
+            await ProblemDetailsWriter
+                .WriteAsync(
+                    httpContext,
+                    ProblemDetailsWriter.Create(error, statusCode, httpContext),
+                    httpContext.RequestAborted)
+                .ConfigureAwait(false);
         });
 }

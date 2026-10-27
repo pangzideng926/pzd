@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
-using Pzd.Api.Errors;
+using Pzd.Infrastructure.Errors;
 using Pzd.Api.UnitTests.Tenancy;
 
 namespace Pzd.Api.UnitTests.Errors;

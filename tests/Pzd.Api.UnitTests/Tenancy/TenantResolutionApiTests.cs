@@ -40,6 +40,8 @@ public class TenantResolutionApiTests
         Assert.Equal("Tenant.NotFound", problem.Code);
         Assert.Equal("https://pzd/errors/tenant.not-found", problem.Type);
         Assert.Equal(400, problem.Status);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, response.Headers.GetValues("X-Trace-Id").Single());
     }
 
     [Fact]
@@ -109,6 +111,8 @@ public class TenantResolutionApiTests
         Assert.NotNull(problem);
         Assert.Equal("Tenant.Disabled", problem.Code);
         Assert.Equal("https://pzd/errors/tenant.disabled", problem.Type);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, response.Headers.GetValues("X-Trace-Id").Single());
     }
 
     [Fact]
@@ -128,6 +132,8 @@ public class TenantResolutionApiTests
 
         Assert.NotNull(problem);
         Assert.Equal("Tenant.Expired", problem.Code);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, response.Headers.GetValues("X-Trace-Id").Single());
     }
 
     [Fact]
@@ -168,5 +174,5 @@ public class TenantResolutionApiTests
         Assert.Equal(["acme", "beta"], factory.TenantStore.RequestedCodes);
     }
 
-    private sealed record ProblemBody(int Status, string Type, string Title, string Code);
+    private sealed record ProblemBody(int Status, string Type, string Title, string Code, string TraceId);
 }

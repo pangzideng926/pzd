@@ -80,6 +80,8 @@ public class TenantResolutionMiddlewareTests
 
         Assert.Equal("Tenant.NotFound", problem.Code);
         Assert.Equal("https://pzd/errors/tenant.not-found", problem.Type);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, context.Response.Headers["X-Trace-Id"].ToString());
     }
 
     [Fact]
@@ -95,6 +97,8 @@ public class TenantResolutionMiddlewareTests
 
         Assert.Equal("Tenant.Disabled", problem.Code);
         Assert.Equal("https://pzd/errors/tenant.disabled", problem.Type);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, context.Response.Headers["X-Trace-Id"].ToString());
     }
 
     [Fact]
@@ -108,6 +112,8 @@ public class TenantResolutionMiddlewareTests
         var problem = await ReadProblemAsync(context);
 
         Assert.Equal("Tenant.Expired", problem.Code);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, context.Response.Headers["X-Trace-Id"].ToString());
     }
 
     [Fact]
@@ -130,6 +136,8 @@ public class TenantResolutionMiddlewareTests
         var problem = await ReadProblemAsync(context);
 
         Assert.Equal("Tenant.Expired", problem.Code);
+        Assert.False(string.IsNullOrWhiteSpace(problem.TraceId));
+        Assert.Equal(problem.TraceId, context.Response.Headers["X-Trace-Id"].ToString());
     }
 
     [Fact]
@@ -200,7 +208,7 @@ public class TenantResolutionMiddlewareTests
     [InlineData("Tenant.NotFound", "tenant.not-found")]
     [InlineData("ClientTooOld", "client-too-old")]
     public void Error_codes_map_to_kebab_case_urls(string code, string expected) =>
-        Assert.Equal(expected, TenantResolutionMiddleware.ToKebabCase(code));
+        Assert.Equal(expected, Pzd.Infrastructure.Errors.ProblemDetailsWriter.ToKebabCase(code));
 
     internal static async Task<(HttpContext Context, TenantContext TenantContext, bool NextCalled)> InvokeAsync(
         RecordingTenantStore store,
@@ -259,10 +267,11 @@ public class TenantResolutionMiddlewareTests
             root.GetProperty("status").GetInt32(),
             root.GetProperty("type").GetString() ?? string.Empty,
             root.GetProperty("title").GetString() ?? string.Empty,
-            root.GetProperty("code").GetString() ?? string.Empty);
+            root.GetProperty("code").GetString() ?? string.Empty,
+            root.GetProperty("traceId").GetString() ?? string.Empty);
     }
 
-    internal sealed record ProblemBody(int Status, string Type, string Title, string Code);
+    internal sealed record ProblemBody(int Status, string Type, string Title, string Code, string TraceId);
 
     internal sealed class FixedClock : IClock
     {

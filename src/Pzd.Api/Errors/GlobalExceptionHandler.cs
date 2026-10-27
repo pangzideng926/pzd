@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
-using Pzd.Api.Errors;
+using Microsoft.AspNetCore.Mvc;
+using Pzd.Infrastructure.Errors;
 
 namespace Pzd.Api.Errors;
 
@@ -25,7 +26,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     {
         _logger.LogError(exception, "Unhandled exception for {Path}", httpContext.Request.Path);
 
-        var problem = ProblemDetailsCustomization.Create(
+        var problem = ProblemDetailsWriter.Create(
             CommonErrors.Unexpected,
             StatusCodes.Status500InternalServerError,
             httpContext);
@@ -35,15 +36,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
             problem.Extensions["exceptionType"] = exception.GetType().Name;
         }
 
-        httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        httpContext.Response.Headers[TraceIds.HeaderName] =
-            problem.Extensions["traceId"]?.ToString() ?? string.Empty;
-
-        await httpContext.Response.WriteAsJsonAsync(
-            problem,
-            options: null,
-            contentType: "application/problem+json",
-            cancellationToken);
+        await ProblemDetailsWriter
+            .WriteAsync(httpContext, problem, cancellationToken)
+            .ConfigureAwait(false);
 
         return true;
     }

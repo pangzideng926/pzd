@@ -1,3 +1,4 @@
+using Pzd.Infrastructure.Errors;
 using Pzd.SharedKernel.Results;
 
 namespace Pzd.Api.Errors;
@@ -14,25 +15,14 @@ public static class ResultHttpExtensions
     public static IResult ToHttpResult<T>(this Result<T> result) =>
         result.IsSuccess ? Results.Ok(result.Value) : Problem(result.Error!);
 
-    /// <summary>架构 §8.3 的状态码映射。</summary>
-    public static int MapStatusCode(ErrorType errorType) => errorType switch
-    {
-        ErrorType.Validation => StatusCodes.Status400BadRequest,
-        ErrorType.Unauthorized => StatusCodes.Status401Unauthorized,
-        ErrorType.Forbidden => StatusCodes.Status403Forbidden,
-        ErrorType.NotFound => StatusCodes.Status404NotFound,
-        ErrorType.Conflict => StatusCodes.Status409Conflict,
-        ErrorType.BusinessRule => StatusCodes.Status422UnprocessableEntity,
-        ErrorType.ClientTooOld => StatusCodes.Status426UpgradeRequired,
-        ErrorType.TenantUpgrading => StatusCodes.Status503ServiceUnavailable,
-        _ => StatusCodes.Status500InternalServerError,
-    };
+    /// <summary>架构 §8.3 的状态码映射（唯一实现在 <see cref="ProblemDetailsWriter"/>）。</summary>
+    public static int MapStatusCode(ErrorType errorType) => ProblemDetailsWriter.MapStatusCode(errorType);
 
     private static IResult Problem(Error error) =>
-        new PzdProblemResult(error, MapStatusCode(error.Type));
+        new PzdProblemResult(error, ProblemDetailsWriter.MapStatusCode(error.Type));
 
     /// <summary>
-    /// 在 <see cref="ExecuteAsync"/> 时才写 traceId 与响应头（此时能拿到请求上下文），
+    /// 在 <see cref="IResult.ExecuteAsync"/> 时才写 traceId 与响应头（此时能拿到请求上下文），
     /// 保证 body 的 traceId 与响应头 <c>X-Trace-Id</c> 一致。
     /// </summary>
     private sealed class PzdProblemResult : IResult
@@ -46,19 +36,10 @@ public static class ResultHttpExtensions
             _statusCode = statusCode;
         }
 
-        public Task ExecuteAsync(HttpContext httpContext)
-        {
-            var problem = ProblemDetailsCustomization.Create(_error, _statusCode, httpContext);
-
-            httpContext.Response.StatusCode = _statusCode;
-            httpContext.Response.Headers[TraceIds.HeaderName] =
-                problem.Extensions["traceId"]?.ToString() ?? string.Empty;
-
-            return httpContext.Response.WriteAsJsonAsync(
-                problem,
-                options: null,
-                contentType: "application/problem+json",
+        public Task ExecuteAsync(HttpContext httpContext) =>
+            ProblemDetailsWriter.WriteAsync(
+                httpContext,
+                ProblemDetailsWriter.Create(_error, _statusCode, httpContext),
                 httpContext.RequestAborted);
-        }
     }
 }

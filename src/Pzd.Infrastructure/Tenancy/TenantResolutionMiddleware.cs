@@ -1,8 +1,7 @@
 using System.Globalization;
 using System.Net;
-using System.Text;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+using Pzd.Infrastructure.Errors;
 using Pzd.SharedKernel.Abstractions;
 using Pzd.SharedKernel.Results;
 
@@ -118,53 +117,17 @@ public sealed class TenantResolutionMiddleware
         return candidate is null or "www" or "api" or "localhost" ? null : candidate;
     }
 
-    private static async Task WriteProblemAsync(HttpContext context, Error error)
+    /// <summary>
+    /// 短路响应用与 <c>ToHttpResult</c> / 异常处理完全相同的构造（<see cref="ProblemDetailsWriter"/>）：
+    /// 状态码、<c>type</c>/<c>code</c>/<c>traceId</c> 与 <c>X-Trace-Id</c> 响应头一处产出（F-06-1）。
+    /// </summary>
+    private static Task WriteProblemAsync(HttpContext context, Error error)
     {
-        var statusCode = error.Type switch
-        {
-            ErrorType.Forbidden => StatusCodes.Status403Forbidden,
-            ErrorType.Validation => StatusCodes.Status400BadRequest,
-            _ => StatusCodes.Status400BadRequest,
-        };
+        var problem = ProblemDetailsWriter.Create(
+            error,
+            ProblemDetailsWriter.MapStatusCode(error.Type),
+            context);
 
-        context.Response.StatusCode = statusCode;
-
-        var problem = new ProblemDetails
-        {
-            Status = statusCode,
-            Title = error.Message,
-            Type = $"https://pzd/errors/{ToKebabCase(error.Code)}",
-        };
-
-        problem.Extensions["code"] = error.Code;
-
-        await context.Response.WriteAsJsonAsync(
-            problem,
-            options: null,
-            contentType: "application/problem+json",
-            context.RequestAborted);
+        return ProblemDetailsWriter.WriteAsync(context, problem, context.RequestAborted);
     }
-
-    /// <summary>错误码 → URL 片段：<c>Identity.User.NameDuplicated</c> → <c>identity.user.name-duplicated</c>。</summary>
-    internal static string ToKebabCase(string code) =>
-        string.Join(
-            '.',
-            code.Split('.').Select(segment =>
-            {
-                var builder = new StringBuilder(segment.Length + 4);
-
-                for (var index = 0; index < segment.Length; index++)
-                {
-                    var character = segment[index];
-
-                    if (index > 0 && char.IsUpper(character))
-                    {
-                        builder.Append('-');
-                    }
-
-                    builder.Append(char.ToLowerInvariant(character));
-                }
-
-                return builder.ToString();
-            }));
 }
