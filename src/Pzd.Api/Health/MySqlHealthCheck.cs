@@ -9,9 +9,13 @@ namespace Pzd.Api.Health;
 public sealed class MySqlHealthCheck : IHealthCheck
 {
     private readonly string? _connectionString;
+    private readonly ILogger<MySqlHealthCheck> _logger;
 
-    public MySqlHealthCheck(IConfiguration configuration) =>
+    public MySqlHealthCheck(IConfiguration configuration, ILogger<MySqlHealthCheck> logger)
+    {
         _connectionString = configuration.GetConnectionString("mysql");
+        _logger = logger;
+    }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -19,6 +23,7 @@ public sealed class MySqlHealthCheck : IHealthCheck
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
+            _logger.LogWarning("Degraded mode: MySQL unavailable（ConnectionStrings:mysql 为空）。");
             return HealthCheckResult.Degraded("mysql 未配置（ConnectionStrings:mysql 为空）。");
         }
 
@@ -46,6 +51,7 @@ public sealed class MySqlHealthCheck : IHealthCheck
         catch (Exception exception) when (exception is not OperationCanceledException
             || !cancellationToken.IsCancellationRequested)
         {
+            _logger.LogWarning(exception, "Degraded mode: MySQL unavailable（{Reason}）。", exception.Message);
             return HealthCheckResult.Degraded($"mysql 不可用：{exception.Message}");
         }
     }

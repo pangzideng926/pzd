@@ -5,7 +5,8 @@ namespace Pzd.Api.Health;
 
 /// <summary>
 /// <c>/health/ready</c> 的响应体：<c>{ status, checks: { mysql: { status, description }, redis: {...} } }</c>。
-/// 票 03 要求「明细 mysql=Up、redis=Up」，所以逐项状态必须出现在响应里，而不是只给一个总状态。
+/// 票 03 要求明细里能看到 mysql 与 redis 各自的状态（原生三态 <c>Healthy</c>/<c>Degraded</c>/<c>Unhealthy</c>，
+/// 不做 Up/Down 映射），所以要逐项输出，而不是只给一个总状态。
 /// </summary>
 public static class HealthResponseWriter
 {

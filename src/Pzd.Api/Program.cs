@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Pzd.Api.Endpoints;
 using Pzd.Api.Errors;
 using Pzd.Api.Health;
@@ -80,6 +81,31 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     ResponseWriter = HealthResponseWriter.WriteAsync,
 }).WithMetadata(new AllowAnonymousTenantAttribute());
+
+// 启动期降级日志（票 03 ④）：对每个不可用资源各打一条 Warning，文本固定为
+// `Degraded mode: <MySQL|Redis> unavailable（...）`，验收时用真实启动的 stdout grep 举证。
+var startupReport = await app.Services.GetRequiredService<HealthCheckService>()
+    .CheckHealthAsync(new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token);
+
+foreach (var entry in startupReport.Entries)
+{
+    if (entry.Value.Status == HealthStatus.Healthy)
+    {
+        continue;
+    }
+
+    var resource = entry.Key switch
+    {
+        "mysql" => "MySQL",
+        "redis" => "Redis",
+        _ => entry.Key,
+    };
+
+    app.Logger.LogWarning(
+        "Degraded mode: {Resource} unavailable（{Detail}）",
+        resource,
+        entry.Value.Description);
+}
 
 app.Run();
 

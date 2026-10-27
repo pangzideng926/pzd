@@ -19,9 +19,13 @@ namespace Pzd.Api.Health;
 public sealed class RedisHealthCheck : IHealthCheck
 {
     private readonly string? _connectionString;
+    private readonly ILogger<RedisHealthCheck> _logger;
 
-    public RedisHealthCheck(IConfiguration configuration) =>
+    public RedisHealthCheck(IConfiguration configuration, ILogger<RedisHealthCheck> logger)
+    {
         _connectionString = configuration.GetConnectionString("redis");
+        _logger = logger;
+    }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
@@ -29,13 +33,21 @@ public sealed class RedisHealthCheck : IHealthCheck
     {
         if (string.IsNullOrWhiteSpace(_connectionString))
         {
+            _logger.LogWarning("Degraded mode: Redis unavailable（ConnectionStrings:redis 为空）。");
             return HealthCheckResult.Degraded("redis 未配置（ConnectionStrings:redis 为空）。");
         }
 
-        var settings = RedisConnectionSettings.Parse(_connectionString);
-
         try
         {
+            // Parse 必须在 try 里：host= 这类写法会解析出空 host，
+            // TcpClient.ConnectAsync("") 抛的是 ArgumentException，不在网络异常里。
+            var settings = RedisConnectionSettings.Parse(_connectionString);
+
+            if (string.IsNullOrWhiteSpace(settings.Host))
+            {
+                _logger.LogWarning("Degraded mode: Redis unavailable（连接串解析出的 host 为空）。");
+                return HealthCheckResult.Degraded("redis 连接串没有可用 host。");
+            }
             using var client = new TcpClient();
 
             await client.ConnectAsync(settings.Host, settings.Port, cancellationToken).ConfigureAwait(false);
@@ -58,8 +70,12 @@ public sealed class RedisHealthCheck : IHealthCheck
                 ? HealthCheckResult.Healthy($"redis {settings.Host}:{settings.Port} PONG")
                 : HealthCheckResult.Degraded($"redis 应答异常：{reply.Trim()}");
         }
-        catch (Exception exception) when (exception is SocketException or IOException or OperationCanceledException)
+        catch (Exception exception) when (exception is not OperationCanceledException
+            || !cancellationToken.IsCancellationRequested)
         {
+            // 兜底到所有非取消异常：缺资源的探活失败只能是 Degraded，
+            // 一旦冒到 HealthCheckService 就会变成 Unhealthy + 503，违反票 03 口径。
+            _logger.LogWarning(exception, "Degraded mode: Redis unavailable（{Reason}）。", exception.Message);
             return HealthCheckResult.Degraded($"redis 不可用：{exception.Message}");
         }
     }

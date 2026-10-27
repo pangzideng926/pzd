@@ -31,11 +31,22 @@ public class HealthAndVersionApiTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // 本机没有可用实例时应为 Degraded 而不是 Unhealthy——降级启动是票 03 的明确要求。
+        // 单元测试只守「200 + 免租户 + JSON 结构」，不断言 Healthy 还是 Degraded：
+        // 两个分支都算过的断言等于没验（票 03 老登②）。「有实例时必须是 Healthy」
+        // 只能由真实实例断言，落在 scripts/verify-apphost.ps1 里。
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        var status = payload.RootElement.GetProperty("status").GetString();
+        var root = payload.RootElement;
 
-        Assert.Contains(status, new[] { "Healthy", "Degraded" });
+        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("status").GetString()));
+
+        var checks = root.GetProperty("checks");
+
+        foreach (var resource in new[] { "mysql", "redis" })
+        {
+            Assert.True(checks.TryGetProperty(resource, out var check), $"/health/ready 明细缺少 {resource}");
+            Assert.False(string.IsNullOrWhiteSpace(check.GetProperty("status").GetString()));
+            Assert.True(check.TryGetProperty("description", out _), $"{resource} 明细缺少 description 字段");
+        }
     }
 
     [Fact]
