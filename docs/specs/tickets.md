@@ -555,3 +555,4 @@ dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests
 4. 改动文件清单（与票内路径对照，超出范围需说明）
 5. 未完成项/偏离项（若无写「无」）
 6. 下一票可开始（依赖已满足）
+7. **被测 hash 必须写明，并允许「等价基线」**：报告结论必须写清在哪个 commit 上跑出来。若被测 hash 与当前 HEAD 的**代码树相同**（`git diff --stat <hash> HEAD -- . ':(exclude)docs'` 为空，差异只在文档/报告），结论可直接沿用、**不必重跑**，但必须附上这条 diff 证据；若代码树不同（哪怕只改一行配置或脚本），必须在新 hash 上重跑受影响的命令。端口被占用时改用替代端口验证，必须在报告里标注「替代端口」，**不得**冒充定稿结论。
