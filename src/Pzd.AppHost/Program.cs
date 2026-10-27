@@ -95,6 +95,14 @@ web
 
 var app = builder.Build();
 
+// F-03-A5 来源分层（雨哥 2026-10-27 提出）：web 侧读到 `NODE_ENV=production`，但「谁写的」有两个
+// 候选，修法完全不同——① 编排器（Aspire JS 集成 / DCP supervisor）在运行期写进子进程；② 从**启动
+// AppHost 的那个 shell** 继承下来（那是启动环境问题，不是编排器行为）。这里只打 AppHost 自己的值，
+// 一个字段、不含凭据，用来把两者分开：若**这里**就是 production，属 ②；若这里是 `<unset>` 而 web
+// 的资源快照里是 production，则注入发生在编排器侧（①）。对照物是 web 那行 `[pzd-diag] env NODE_ENV=`。
+// 注意它必须在 `app.Run()` 之前打：DCP 起不来时（主仓被 ACL 挡住那种）也照样有输出。
+Console.WriteLine($"[pzd-diag] apphost 自身 NODE_ENV={Environment.GetEnvironmentVariable("NODE_ENV") ?? "<unset>"}");
+
 // 诊断（李总 F-03-A5）：本机 DCP 的编排日志通道被 ACL 挡住（"Failed to enable orchestration logging"），
 // AppHost 输出里没有任何资源级事件，于是「web 资源压根没被 DCP 拉起」在运行期完全不可见——只能等
 // 脚本 240 秒超时，事后也无法判断是「没拉起」还是「起来了又挂」。这里直接订阅资源状态流，
