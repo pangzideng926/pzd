@@ -124,14 +124,14 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 对照另一侧由李总在含钉住行的树上跑出（`5682cd0` 干净副本）：进程级 `NODE_ENV=development`、`GET /` 200、`X-Pzd-Run-Id` 与 runId 一致、全链路 `EXIT=0`。**两边唯一差异就是那一行 `WithEnvironment`。**
 
-**来源层还没分出（这一条决定措辞，别跳过）**：仓库里**没有任何一处主动设置 `NODE_ENV`**——`apps/web/package.json` 的 `scripts.dev = "react-router dev"` 不带环境变量、`scripts/verify-apphost.ps1` 全文没有 `NODE_ENV`、shell / Windows 用户级 / 机器级三处都未设置（雨哥，2026-10-28）；全仓只有三处提到它：`entry.server.tsx:45`（打印）、`vite.config.ts:31/45`（打印）、`Program.cs:85`（现在的钉住）。所以「它从哪来」剩两种可能：
+**来源层：工具链已排除，剩两支都在编排器侧（老登定稿口径）**：仓库里**没有任何一处主动设置 `NODE_ENV`**（全仓只有三处：`entry.server.tsx:45` 打印、`vite.config.ts:31/45` 打印、`Program.cs:85` 的 pin；`local.env`、`package.json` 的 `dev`=裸 `react-router dev`、所有脚本都没有它），bash / Windows 用户级 / 机器级三处也未设置（雨哥、旺总各扫一遍）。
 
-1. **编排器侧**：`dcp.exe` 或它调起的 supervisor 塞给 web 资源（`Aspire.Hosting.dll` 字符串扫描证不了它，旺总自己标过这个边界）；
-2. **工具链侧**：`pnpm` → `corepack` → `cmd.exe` → `react-router dev` 链上某一层（最可疑是 react-router/vite 在 build 语义下的默认值）。
+- **工具链侧已排除**：同一副本手动 `pnpm run dev --port 5199` **5/5 起得来、3/3 返回 200**（李总）——走的是完全相同的 `pnpm → corepack → cmd.exe → react-router dev` 链路、**没有 DCP 参与**。若工具链在 build 语义下会自行翻成 `production`，手动跑也必须 500；它没有。所以雨哥原提的 `pnpm exec react-router dev --port 5231` 判别实验**不必再跑**。
+- **剩下的两支**：① **Aspire JS 集成在构建期加的**；② **DCP supervisor 在运行时加的**。快照能说明「它在 DCP 应用之前就存在」，但**区分不了这两支**（旺总自己标的边界）。
 
-**判别法（不用 aspire，几分钟）**：`cd apps/web && pnpm exec react-router dev --port 5231`，看 `vite.config.ts` 打印值或文件探针——出现 `production` 就是工具链翻的（②），`<unset>`/`development` 就只可能来自编排器（①）。
+**要分清就一步**：在 `Build()` 之后、`app.Run()` 之前打印 web 的 `EnvironmentCallbackAnnotation` 展开结果——**主仓也能跑**（那两分钟超时发生在更后面）。有 `production` = ①；没有 = ②。这属于归档细节，**不影响 A5 通过**，pin 在两种归因下都成立。
 
-**所以措辞卡死在这里**：可写「**DCP 拉起的 vite 进程里观测到 `NODE_ENV=production`（来源层未定）**」，**不要**直接写成「supervisor 注入」——那是两种不同根因，对应的修法也不同（② 该在 `vite.config.ts` 里显式声明 dev 语义，而不只是 `WithEnvironment` 压住症状）。
+**所以这一段的定稿措辞只有一句**：**非仓库、非 shell、非脚本注入的 `NODE_ENV=production`** 进入了 DCP 拉起的 vite 进程（进程级 `_out:17` 实测）。**别写「DCP 注入」当定论**——那是把「非我们来源」硬说成「某个具体来源」。
 
 **两条边界（引用时不能省）**：① 这一侧是 `331fac3` **手工删掉钉住行的对照件**（不是某个 un-pinned 提交，也不是 `git revert`）；② **两侧来自两次不同的运行**（`331fac3` 删行 vs `5682cd0` 含钉住），是「同一改动差异、不同运行现场」的对照，不是同一次运行里的 A/B 开关。
 
