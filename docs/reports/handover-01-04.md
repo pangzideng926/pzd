@@ -1,28 +1,28 @@
-# 交接记录：票 01 / 04 / 05 / 06 / 12 通过（票 07 返工提交完成 `7f699c5`，185 条，待终审）→ 下一轮
+# 交接记录：票 01 / 04 / 05 / 06 / 07 / 12 全部通过（基线 `7f699c5`，185 条）→ 下一轮
 
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
 > 文件名沿用首轮，内容已覆盖票 01–12；下一轮请从本文件第 2、3 节接着走。
 > 状态快照：代码基线 `7f699c5`（票 07 返工提交完成）；HEAD 为最新文档提交。`dotnet build Pzd.slnx -warnaserror --no-incremental` 0 警告 0 错误；五个测试工程 35+30+86+33+1 = **185 条全绿**（我于 2026-10-27 在 `7f699c5` 实跑确认；此前的 173 是 `0da4a18` 快照，已作废）。
-> 结论：**票 01、04、05、06、12 已收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、[12 审计](review-12.md)）。**票 07 返工提交完成**（`40f016a`、`001a731`、`0da4a18`、`0c29633` F-07-4、`7f699c5` F-07-5），185 条全绿，等老登按 `7f699c5` 终审并更新 [`review-07.md`](review-07.md)（终审版在工作区，尚未提交；**不要把库里首轮版覆盖回去**）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
+> 结论：**票 01、04、05、06、07、12 全部收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、**07 终审 [`review-07.md`](review-07.md)（`7f699c5`，185 条）**、[12 审计](review-12.md)）。票 02（前端 monorepo 骨架）已开工，它是 03 Aspire 与 11 验收脚本的唯一前置；之后 08 → 10。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
 | 项 | 值 |
 |---|---|
-| 分支 / 代码基线 | `main` / `7f699c5`（07 返工提交完成；其后仅文档提交） |
+| 分支 / 代码基线 | `main` / `7f699c5`（07 终审通过；其后仅文档提交，02 的前端文件尚未入库） |
 | tag | `v0.1.0`（MinVer 基准） |
 | 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`，我在 `7f699c5` 跑过） |
 | 测试 | 185 条、0 失败（架构 30 / SharedKernel 35 / Infrastructure 86 / Api 33 / 集成 1；见各票测试报告） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`） |
-| 进行中 | 老登按 `7f699c5` 终审 07，只复核 F-07-5（F-07-1/2/3/4 已分别判过） |
-| 下一张票 | 07 终审 → 票 02 前端 monorepo 骨架（旺总，03/11 的唯一前置）→ 08 → 10 |
+| 进行中 | 票 02 前端 monorepo 骨架（`apps/web` + `packages/*` + turbo/pnpm，工作区未提交） |
+| 下一张票 | 02 → 03 Aspire（受 F-05-4 约束）→ 08 → 10 → 11 |
 
 ## 2. 未完成项 / 待办与已落票约束
 
 > 票 06 已于 `71529fd` 回填 ✅（`abde749`，156 条），`Auth.*` 文案已对齐；票 05、12 的票面均已收口。下面按「下一轮必做」与「已落票约束」分开。
 
-### 票 07 返工提交完成（`40f016a` → `7f699c5`，185 条），待终审
+### 票 07 ✅ 通过（`7f699c5`，185 条；终审 [`review-07.md`](review-07.md)）
 
 > **编号提示（三套并存，引用时以描述为准）**：
 > - 票面现行：**F-07-4** = 架构规则收紧（`84ea33b`，含 `Jobs/**`、`*Job.cs`）；**F-07-5** = 重试上限可配置（`75d3d19`）。
@@ -40,7 +40,7 @@
 - **票面 F-07-4（已修，`0c29633`）**：规则从匹配字面量 `".GetCurrentConnectionScopeAsync("` 改为匹配**标识符** `GetCurrentConnectionScopeAsync`——容忍任意空白、不要求括号（方法组引用同样算）；`IsBackgroundPath` 并入 `Jobs/**` 与 `*Job.cs`；三条反向用例拆成独立 Fact，各断言**恰好 1 条违规**（断行/空格、方法组、`Jobs/` 路径）。旺总用三处真实源码探针（非合成源码）各验 1 红后删除探针。**误报说明**：改标识符级后，后台文件里 `nameof(...)`、XML doc `<see cref=...>` 提及也会报——按「宁可误报注释，也不漏」的口径接受。
 - **票面 F-07-5（已修，`7f699c5`；老登报告记作 F-07-10/11）**：新增 `OutboxOptions`（配置节 `Outbox`、键 `MaxAttempts`、默认值只在 `OutboxOptions.DefaultMaxAttempts` 一处），启动期读取并校验，非法值（`0`/`-1`/`abc`）直接抛；`OutboxDispatcher` 的 `MaxAttempts` 常量已删除，判断改走 `_options.MaxAttempts`；`RejectAsync` 进终态时同时写 `RejectionReason` 与 `LastError`。用例：注入 2 验证「第 2 次失败即拒」、上限 1 验证「毒消息不饿死同批后面的健康消息」、反射断言类内无 `MaxAttempts` 常量字段。变异：硬编码回 5 → 2 红、不写 `LastError` → 1 红、加回常量 → 1 红。
 - **测试侧已收口（李总，`7f699c5`）**：build 0 警告 0 错误、185 条全绿；F-07-4 用四条**真实源码**探针验证（空格断行、换行断行、方法组引用、`Jobs/*Job.cs`）各恰好 1 条违规，删探针后架构 30 条回绿、`git status` 无残留；F-07-5 三个变异全抓到（硬编码回 5 → 2 红、终态不写 `LastError` → 2 红、加回 `MaxAttempts` 常量 → 1 红），另有真实启动冒烟（`Outbox__MaxAttempts=0` 启动即抛 `InvalidOperationException`，`=2` 正常 `Now listening`）。明细见 [`test-report-07.md`](test-report-07.md) §9。
-- **待办**：只剩老登按 `7f699c5` 复核 F-07-5 并出终审结论 → 我把工作区的 [`review-07.md`](review-07.md)（终审版）与 [`test-report-07.md`](test-report-07.md) 一并入库、把 07 改成 ✅ 并更新测试数 → 之后 02 / 08 / 10。
+- **终审（老登，`7f699c5`）**：独立 worktree 复跑 build 0/0 与 185 条全绿；F-07-5 四条变异全部被抓（硬编码 `>= 5` → 2 红、不写 `LastError` → 1 红、加回 `MaxAttempts` 常量 → 1 红、`Load` 放宽 `< 1` → `< 0` → 1 红）；「单处来源」成立（判定只用 `_options.MaxAttempts`，默认值只在 `OutboxOptions.DefaultMaxAttempts`，`Program.cs:35` 启动期 `Load`，非法值直接抛）。剩 2 条 low 观察项不阻塞：`appsettings.json:14` 显式写了 `"MaxAttempts": 5`，与 `DefaultMaxAttempts` 是两处字面值（改默认值时容易漏改，建议删键让默认生效或注明为运行时覆盖）；规则边界见 §6.8——**类型系统是唯一强保证，字符串规则拦误用、不防蓄意规避**。
 - **明确遗留（不是已解决）**：多处理器部分失败会重放已成功的处理器（老登首轮 F-07-6，消息级幂等 ≠ 处理器级幂等）。要按处理器维度记进度，**与 Outbox 落库同批做**；在那之前契约写「处理器必须幂等」。**本票只用补偿删除，不等于「事务回滚已验证」**，步骤 3 换真实事务并删补偿代码。
 
 ### 票 06 遗留 low（已修，`837117f`）
@@ -67,14 +67,14 @@
 
 ### 步骤 3 移交清单（`tickets.md` 内，别丢）
 
-已登记：FluentValidation 管道 + Application 层校验（票 06 只验证 `errors` 透传 + camelCase，**不得写成「FluentValidation 已验证」**）、真实事务替换补偿删除、`Auth.*` 复用、登录类端点与匿名租户解析策略、10 张票之外的前端登录外壳。
+已登记：FluentValidation 管道 + Application 层校验（票 06 只验证 `errors` 透传 + camelCase，**不得写成「FluentValidation 已验证」**）、真实事务替换补偿删除（**当前只有补偿删除，不等于「事务回滚已验证」**）、`Auth.*` 复用、登录类端点与匿名租户解析策略、10 张票之外的前端登录外壳；票 07 追加：**多处理器部分失败重放与 Outbox 落库同批**、**死信/失败表 + 人工重放（「拒绝」≠ 死信队列，`RejectAsync` 目前只是终态标记）**、`Outbox:MaxAttempts` 与拒绝原因字段随落库对齐。
 
 ## 3. 下一步顺序
 
-1. **老登**：按 `7f699c5` 只复核 F-07-5（`OutboxOptions` 单处来源、终态同时写 `LastError`、毒消息不饿死同批），F-07-1/2/3/4 已分别判过；通过后把 [`review-07.md`](review-07.md) 更新为终审并关票。
-2. **李总**：冒烟用 `7f699c5`（重点：`MaxAttempts=2` 两次后拒绝、上限 1 时毒消息同批后面的健康消息仍被投递、断行/方法组/`Jobs/` 三条规则用例），随后 08/10。
-3. **旺总**：07 关票后立刻开 **票 02 前端 monorepo 骨架**（03 Aspire 与 11 验收脚本的唯一前置），再 08（可观测性 + 审计 + 安全横切），09（Quartz/健康检查/版本，按 F-05-4 加 `AllowAnonymousTenant`）。
-4. **老何**：票面进度行要改对——06 已是 ✅（`abde749`，156 条）、07 待终审、02 开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
+1. **旺总 / Chief**：票 **02 前端 monorepo 骨架**（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、dev proxy）已在工作区，按票面四条验收命令跑通后提交——它是 03 Aspire 与 11 的唯一前置。
+2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
+3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
+4. **待处理 low（不阻塞）**：`appsettings.json` 的 `Outbox:MaxAttempts` 与 `DefaultMaxAttempts` 是两处字面值，改默认值时删键或注明为运行时覆盖。
 5. 依赖关系：02 是 03/11 的前置；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
 
 ## 4. 关键文件
@@ -88,7 +88,7 @@
 | 票 01/04 测试报告、审计终稿 | [`test-report-01-04.md`](test-report-01-04.md)、[`review-01-04-final.md`](review-01-04-final.md) |
 | 票 05 测试报告、审计终稿 | [`test-report-05.md`](test-report-05.md)、[`review-05.md`](review-05.md) |
 | 票 06 测试报告、审计终稿 | [`test-report-06.md`](test-report-06.md)、[`review-06.md`](review-06.md) |
-| 票 07 测试报告、审计报告（返工完成，终审版在工作区） | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
+| 票 07 测试报告、审计终审 | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
 | 票 12 测试记录、审计报告 | [`test-report-12.md`](test-report-12.md)、[`review-12.md`](review-12.md) |
 | 多租户实现 | [`src/Pzd.Infrastructure/Tenancy/`](../../src/Pzd.Infrastructure/Tenancy/) |
 | ProblemDetails 唯一实现 | [`src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs`](../../src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs) |
