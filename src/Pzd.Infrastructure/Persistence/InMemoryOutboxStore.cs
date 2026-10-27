@@ -89,6 +89,7 @@ public sealed class InMemoryOutboxStore : IOutboxStore
             if (message is not null)
             {
                 message.Attempts++;
+                message.LastError = reason;
             }
         }
 

@@ -168,12 +168,58 @@ public class OutboxTests
         Assert.Contains(logger.Entries, entry => entry.Level >= LogLevel.Warning);
         Assert.Single(store.Messages);
         Assert.Equal(1, store.Messages[0].Attempts);
+        Assert.Contains("consumer failed", store.Messages[0].LastError);
 
         var secondRun = await dispatcher.DispatchPendingAsync(CancellationToken);
 
         Assert.Equal(1, secondRun);
         Assert.Equal(2, consumer.Calls);
         Assert.Empty(store.Messages);
+    }
+
+    [Fact]
+    public async Task A_poison_message_is_rejected_after_the_maximum_attempts()
+    {
+        var store = new InMemoryOutboxStore();
+        var message = NewMessage(tenantId: 1);
+        await store.AddAsync(message, CancellationToken);
+
+        var consumer = new AlwaysFailingConsumer();
+        var dispatcher = CreateDispatcher(store, new TenantContext(), new RecordingTenantDbProvider(), consumer);
+
+        for (var attempt = 0; attempt < OutboxDispatcher.MaxAttempts; attempt++)
+        {
+            await dispatcher.DispatchPendingAsync(CancellationToken);
+        }
+
+        Assert.Equal(OutboxDispatcher.MaxAttempts, consumer.Calls);
+
+        var rejected = Assert.Single(store.Messages);
+        Assert.Contains("RetryLimitExceeded", rejected.RejectionReason);
+
+        // 被拒绝后不再出队，也就不再消耗后续消息的投递机会。
+        Assert.Empty(await store.DequeueBatchAsync(10, CancellationToken));
+        await dispatcher.DispatchPendingAsync(CancellationToken);
+        Assert.Equal(OutboxDispatcher.MaxAttempts, consumer.Calls);
+    }
+
+    [Fact]
+    public async Task A_dispatcher_without_handlers_logs_a_warning()
+    {
+        var store = new InMemoryOutboxStore();
+        await store.AddAsync(NewMessage(tenantId: 1), CancellationToken);
+
+        var logger = new RecordingLogger<OutboxDispatcher>();
+        var dispatcher = new OutboxDispatcher(
+            store,
+            new RecordingTenantDbProvider(),
+            new TenantContext(),
+            [],
+            logger);
+
+        await dispatcher.DispatchPendingAsync(CancellationToken);
+
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
     }
 
     [Fact]
@@ -348,6 +394,18 @@ public class OutboxTests
             _failed = true;
 
             throw new InvalidOperationException("consumer failed");
+        }
+    }
+
+    private sealed class AlwaysFailingConsumer : IOutboxMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(OutboxMessage message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+
+            throw new InvalidOperationException("poison message");
         }
     }
 

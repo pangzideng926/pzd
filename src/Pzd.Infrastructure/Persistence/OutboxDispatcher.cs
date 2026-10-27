@@ -23,6 +23,9 @@ public sealed class OutboxDispatcher
     /// <summary>单轮最多处理的消息条数。</summary>
     public const int DefaultBatchSize = 50;
 
+    /// <summary>最大投递尝试次数：超过后拒绝该消息，避免坏消息无限重试饿死后续消息。</summary>
+    public const int MaxAttempts = 5;
+
     private readonly IOutboxStore _outbox;
     private readonly ITenantDbProvider _dbProvider;
     private readonly ITenantContext _tenantContext;
@@ -61,6 +64,13 @@ public sealed class OutboxDispatcher
                 continue;
             }
 
+            if (_handlers.Count == 0 && _logger.IsEnabled(LogLevel.Warning))
+            {
+                _logger.LogWarning(
+                    "没有注册任何 IOutboxMessageHandler，消息 {MessageId} 将被直接标记为已处理（静默消费）。",
+                    message.Id);
+            }
+
             try
             {
                 // F-05-8：显式重载——先按 store 校验停用/到期，再取（或建立）该租户连接。
@@ -96,6 +106,25 @@ public sealed class OutboxDispatcher
             }
             catch (Exception exception)
             {
+                if (message.Attempts + 1 >= MaxAttempts)
+                {
+                    _logger.LogError(
+                        exception,
+                        "Outbox 消息超过最大重试次数（{MaxAttempts}），已拒绝：{MessageId}（租户 {TenantId}）。",
+                        MaxAttempts,
+                        message.Id,
+                        message.TenantId);
+
+                    await _outbox
+                        .RejectAsync(
+                            message.Id,
+                            $"RetryLimitExceeded: {exception.Message}",
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    continue;
+                }
+
                 _logger.LogWarning(
                     exception,
                     "Outbox 消息投递失败，将在下一轮重试：{MessageId}（租户 {TenantId}）。",

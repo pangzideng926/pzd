@@ -18,6 +18,9 @@ public sealed class OutboxMessage
 
     public int Attempts { get; set; }
 
+    /// <summary>最近一次投递失败的原因（仅诊断用，不阻止重试）。</summary>
+    public string? LastError { get; set; }
+
     /// <summary>被拒绝的原因（如租户停用/过期）；非空表示不再投递。</summary>
     public string? RejectionReason { get; set; }
 }

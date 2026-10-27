@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Pzd.Infrastructure.Persistence;
 using Pzd.SharedKernel.Abstractions;
 using Pzd.SharedKernel.Domain;
@@ -70,12 +71,40 @@ public class DomainEventDispatcherTests
         Assert.Same(deletedEvent, deleted.Received);
     }
 
-    private static DomainEventDispatcher CreateDispatcher(Action<IServiceCollection> register)
+    private static DomainEventDispatcher CreateDispatcher(Action<IServiceCollection> register) =>
+        CreateDispatcher(register, out _);
+
+    private static DomainEventDispatcher CreateDispatcher(
+        Action<IServiceCollection> register,
+        out RecordingLogger<DomainEventDispatcher> logger)
     {
         var services = new ServiceCollection();
         register(services);
+        logger = new RecordingLogger<DomainEventDispatcher>();
 
-        return new DomainEventDispatcher(services.BuildServiceProvider());
+        return new DomainEventDispatcher(services.BuildServiceProvider(), logger);
+    }
+
+    [Fact]
+    public async Task An_event_without_handlers_logs_a_warning()
+    {
+        var dispatcher = CreateDispatcher(_ => { }, out var logger);
+
+        await dispatcher.DispatchAsync([new UserRegistered(Guid.NewGuid())], CancellationToken);
+
+        Assert.Contains(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task A_synchronously_throwing_handler_surfaces_the_original_exception()
+    {
+        var dispatcher = CreateDispatcher(services =>
+            services.AddSingleton<IDomainEventHandler<UserRegistered>>(new SyncThrowingHandler()));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => dispatcher.DispatchAsync([new UserRegistered(Guid.NewGuid())], CancellationToken));
+
+        Assert.Equal("sync boom", exception.Message);
     }
 
     private sealed record UserRegistered(Guid UserId) : IDomainEvent
@@ -110,6 +139,30 @@ public class DomainEventDispatcherTests
 
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class SyncThrowingHandler : IDomainEventHandler<UserRegistered>
+    {
+        public Task HandleAsync(UserRegistered domainEvent, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("sync boom");
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, formatter(state, exception)));
     }
 
     private sealed class OrderedHandler : IDomainEventHandler<UserRegistered>
