@@ -371,7 +371,16 @@ try {
             $watch = if ($Mode -eq "aspire") { $hostProcess } else { $null }
             $web = Wait-ForUrl "http://127.0.0.1:5199/" $TimeoutSeconds $watch
             if ($web.Content -notmatch 'lang="zh-CN"') { $failures.Add("前端首屏缺 SPA 标记，可能不是 React Router 外壳") }
-            else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳" }
+            else {
+                # F-03-A10（李总建议，与 F-03-A1 同一口径）：5199 的 200 也必须来自本次启动的进程树。
+                # 只断言「200 + SPA 标记」时，别人在这端口上跑的 dev 会让前端腿假绿。
+                $webAncestor = if ($Mode -eq "aspire") { $hostProcess.Id } elseif ($webProcess) { $webProcess.Id } else { $null }
+                $webListenerPid = Get-PortListenerPid 5199
+                if ($webAncestor -and $webListenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $webListenerPid -AncestorPid $webAncestor)) {
+                    $failures.Add("前端 127.0.0.1:5199 的监听者 pid $webListenerPid 不属于本次启动的进程树（祖先 pid $webAncestor），200 不是本次实例给的")
+                }
+                else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳（监听者 pid $webListenerPid 属本次进程树）" }
+            }
         }
         catch {
             # 前端起不来时直接把 web/vite/pnpm 相关行打出来：宿主日志是排查 web 资源的唯一入口，
