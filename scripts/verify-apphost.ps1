@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env pwsh
+#!/usr/bin/env pwsh
 # 票 03 一键验收。
 #
 # 两种模式：
@@ -325,6 +325,51 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# A5 主仓起不来的根因（2026-10-28 定案）：E:\pzd 根目录上有一条 **低完整性标签**
+# `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`，它继承到树里每个文件。Windows 的规则是
+# 从带 Low 标签的可执行文件启动的进程，其令牌也是 Low；而 Low 进程不能往 Medium 目录写（no write up），
+# 于是 Aspire 建 DCP 会话临时目录（CreateTempSubdirectory）当场被拒、宿主直接退出。
+# 注意：这不是 Deny ACE 造成的（那条 Deny 是 DeleteSubdirectoriesAndFiles，不挡创建），也不是
+# DACL 缺权（WRITE_DAC/WRITE_OWNER 都在）；`/reset` 删不掉标签、`/setintegritylevel` 要
+# SeSecurityPrivilege（当前令牌没有）—— 无管理员权限不可能就地修好。
+#
+# 因此 aspire 模式**自适应**：先量树里 exe 的强制完整性标签，只有它带受限标签（Low 一类）时，
+# 才把构建产物复制到**仓库外**再启动，进程回到 Medium；干净树（别人的机器 / CI）一律原地跑，
+# 不让本机特有的绕行变成所有环境的默认行为。复制的是 `bin/Debug/net10.0` 同一份产物、不重 build，
+# 唯一变量是 exe 位置。工作目录仍指向 src/Pzd.AppHost，因为 Program.cs 用 ContentRootPath 反推
+# 仓库根（cwd 一变就找不到 apps/web）。
+function Test-RestrictedIntegrityLabel {
+    param([string]$Path)
+    # 判据：icacls 输出里有强制标签行，且不是 Medium/High → 受限（从它启动会降令牌完整性）。
+    # 本机 zh-CN 上 icacls 仍输出英文标签名，两种写法都认；没有标签行 = 默认 Medium，走原地。
+    $aclText = (& icacls $Path 2>$null) -join "`n"
+    $labelLines = ($aclText -split "`n") | Where-Object { $_ -match 'Mandatory Label|强制标签' }
+    if (-not $labelLines) { return $false }
+    return -not ($labelLines -match 'Medium Mandatory Level|High Mandatory Level|中强制|高强制')
+}
+
+$appHostLaunchPath = $null
+$appHostBinDst = $null
+if ($Mode -eq "aspire") {
+    $appHostProjectDir = Join-Path $repoRoot "src/Pzd.AppHost"
+    $appHostBinSrc = Join-Path $appHostProjectDir "bin/Debug/net10.0"
+    $treeExe = Join-Path $appHostBinSrc "Pzd.AppHost.exe"
+    if (-not (Test-Path $treeExe)) {
+        Write-Host "[build] 找不到 $treeExe：构建产物不在预期位置。" -ForegroundColor Red
+        exit 1
+    }
+    if (Test-RestrictedIntegrityLabel $treeExe) {
+        $appHostBinDst = Join-Path (Split-Path -Parent $repoRoot) (".pzd-apphost-bin-" + (Split-Path -Leaf $repoRoot))
+        if (Test-Path $appHostBinDst) { Remove-Item $appHostBinDst -Recurse -Force }
+        Copy-Item $appHostBinSrc $appHostBinDst -Recurse -Force
+        $appHostLaunchPath = Join-Path $appHostBinDst "Pzd.AppHost.exe"
+        Write-Host "AppHost 启动方式：树内 exe 带受限完整性标签 → 树外副本 $appHostLaunchPath（cwd 仍是 $appHostProjectDir）" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "AppHost 启动方式：树内 exe 无受限完整性标签 → 原地 dotnet run" -ForegroundColor DarkGray
+    }
+}
+
 # F-03-B1：预检在前、启动在后。原来 api 模式在预检之前就把 pnpm dev 拉起来了，
 # 于是 `Assert-PortFree 5199` 必然命中脚本自己的前端，报「端口已被占用（pid … node）」并 exit 2
 # ——完整路径（含前端的那条）从一开始就不可能通过，还被误读成环境问题。
@@ -342,9 +387,16 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     if ($Mode -eq "aspire") { Remove-StaleDcpState }
     if ($attempt -gt 1) { Write-Host "[retry] 第 $attempt 次启动（已清理 DCP 残留）" -ForegroundColor Yellow }
 
-    $hostProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--project", $target, "--no-build") `
-        -WorkingDirectory $repoRoot -PassThru -NoNewWindow `
-        -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
+    if ($Mode -eq "aspire" -and $appHostLaunchPath) {
+        $hostProcess = Start-Process -FilePath $appHostLaunchPath `
+            -WorkingDirectory (Join-Path $repoRoot "src/Pzd.AppHost") -PassThru -NoNewWindow `
+            -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
+    }
+    else {
+        $hostProcess = Start-Process -FilePath "dotnet" -ArgumentList @("run", "--project", $target, "--no-build") `
+            -WorkingDirectory $repoRoot -PassThru -NoNewWindow `
+            -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
+    }
 
     try {
         $live = Wait-ForUrl "$ApiBaseUrl/health/live" $TimeoutSeconds $hostProcess
@@ -608,6 +660,16 @@ finally {
         }
         catch {
             Write-Host "[warn] aspire 临时目录未能删除（不影响结论）：$aspireTempDir" -ForegroundColor Yellow
+        }
+    }
+
+    # 树外 AppHost 副本同理：只 warn，不改判定。下次运行会先清掉重建。
+    if ($appHostBinDst -and (Test-Path $appHostBinDst)) {
+        try {
+            Remove-Item -LiteralPath $appHostBinDst -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host "[warn] 树外 AppHost 副本未能删除（不影响结论）：$appHostBinDst" -ForegroundColor Yellow
         }
     }
 }
