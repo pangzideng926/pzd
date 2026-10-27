@@ -125,6 +125,11 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $runId = [guid]::NewGuid().ToString("N")
 [Environment]::SetEnvironmentVariable("PZD_RUN_ID", $runId, "Process")
 
+# 本次运行的起点时间。aspire 模式下前端进程不属于本次树（DCP reparent），
+# 用「监听进程启动时间晚于此刻」排除同目录的上一轮残留实例（老何要求）。
+$runStartedAt = Get-Date
+Write-Host "本次运行开始于 $runStartedAt" -ForegroundColor DarkGray
+
 # 归属标记只走响应头：/api/version 的三字段是票 03 验证过的公开契约，不扩充。
 $ApiRunIdHeaderName = "X-Pzd-Run-Id"
 Write-Host "本次运行标记 $ApiRunIdHeaderName=$runId" -ForegroundColor Cyan
@@ -439,7 +444,8 @@ try {
                         $failures.Add("前端 127.0.0.1:5199 取不到监听者 pid，无法确认 200 是否来自本次运行")
                     }
                     else {
-                        $webCmdLine = (Get-CimInstance Win32_Process -Filter "ProcessId=$webListenerPid" -ErrorAction SilentlyContinue).CommandLine
+                        $webProc = Get-CimInstance Win32_Process -Filter "ProcessId=$webListenerPid" -ErrorAction SilentlyContinue
+                        $webCmdLine = $webProc.CommandLine
 
                         if ([string]::IsNullOrWhiteSpace($webCmdLine)) {
                             $failures.Add("前端 127.0.0.1:5199 读不到监听进程（pid $webListenerPid）的命令行，无法确认归属")
@@ -447,8 +453,13 @@ try {
                         elseif ($webCmdLine.IndexOf($expectedWebDir, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
                             $failures.Add("前端 127.0.0.1:5199 的监听进程（pid $webListenerPid）命令行不含本次副本路径 $expectedWebDir，200 来自别的实例")
                         }
+                        elseif ($webProc.CreationDate -and ([System.Management.ManagementDateTimeConverter]::ToDateTime($webProc.CreationDate) -lt $runStartedAt)) {
+                            # 老何：同目录的残留实例也满足路径匹配。补一条时间判据——
+                            # 监听进程必须晚于本次脚本启动，早于它的一定是上一轮遗留。
+                            $failures.Add("前端 127.0.0.1:5199 的监听进程（pid $webListenerPid）启动于 $([System.Management.ManagementDateTimeConverter]::ToDateTime($webProc.CreationDate))，早于本次运行（$runStartedAt），是残留实例")
+                        }
                         else {
-                            Write-Host "[ok] 前端 127.0.0.1:5199 由本次运行拉起（pid $webListenerPid，命令行指向本次副本 $expectedWebDir），且是 SPA 外壳"
+                            Write-Host "[ok] 前端 127.0.0.1:5199 由本次运行拉起（pid $webListenerPid，命令行指向本次副本 $expectedWebDir，启动晚于本次运行），且是 SPA 外壳"
                         }
                     }
                 }
