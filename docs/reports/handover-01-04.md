@@ -164,6 +164,10 @@ A5 的 A 组那一行就栽在这上面：那一格被写成「`:85` 那一行**
 
 ## 5. 环境约束（踩过的坑，别再踩）
 
+- **会话执行器可能整体不可用（`spawn EPERM`），与 `E:\pzd` 的 ACL 无因果（老卫/张一一/老登，2026-10-28 02:0x 实测）**：`bash`、`pwsh` 同时报 `spawn EPERM`，`ops_bash` 与 `pwsh` 都返回 `effects: none`，而**文件读写工具一直正常**——三个人、三条通道同时中招，说明问题在**宿主侧的进程派生层**，不在文件系统。当晚最后一条成功命令是 01:58 的 `icacls /save` 备份，之后全灭，期间路径没变、ACL 没变。
+  - **别把它记成 ACL 的推论**：低完整性标签整晚都在、却没挡住之前的 `dotnet build`/aspire/`icacls`，所以既不是充分原因，也与主仓 aspire 那单**是两件事**，不要合并成一条。
+  - **处置**：遇到时**先等它自己恢复，别反复重试**（每次只留一条无价值的失败记录）；期间用文件工具继续核对内容，能做的事别停。恢复后先 `git status --porcelain` 确认工作区与已入库的差异，再补提交。当晚约 20 分钟后自行恢复，重启 DSH 也能解决。
+  - 记名方式：**「宿主执行器故障（`spawn EPERM`，未定性）」**，不写因果。
 - **测试运行方式：`dotnet test` 在本项目的 agent 会话里不可用——原因是命名管道，跟 ACL 无关（张一一实测，2026-10-28）**：测试平台要经 `NamedPipeClientStream` 连 testhost，被会话沙箱拒绝——`Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.`，栈顶是 `System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)` → `Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(...)`。**关键论证**：同一个测试工程，`dotnet run --project tests/<工程>/<工程>.csproj` **能跑**（35 条通过），`dotnet test` 就挂——同一个目录、同一份 ACL，所以挡它的不是低完整性标签、也不是 `E:\pzd` 的 ACE；而且**在 `E:\pzd-webcheck` 那种干净副本里一样会挂**。**因此：修完 ACL 也不会恢复，别把这条标成「污染期现象」**，否则下一轮会有人照着「ACL 修好就能 `dotnet test`」白试一轮。绕行方式固定为 `dotnet run --project tests/<工程>/<工程>.csproj`（**常态做法，不是临时将就**）；普通目录/CI（无沙箱）仍用 `dotnet test Pzd.slnx`。
   注意这条和下面那条 ACL 污染**是两件事**：两者报的都是 `UnauthorizedAccessException`，但一个在**命名管道**（无文件路径，任何目录都挂），一个在 **`E:\pzd` 根目录的 SACL**（写文件被拒）。别合并成一条写。
 - **主仓 aspire 跑不起来＝仓库根目录被 Aspire 加固污染（自伤，不是环境天生不行）**：`scripts/verify-apphost.ps1` `:221` 把 `TEMP`/`TMP` 指到**仓库内**的 `E:\pzd\.aspire-tmp`，Aspire 的 `SocketPermissionHelper` 给「临时目录」做加固时**把 ACL 加到了仓库根上**。实测 `icacls E:\pzd`（2026-10-27 23:5x）：
