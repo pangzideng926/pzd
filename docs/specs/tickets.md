@@ -129,7 +129,7 @@ pnpm -w typecheck
 
 # 03: Aspire 编排与一键启动（引用本机实例）
 
-**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server，并连上本机 MySQL 8.0.46 与 Redis(Memurai)；`/health/ready` 为 Healthy 且 mysql/redis 明细 Up，`/api/version` 可访问，Ctrl+C 优雅退出。凭据只从环境变量 / `local.env` 注入，仓库零密码；实例或凭据缺失时降级启动并打印 Warning（CI 兜底）。容器编排退出本轮验收。**开工硬前置 F-05-4**：`/health/live`、`/health/ready`、`/api/version` 必须免租户，无 claim / `X-Tenant` / 子域时也返回 200，否则脚本轮询与版本端点会被票 05 的 `Tenant.NotFound` 400 拦掉。
+**What to build:** `dotnet run --project src/Pzd.AppHost` 一条命令拉起 API 与前端 dev server，并连上本机 MySQL 8.0.46 与 Redis(Memurai)；`/health/ready` 为 **Healthy** 且 mysql/redis 两个明细都是 **Healthy**（.NET 原生三态，不做 `Up/Down` 映射），`/api/version` 可访问，Ctrl+C 优雅退出。凭据只从环境变量 / `local.env` 注入，仓库零密码；实例或凭据缺失时降级启动并打印 Warning（CI 兜底）。容器编排退出本轮验收。**开工硬前置 F-05-4**：`/health/live`、`/health/ready`、`/api/version` 必须免租户，无 claim / `X-Tenant` / 子域时也返回 200，否则脚本轮询与版本端点会被票 05 的 `Tenant.NotFound` 400 拦掉。
 
 **文件路径**
 
@@ -393,7 +393,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 
 # 09: Quartz + 健康检查 + 版本端点（接本机 MySQL）
 
-**What to build:** Quartz 主路径用 **MySQL AdoJobStore**（表在 `pzd_master`），`HeartbeatJob` 注册后可在库中查到、重启后仍在；`/health` 分离存活/就绪，本机实例可用时 readiness 为 Healthy（mysql/redis 明细 Up）；`/api/version` 返回以 git tag 为基准的版本、buildId、构建时间。**F-05-4（硬前置，与票 03 共用豁免）**：`/health/live`、`/health/ready`、`/api/version` 无 claim / `X-Tenant` / 子域时也必须 200，不得被 `Tenant.NotFound` 拦截。
+**What to build:** Quartz 主路径用 **MySQL AdoJobStore**（表在 `pzd_master`），`HeartbeatJob` 注册后可在库中查到、重启后仍在；`/health` 分离存活/就绪，本机实例可用时 readiness 为 **Healthy**（mysql/redis 明细均 **Healthy**，.NET 原生三态）；`/api/version` 返回以 git tag 为基准的版本、buildId、构建时间。**F-05-4（硬前置，与票 03 共用豁免）**：`/health/live`、`/health/ready`、`/api/version` 无 claim / `X-Tenant` / 子域时也必须 200，不得被 `Tenant.NotFound` 拦截。
 
 **文件路径**
 
@@ -414,7 +414,7 @@ dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
 - [ ] `HeartbeatJob` 按注册 cron（`Asia/Shanghai`，`[DisallowConcurrentExecution]`）注册，下次执行时间可查
 - [ ] **重启 API 后任务仍在**（查 `qrtz_job_details` 或 scheduler API，贴输出作为持久化证据）
 - [ ] 无连接串：内存存储 + Warning（CI 兜底），启动不失败
-- [ ] `/health/live` 永远 200；`/health/ready` 本机实例可用时 Healthy，明细 mysql=Up、redis=Up；无实例时 200 + Degraded，不因缺资源变 Unhealthy
+- [ ] `/health/live` 永远 200；`/health/ready` 本机实例可用时 Healthy，明细 mysql/redis 均为 **Healthy**（原生三态，不映射 `Up/Down`）；无实例时 200 + Degraded，不因缺资源变 Unhealthy
 - [ ] `/api/version` 返回 `version`（MinVer，tag 基准，不硬编码）、`buildId`（git sha）、`buildTime`（ISO 8601），字段与架构 §15.1 一致
 - [ ] version 与 `dotnet msbuild ... -t:Build -getProperty:Version` 一致；以 tag 为基准（tag 提交 `0.1.0`，HEAD 形如 `0.1.1-alpha.0.<height>+<sha>`），票面不写死具体值
 - [ ] `scripts/init-master-db.ps1` 幂等，只创建 `pzd_master` 与 `qrtz_*` 表，不碰其他库；密码不出现在脚本与输出
