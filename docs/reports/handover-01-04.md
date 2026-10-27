@@ -1,36 +1,41 @@
-# 交接记录：票 01 / 04 / 05 / 06 / 12 通过（票 07 返工已提交，待终审）→ 下一轮
+# 交接记录：票 01 / 04 / 05 / 06 / 12 通过（票 07 返工中，只剩 F-07-4 规则收紧）→ 下一轮
 
 > 交接：老卫｜日期：2026-10-27｜读者：下一轮接手的老何（规格）、旺总（开发）、李总（测试）、老登（审计），或新的 agent 会话
 > 文件名沿用首轮，内容已覆盖票 01–12；下一轮请从本文件第 2、3 节接着走。
-> 状态快照：代码基线 `837117f`（06 残余 low 修复；07 返工 `40f016a` 之后）；HEAD 为最新文档提交。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 35+25+75+33+1 = **169 条全绿**（我于 2026-10-27 在 `837117f` 的干净 worktree 复跑确认）。
-> 结论：**票 01、04、05、06、12 已收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、[12 审计](review-12.md)）。**票 07 返工已提交 `40f016a`**（F-07-1/F-07-2 + 补偿顺序），06 的 `ToCamelCaseKeys` low 已随 `837117f` 修毕；F-07-3 已在 `40f016a`，F-07-4 收尾在工作区（未提交），李总复测与老登终审在最终 hash 上做。`review-07.md` 仍是首轮「需修改」结论。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
+> 状态快照：代码基线 `0da4a18`（票 07 返工进行中，F-07-4 规则收紧未落）；HEAD 为最新文档提交。`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；五个测试工程 35+25+79+33+1 = **173 条全绿**（我于 2026-10-27 在 `001a731` 的干净 worktree 复跑确认；`0da4a18` 只加了一条架构规则与其反向用例，计数不变）。
+> 结论：**票 01、04、05、06、12 已收口**（[01/04 终审](review-01-04-final.md)、[05 终审](review-05.md)、[06 终审](review-06.md)、[12 审计](review-12.md)）。**票 07 返工中**（`40f016a` F-07-1/2 + 补偿顺序、`837117f` 06 low、`001a731` 低优先级四条、`0da4a18` 规则第二层），只剩票面 **F-07-4（架构规则收紧）** 未落；修完由老登终审并更新 [`review-07.md`](review-07.md)（该文件正在工作区更新，提交版本仍是「需修改」）。本文件只记录未完成项、下一步与环境约束；已完成工作的证据不复述，直接链报告。
 
 ## 1. 交接时的事实
 
 | 项 | 值 |
 |---|---|
-| 分支 / 代码基线 | `main` / `837117f`（06 low 修复；07 返工 `40f016a`；07 收尾未提交） |
+| 分支 / 代码基线 | `main` / `0da4a18`（07 返工中；其后仅文档提交） |
 | tag | `v0.1.0`（MinVer 基准） |
 | 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`） |
-| 测试 | 169 条、0 失败（35+25+75+33+1；见各票测试报告） |
+| 测试 | 173 条、0 失败（35+25+79+33+1；见各票测试报告） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*` |
-| 进行中 | 07 的 F-07-4（失败原因/最大尝试/防饿死）与分派器补充用例在工作区（未提交）；最终 hash 以 07 收尾提交为准 |
-| 下一张票 | 李总按 07 最终 hash 复测 → 老登终审 → 之后 08/09/10 |
+| 进行中 | 旺总做 07 的票面 F-07-4（架构规则收紧）；老登按新 hash 终审并更新 `review-07.md`（工作区在改） |
+| 下一张票 | 旺总 F-07-4 → 老登终审 07 → 李总复测 → 08/09/10 |
 
 ## 2. 未完成项 / 待办与已落票约束
 
 > 票 06 已于 `71529fd` 回填 ✅（`abde749`，156 条），`Auth.*` 文案已对齐；票 05、12 的票面均已收口。下面按「下一轮必做」与「已落票约束」分开。
 
-### 票 07 返工已提交（`40f016a`，待复测/终审）
+### 票 07 返工中（`40f016a` / `001a731` / `0da4a18`，只剩 F-07-4 规则收紧）
+
+> **编号提示**：老登首轮报告里的 F-07-3/4/5（零处理器静默、失败原因、反射包装）与票面现在的 F-07-3（补偿顺序）、F-07-4（规则收紧）**不是同一组编号**；引用时以描述为准，不要只看号。
 
 - **F-07-1** 已按「认 API 形状」落地：请求路径专用的无参重载改名为 `GetCurrentConnectionScopeAsync`，`GetConnectionScopeAsync` 只剩带 `long tenantId` 的重载——类型系统本身阻止「裸取」，改名 token 传 `CancellationToken` 也无法编译；架构规则改为「后台路径（`Persistence/**`、`*HostedService.cs`、`*Dispatcher.cs`）不得出现 `.GetCurrentConnectionScopeAsync(`」，反向用例补了改名 token 样本与 6 条 `IsBackgroundPath` Theory。
   - **规则适用边界**（`b9795e9` 已登记）：这条是源码字符串规则，不是语义分析；别名、动态调用、反射理论上都能绕过它。但要在后台绕过得先自行构造一个没有 `tenantId` 的上下文，成本远高于误用。文档写「后台路径禁用该调用、由架构规则守护」，**不写「不可能绕过」**。
+  - **第二层（`0da4a18`）**：任何源码出现零实参 `.GetConnectionScopeAsync()` 调用同样报（方法声明无点号，不算），守住「将来重新加回无参重载」；老登把这条列为可选加固，不作为 F-07-4 的验收项。
 - **F-07-2** 已补 `DomainEventDispatcherTests.cs`：同一事件实例、按 DI 注册顺序、零处理器视为成功、同步抛出、一批两个不同事件各走各的处理器。
-- **F-07-3** 已在 `40f016a`：补偿顺序改为先回滚、再补偿删除，`UnitOfWorkTests` 用调用序列钉住 `dispatch → outbox-add → commit → rollback → outbox-remove`。
-- **F-07-4**（失败原因落存储、最大尝试次数/防饿死）在工作区收尾，待提交后按最终 hash 复测/终审。
-- **待办**：07 先完成 F-07-4 收尾并提交；李总按最终 hash 复测、老登按 hash 终审并更新 [`review-07.md`](review-07.md)（当前仍是首轮「需修改」结论）。
-- **落步骤 3**：F-07-5（`TargetInvocationException` 解包）、F-07-6（处理器级幂等）；**本票只用补偿删除，不等于「事务回滚已验证」**，步骤 3 换真实事务并删补偿代码。
+- **补偿顺序（票面 F-07-3）**：`40f016a` 改为先回滚、再补偿删除，`UnitOfWorkTests` 用调用序列钉住 `dispatch → outbox-add → commit → rollback → outbox-remove`；零处理器/零消费者记 Warning（老登首轮 F-07-3）随 `001a731` 落地，不再静默消费。
+- **失败原因与防饿死（老登首轮 F-07-4）**：`001a731` — `OutboxMessage` 增 `LastError`，`RecordFailureAsync` 记原因并累加 `Attempts`；`MaxAttempts = 5` 超限记 Error 并以 `RetryLimitExceeded` 拒绝，坏消息不再占满批次。**「拒绝」只是终态标记，不是死信队列**。
+- **反射异常解包（老登首轮 F-07-5）**：`001a731` — 捕获 `TargetInvocationException` 并用 `ExceptionDispatchInfo` 解包，同步抛出保留原始异常。
+- **未完成 · 票面 F-07-4（必修，架构规则收紧）**：现行规则仍匹配字面量 `".GetCurrentConnectionScopeAsync("`，`IsBackgroundPath` 只认 `Persistence/**`、`*HostedService.cs`、`*Dispatcher.cs`，因此三处实测漏检：① 方法名与括号之间换行/空格；② 方法组引用（无括号）；③ `Jobs/`、`*Job.cs` 未列入。修法（老何 `84ea33b`）：后台路径改为「出现 `GetCurrentConnectionScopeAsync` 标识符即违规」（容忍任意空白、不要求括号），清单并入 `Jobs/**` 与 `*Job.cs`，补三条反向用例各断言恰好 1 条违规、先红后绿。**修完这一笔即终审，不另开票。**
+- **待办**：旺总 F-07-4 → 老登按新 hash 终审并更新 [`review-07.md`](review-07.md)（提交版本仍是「需修改」，工作区在改）→ 李总复测 → 08/09/10。
+- **落步骤 3**：处理器级幂等（老登 F-07-6，多处理器部分失败会重放已成功的处理器）；**本票只用补偿删除，不等于「事务回滚已验证」**，步骤 3 换真实事务并删补偿代码。
 
 ### 票 06 遗留 low（已修，`837117f`）
 
@@ -42,7 +47,7 @@
 
 ### 已落票 · F-05-8（票 07 验收约束，`73f02e4`）
 
-后台任务/消费者必须用带 `tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId)`（先校验停用/到期），禁止无参裸取；停用/过期租户的消息拒绝处理并记录理由。F-07-1 修完后，这条约束才真正有自动化守护。
+后台任务/消费者必须用带 `tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId)`（先校验停用/到期），禁止无参裸取；停用/过期租户的消息拒绝处理并记录理由。F-07-1 改名 + `0da4a18` 零实参第二层之后，这条约束才有自动化守护；**票面 F-07-4 的标识符级收紧（并入 `Jobs/**`、`*Job.cs`）还未落，缺这层则 `Jobs/` 下的误用不会被拦住**。
 
 ### 已落票 · `Auth.*` 错误码口径（`a2982ca` + `71529fd`）
 
@@ -60,11 +65,12 @@
 
 ## 3. 下一步顺序
 
-1. **李总**：按 07 最终 hash 复测（重点：改名 token / 后台路径规则必须红、`DomainEventDispatcher` 改坏必须红、补偿顺序），随后 08/09/10。
-2. **老登**：按 07 最终 hash 终审，并把 [`review-07.md`](review-07.md) 的结论从首轮「需修改」更新为终审；08 起继续按票审计。
-3. **旺总**：完成 07 的 F-07-4（失败原因 + 最大尝试次数/防饿死）收尾并提交，给出最终 hash；之后开 08/09。
-4. **老何**：规格侧无待办（06 已回填）；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
-5. 票 02（前端）与 03（Aspire）可并行（03 受 F-05-4 约束，已落票）；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
+1. **旺总**：先修票面 F-07-4（规则改标识符级、并入 `Jobs/**` 与 `*Job.cs`、三条反向用例），给 hash。
+2. **老登**：按新 hash 只复核 F-07-4 + 架构测试全量，然后把 [`review-07.md`](review-07.md) 更新为终审；08 起继续按票审计。
+3. **李总**：对 07 最终 hash 复跑冒烟（重点：零实参旧名、断行/方法组/`Jobs/` 三处反向用例必须红，`DomainEventDispatcher` 改坏必须红，补偿顺序与 `MaxAttempts`），随后 08/09/10。
+4. **旺总**：07 关票后开 08（可观测性 + 审计 + 安全横切），再 09（Quartz/健康检查/版本，按 F-05-4 加 `AllowAnonymousTenant`）。
+5. **老何**：规格侧无待办（06 已回填）；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
+6. 票 02（前端）与 03（Aspire）可并行（03 受 F-05-4 约束，已落票）；08 依赖 06；09 依赖 03/04；10 依赖 05；11 最后。
 
 ## 4. 关键文件
 
@@ -77,7 +83,7 @@
 | 票 01/04 测试报告、审计终稿 | [`test-report-01-04.md`](test-report-01-04.md)、[`review-01-04-final.md`](review-01-04-final.md) |
 | 票 05 测试报告、审计终稿 | [`test-report-05.md`](test-report-05.md)、[`review-05.md`](review-05.md) |
 | 票 06 测试报告、审计终稿 | [`test-report-06.md`](test-report-06.md)、[`review-06.md`](review-06.md) |
-| 票 07 测试报告、审计报告（首轮，待终审更新） | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
+| 票 07 测试报告、审计报告（返工中，终审待 F-07-4） | [`test-report-07.md`](test-report-07.md)、[`review-07.md`](review-07.md) |
 | 票 12 测试记录、审计报告 | [`test-report-12.md`](test-report-12.md)、[`review-12.md`](review-12.md) |
 | 多租户实现 | [`src/Pzd.Infrastructure/Tenancy/`](../../src/Pzd.Infrastructure/Tenancy/) |
 | ProblemDetails 唯一实现 | [`src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs`](../../src/Pzd.Infrastructure/Errors/ProblemDetailsWriter.cs) |
@@ -94,7 +100,7 @@
 - **凭据**：只走环境变量或 `local.env`（gitignored）；仓库、日志、报告零密码。
 - **租户配置**：`Tenants` 的非法值（`Status` 拼错/数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛 `InvalidOperationException`，不会等首个请求；`Tenants` 为空允许启动但请求 400（不做 fail-fast）；`ExpiresAt` 缺省或 `null` 为永不过期，空字符串为配置错误。
 - **后台任务取连接**：请求路径专用的是 `GetCurrentConnectionScopeAsync(ct)`，后台路径禁止出现该调用；后台任务/消费者必须用带 `long tenantId` 的显式重载 `GetConnectionScopeAsync(tenantId, ct)`（先校验停用/到期）。无参 `GetConnectionScopeAsync()` 已不存在，编译期即挡。架构规则守的是「后台路径不出现 `.GetCurrentConnectionScopeAsync(`」，属字符串规则，别把它当沙箱（边界见 §2「规则适用边界」）。
-- **07 内存实现**：Outbox/UoW 的事务是**补偿删除**，不是真实回滚；失败原因未落存储、无最大尝试次数——这些属步骤 3，报告与文档不得写成「事务回滚已验证」。
+- **07 内存实现**：Outbox/UoW 的事务仍是**补偿删除**，不是真实回滚（步骤 3 换真实事务并删补偿）；失败原因、`MaxAttempts=5`、零消费者告警已随 `001a731` 补上；处理器级幂等（F-07-6）留步骤 3。报告与文档不得写成「事务回滚已验证」。
 - **MinVer**：浅克隆丢 tag 会让版本掉成 `0.0.0-alpha…`。
 
 ## 6. 可直接复制的验证命令

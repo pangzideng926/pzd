@@ -14,11 +14,11 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
-| 07 | UoW + Outbox + 领域事件 | 🔧 返工收尾（`40f016a`；F-07-3/4 进行中），待复测/终审 |
+| 07 | UoW + Outbox + 领域事件 | 🔧 返工中（`0da4a18`，173 条；剩票面 F-07-4 规则收紧） |
 | 08–10 | 可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10 |
 
-票 07 返工 `40f016a` 已提交（F-07-1 规则改认 API 形状、F-07-2 分发器用例、补偿顺序），F-07-3/F-07-4 收尾中；06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕（169 条）。等 07 最终 hash 复测与终审，之后接 08/09/10。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+票 07 返工：`40f016a`（F-07-1 规则改认形状、F-07-2 分发器用例、补偿顺序）、`001a731`（失败原因与最大重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（F-05-8 规则补第二层：零实参旧名调用也报），当前 173 条全绿。**只剩票面 F-07-4（规则收紧）**：后台路径改为标识符级禁用（容忍空白、方法组引用同算）、清单并入 `Jobs/**` 与 `*Job.cs`、补三条反向用例；修完由老登终审后接 08/09/10。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
@@ -69,7 +69,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 25 + 75 + 33 + 1 = **169 条全绿**，2026-10-27 于 `837117f` 实测）：
+五个测试工程（当前 35 + 25 + 79 + 33 + 1 = **173 条全绿**，2026-10-27 于 `001a731` 实测）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
