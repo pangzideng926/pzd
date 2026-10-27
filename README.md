@@ -63,7 +63,8 @@ docs/
 - **.NET SDK 10.0.4xx**（`global.json` 锁 `10.0.400` + `latestPatch`）
 - **Git**：MinVer 从 git tag 推导版本，`git clone` 时不要浅到丢 tag
 - 可选：本机 MySQL 8.0.46 与 Redis（Memurai）实例，供票 03/09/10 使用；无 Docker 也能完成本轮验收
-- 前端票 02 尚未开工，当前不需要 Node/pnpm
+- **Node.js ≥ 22**（`package.json` 的 `engines`）与 **pnpm 12.14.0**（`packageManager` 字段锁定；用 `corepack enable` 或同版本 pnpm，别用别的包管理器，lockfile 会漂）
+- 前端票 02 已开工，`apps/web` 在 `apps/`、`packages/*` 同仓（pnpm workspace + turbo）
 
 ## 构建与测试
 
@@ -92,6 +93,21 @@ dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
 ```powershell
 dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 ```
+
+## 本地运行
+
+```powershell
+# 后端（票 03 的 AppHost 把 API 固定在 127.0.0.1:5080）
+dotnet run --project src/Pzd.Api/Pzd.Api.csproj
+
+# 前端（pnpm workspace；dev 端口固定 5199）
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+- **前端 dev 地址是 `http://localhost:5199/`**，`vite.config.ts` 里 `server.port` 固定 5199、`strictPort: true`，并显式写 `server.host`。**验收和排查一律用 `localhost:5199`，不要用 `127.0.0.1:5199`**——Windows 上 Node 默认可能只监听 `::1`，写死 IPv4 会得到连接被拒（`curl` 返回 `000`），那是绑定差异、不是服务没起来。
+- **后端地址是 `http://127.0.0.1:5080`**，前端 dev 期把 `/api`、`/hubs` 代理到它（`/hubs` 带 WebSocket）；生产由 `Pzd.Api` 托管 `build/client`，同源部署，不需要代理。
+- 健康检查与版本端点免租户（票 03 的 F-05-4 前置）：`/health/live`、`/health/ready`、`/api/version` 不带 claim / `X-Tenant` / 子域也返回 200，其余端点仍 400。
 
 ## 配置与凭据
 
