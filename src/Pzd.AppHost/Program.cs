@@ -132,10 +132,11 @@ _ = Task.Run(async () =>
             // F-03-A5：手动 shell 能起、DCP 起就崩，唯一的差异面在进程环境。这里在 web 每次
             // 进入新状态时打一份**白名单**环境快照——只列已知会分叉的几项，PATH 只留前三段，
             // 连接串/密码/令牌一律不输出（老何的硬约束：不整包打印）。
-            if (EnvironmentDiagnostics.ShouldDump(name, state, seenStates))
-            {
-                EnvironmentDiagnostics.Dump(name, snapshot.EnvironmentVariables);
-            }
+            //
+            // 张一一 2026-10-27 指出：初始快照是 (unknown)、环境变量 0 项，若此时就打印
+            // 「共 0 项」，后来人会读成「web 进程没有环境变量」——比不打更糟。所以空快照
+            // 只留一行说明「等非空再打」，绝不当作证据。
+            EnvironmentDiagnostics.Report(name, state, snapshot.EnvironmentVariables, seenStates);
 
             if (!string.IsNullOrWhiteSpace(snapshot.State?.Text) &&
                 snapshot.State.Text.Contains("error", StringComparison.OrdinalIgnoreCase))
@@ -188,28 +189,49 @@ internal static class EnvironmentDiagnostics
         "SALT",
     ];
 
-    public static bool ShouldDump(string resourceName, string state, Dictionary<string, string> seenStates)
+    /// <summary>
+    /// 打印一份白名单环境快照。**空快照绝不当作证据**：初始事件是 <c>(unknown)</c> 且 0 项，
+    /// 那时打印「共 0 项」会被读成「web 进程没有环境变量」。空快照只留一行说明并退回，
+    /// 等第一个非空快照再打。
+    /// </summary>
+    public static void Report(
+        string resourceName,
+        string state,
+        IEnumerable<EnvironmentVariableSnapshot> variables,
+        Dictionary<string, string> seenStates)
     {
         // 只看 web：api 腿一直正常，多打一份只会淹没证据。
         if (!string.Equals(resourceName, "web", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return;
+        }
+
+        var all = variables as IReadOnlyCollection<EnvironmentVariableSnapshot> ?? variables.ToArray();
+
+        if (all.Count == 0)
+        {
+            // 同一状态只提醒一次，否则 WatchAsync 的重复回调会刷屏。
+            var emptyKey = $"empty:{state}";
+            if (seenStates.TryGetValue(resourceName, out var warned) && warned == emptyKey)
+            {
+                return;
+            }
+
+            seenStates[resourceName] = emptyKey;
+            Console.WriteLine(
+                $"[pzd-diag] resource={resourceName} state={state} 环境变量快照为 0 项：" +
+                "这不代表 web 进程没有环境变量，只是该状态的快照还没填充，等非空快照再打");
+            return;
         }
 
         // WatchAsync 对 URL、健康等变化也会回调，按状态文本去重，避免刷屏。
         if (seenStates.TryGetValue(resourceName, out var previous) && previous == state)
         {
-            return false;
+            return;
         }
 
         seenStates[resourceName] = state;
-        return true;
-    }
-
-    public static void Dump(string resourceName, IEnumerable<EnvironmentVariableSnapshot> variables)
-    {
-        var all = variables as IReadOnlyCollection<EnvironmentVariableSnapshot> ?? variables.ToArray();
-        Console.WriteLine($"[pzd-diag] resource={resourceName} 环境变量共 {all.Count} 项（下表仅白名单取值）");
+        Console.WriteLine($"[pzd-diag] resource={resourceName} state={state} 环境变量共 {all.Count} 项（下表仅白名单取值）");
 
         foreach (var variable in all.OrderBy(static item => item.Name, StringComparer.Ordinal))
         {
