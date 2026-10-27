@@ -74,6 +74,16 @@ if (!string.IsNullOrWhiteSpace(runId))
     web = web.WithEnvironment("PZD_RUN_ID", runId);
 }
 
+// F-03-A5 根因候选（锋哥 2026-10-27 复现）：`NODE_ENV=production` 撞上 `react-router dev` 时，
+// Vite 的 SSR 变换仍生成 `jsxDEV` 调用，而 production 的 `react/jsx-dev-runtime` 没有 `jsxDEV`，
+// 于是在 `renderToPipeableStream` 调用点**同步抛出**——默认 entry 的 `abort` 停在 TDZ，6 秒后
+// 进程以 exit 1 退出，5199 从头到尾没人监听，和 aspire 现场完全同形。
+//
+// 这里把 web 的 `NODE_ENV` 显式钉成 development：这个资源跑的是 package.json 的 `dev` 脚本，
+// 语义上本来就该是 development，钉住之后不吃 supervisor 传下来的任何值。没被注入时它是个无害的
+// 显式声明；被注入 production 时它就是修复。
+web = web.WithEnvironment("NODE_ENV", "development");
+
 web
     .WithHttpEndpoint(port: 5199, name: "http")
     .WithEndpoint("http", endpoint =>
