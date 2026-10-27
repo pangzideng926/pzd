@@ -194,7 +194,7 @@ git diff --stat 6b67c2d..HEAD -- src/Pzd.Api src/Pzd.Infrastructure
       - **四条边界仍要带**：① 仍不区分「装配资源模型期 vs DCP 运行时」写入；② **两条通道分属不同运行别混引**——B 组 DCP 会话目录被正常退出清理，进程级 `_out` 只有 A 组有，B 组的进程级读数来自 vite 文件探针；③ 副本树，**不等于「主仓绿」**；④ 没证明 JS 集成内部就是 `IsDevelopment() ? … : …` 那行（未反编译 IL）。**另：探针文件是追加写的**，`devenv-62b80ed/pzd-web-env.log` 一个文件混了 5 个 runId（含 A 组 `production` 与 B 组 `development`），**必须按 runId 拆，别 grep 取第一条**。
       - **由此得到一条防误判纪律（比结论本身重要）**：「**没有 pin 也能绿，只要宿主环境是 Development**」——所以「有人加了 `launchSettings.json`、看到本地正常就删 pin」会在 CI 的 Production 宿主上立刻复发。这就是 pin **无条件保留**的实证依据。
       - **`pin` 的定性：无条件保留**（旺总 `ce08feb` 注释里写了三个理由）——① 只影响 web 一个资源；② 有人加了 `launchSettings.json` 后看着正常，但**一删就会在 Production 宿主上复发**；③ **反对用 `launchSettings.json` 根治**，那会把整个 AppHost 带进 Development。
-      - **`ce08feb` 老登审计通过，两个 low 记在案（不阻塞验收）**：① **提交类型写成了 `docs(apphost)`**，但这笔含一行 `Console.WriteLine` 代码（21 增 8 删不全是注释），按我们自己的规矩应是 `chore(apphost)` / `feat(apphost)`——不影响功能，但翻 `git log` 会误以为这是纯文档改动。② **`[pzd-diag]` 这类行是调试残留**：现在每次启动都会打「宿主环境=Production」，只输出四个白名单项、不泄露敏感信息，但**正式版要不要保留、要不要只在 dev 下输出**得有一句交代，否则将来有人会问「这行谁加的、能不能删」。
+      - **`ce08feb` 老登审计通过，两个 low 均已收口**：① **提交类型写成了 `docs(apphost)`**（这笔含一行 `Console.WriteLine`，按规矩应是 `chore(apphost)`/`feat(apphost)`）——**决定：不重写已推送的历史**，只在档里记下「这类改动以后用 `chore(apphost)`」。② **`[pzd-diag]` 调试残留——决定：留，不删**（旺总，2026-10-28），三条理由：**只在 `Pzd.AppHost` 里打**（AppHost 是开发期编排进程，不进生产部署、也不是业务进程）；**只打 4 个非敏感值**（`NODE_ENV`、`宿主环境`、`DOTNET_ENVIRONMENT`、`ASPNETCORE_ENVIRONMENT`，过 `EnvironmentDiagnostics` 白名单熔断，无连接串/密码/令牌）；**它是唯一能在任何环境回答「宿主环境和 `NODE_ENV` 从哪一层来」的运行期痕迹**——今晚「宿主环境=Production」正是靠它从推断变实读。将来嫌吵就加开关（如 `PZD_DIAG=0`），**别删掉它**。
     - **机制可以在主仓、不依赖 DCP 复现（张一一，`e8df4ed`+`db17a9b`，签名级）**：给 vite 进程显式注入即可，两条命令谁都能重跑——
 
       ```bash
