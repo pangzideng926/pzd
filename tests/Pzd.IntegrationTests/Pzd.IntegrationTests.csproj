@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="MySqlConnector" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/Pzd.Api/Pzd.Api.csproj" />
     <ProjectReference Include="../../src/Pzd.Infrastructure/Pzd.Infrastructure.csproj" />
   </ItemGroup>
