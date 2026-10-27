@@ -108,7 +108,8 @@ git log --oneline -1; git tag
 - [ ] `pnpm -w build` 退出码 0，`apps/web/build/client` 产出
 - [ ] `pnpm -w typecheck` 退出码 0，TS strict
 - [ ] `pnpm --filter web dev` 起服务后 `GET /` 返回 200 且不是错误页
-- [ ] **dev 端口与绑定显式写死、可预期**：`vite.config.ts` 固定 `server.port = 5199` 且**显式** `server.host = "127.0.0.1"`（不靠默认端口漂移，也不留空 host）；验收与后续脚本一律探 `http://127.0.0.1:5199/`。原因：host 留空时本机 Vite 只绑 `::1`，此时探 `127.0.0.1` 会假红；**显式绑 IPv4 后 `127.0.0.1:5199` 正常返回 200**，与后端 `127.0.0.1:5080` 口径一致（此前「一律用 localhost」的写法作废）
+- [ ] **dev 端口与绑定显式写死、可预期**：`vite.config.ts` 固定 `server.port = 5199` 且**显式** `server.host = "127.0.0.1"`（不靠默认端口漂移，也不留空 host）；**验收与脚本的规范探测地址固定为 `http://127.0.0.1:5199/`**。实测补充：显式绑 IPv4 后 `localhost:5199` 同样返回 200，但 `localhost` 的名称解析顺序依机器而异（可能先解析到 `::1`），**不作为规范探测地址**；`http://[::1]:5199/` 返回 `000` 属预期，不要拿它当反例。根因：host 留空时本机 Vite 只绑 `::1`，那时探 IPv4 才会假红（此前「一律用 localhost」的写法作废）
+- [ ] **`lint` 本轮是占位，不得当质量证据**：`pnpm -w lint` 目前四个包都是 echo（`"web: no linter yet"` 等），通过只说明脚本存在；报告与交接**不得**写成「lint 通过＝代码质量达标」。真正的 ESLint/规则集随步骤 4 前端外壳接入，登记为剩余项
 - [ ] 工作区包关系正确（web 依赖 ui/api/realtime 中实际需要的包），lockfile 提交
 - [ ] 产物与生成物**不入库**：`.gitignore` 覆盖 `node_modules/`、`apps/web/build/`、`.react-router/`（typegen 产物）、`*.tsbuildinfo`；已误提交的用 `git rm -r --cached` 清出（lockfile 必须入库，不要混为一谈）
 - [ ] 生产 `build` 链路无噪音：`turbo` 对 echo 型包（`packages/api|realtime|ui`）不应报 `no output files`——按包在 `turbo.json` 里把这些 task 的 `outputs` 设为 `[]`；一键验收脚本读 `pnpm -w build` 输出时不得被这类告警干扰
