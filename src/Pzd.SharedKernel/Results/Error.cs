@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 
 namespace Pzd.SharedKernel.Results;
@@ -14,7 +15,7 @@ public sealed class Error : IEquatable<Error>
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly IReadOnlyDictionary<string, object?> EmptyMetadata =
-        new Dictionary<string, object?>(StringComparer.Ordinal);
+        new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>(StringComparer.Ordinal));
 
     public Error(string code, ErrorType type, string message, IReadOnlyDictionary<string, object?>? metadata = null)
     {
@@ -30,7 +31,7 @@ public sealed class Error : IEquatable<Error>
         Code = code;
         Type = type;
         Message = message;
-        Metadata = metadata ?? EmptyMetadata;
+        Metadata = CreateSnapshot(metadata);
     }
 
     public string Code { get; }
@@ -52,4 +53,26 @@ public sealed class Error : IEquatable<Error>
     public override int GetHashCode() => StringComparer.Ordinal.GetHashCode(Code);
 
     public override string ToString() => $"{Code}: {Message}";
+
+    /// <summary>
+    /// 构造时复制成 Ordinal 键的只读快照：调用方之后改动原字典不会影响已创建的 Error，
+    /// 调用方也无法通过强转写回；空元数据复用共享的 <see cref="EmptyMetadata"/>，不重复分配。
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> CreateSnapshot(
+        IReadOnlyDictionary<string, object?>? metadata)
+    {
+        if (metadata is null || metadata.Count == 0)
+        {
+            return EmptyMetadata;
+        }
+
+        var snapshot = new Dictionary<string, object?>(metadata.Count, StringComparer.Ordinal);
+
+        foreach (var pair in metadata)
+        {
+            snapshot[pair.Key] = pair.Value;
+        }
+
+        return new ReadOnlyDictionary<string, object?>(snapshot);
+    }
 }
