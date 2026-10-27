@@ -14,18 +14,18 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
-| 07 | UoW + Outbox + 领域事件 | 🔧 返工中（F-07-1/F-07-2） |
+| 07 | UoW + Outbox + 领域事件 | 🔧 返工已提交（`40f016a`，166 条），待复测/终审 |
 | 08–10 | 可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10 |
 
-当前在票 07 返工：F-07-1（无参重载改名、架构规则改认 API 形状）与 F-07-2（`DomainEventDispatcher` 行为用例）；完成后接 08/09/10。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+票 07 返工已提交 `40f016a`（F-07-1 规则改认 API 形状、F-07-2 分发器用例、补偿顺序），等李总复测与老登终审，之后接 08/09/10。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
 - 解析顺序：登录 claim `tid`（忽略 `X-Tenant`）→ 匿名 `X-Tenant` → 子域名；每个请求重新查 `ITenantStore`，`ITenantContext` 为 Scoped、不跨请求。
 - 停用/过期：中间件直接 403（`Tenant.Disabled` / `Tenant.Expired`）；`Tenants` 配置在启动期严格校验，非法值启动失败。
 - 连接：每租户独立 `SqlSugarScope`，懒加载 + 双检 + `ConcurrentDictionary`；禁止 `ChangeDatabase`，架构测试扫描 `src/Pzd.*`。
-- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载只信任上下文，不要裸用（F-05-8，票 07 返工后无参重载改名）。
+- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载已改名 `GetCurrentConnectionScopeAsync`（票 07 F-07-1），后台路径禁止使用。
 
 ## 异常处理（票 06）
 
@@ -69,7 +69,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 71 + 30 + 19 + 1 = **156 条全绿**，2026-10-27 于 `abde749` 实测）：
+五个测试工程（当前 35 + 25 + 75 + 30 + 1 = **166 条全绿**，2026-10-27 于 `40f016a` 实测）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
