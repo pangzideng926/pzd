@@ -296,4 +296,5 @@
   - **编号教训**（本轮编号漂了三套：老登首轮报告 / 票面 / 老登终审），已收敛为票面口径并写进票 07「编号对照」：F-07-4 规则收紧、F-07-5 上限配置化 + 终态 `LastError`，其余按描述对应「low 四条」。**后续票一旦重编号，票面必须同时给出对照表**，否则复审必然错位。
   - 重试语义：上限来自 `Outbox:MaxAttempts`（`DefaultMaxAttempts` 单处来源，用例注入小值而非依赖常量）；达上限进入终态拒绝，同时写 `RejectionReason` 与 `LastError`，消息保留、同批后续继续消费；**拒绝 ≠ 死信队列**，死信表与人工重放属步骤 3。
   - 事务仍为**补偿删除**，不等于已回滚验证；多处理器部分失败重放为**明确遗留**（按处理器维度记进度，与 Outbox 落库同批）。
+- **票 02 前端骨架偏差记录（2026-10-27，Chief 直接落地）**：`apps/web` 用 React Router v7 framework mode + `ssr: false` 手工搭起，`pnpm -w build` 与 `pnpm -w typecheck` 均通过，dev server `GET /` 返回 200。**未执行** `npx shadcn@latest init --preset b2oDW9T8C`（该命令交互式，非 TTY 下无法完成），因此 `packages/ui` 目前只有包骨架与导出面，没有 shadcn 组件与主题；`packages/api` 无 orval 产物、`packages/realtime` 无 SignalR 封装。剩余项归入步骤 4 的前端外壳票：补 shadcn preset 与主题、接 orval 生成、接 `@microsoft/signalr`。另：pnpm 12 默认拒绝执行依赖构建脚本，`esbuild` 经 `pnpm install --allow-build=esbuild` 批准，并已在 `pnpm-workspace.yaml` 的 `onlyBuiltDependencies` 固化。
 - 文档交付：本轮结束时更新本文件状态为「已验收（日期）」并回填 `CLAUDE.md` 路径。
