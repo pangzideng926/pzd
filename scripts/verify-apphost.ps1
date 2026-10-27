@@ -214,6 +214,32 @@ function Assert-PortFree {
     }
 }
 
+function Get-PortListenerPid {
+    param([int]$Port)
+
+    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) { return $null }
+
+    $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($listener) { return [int]$listener.OwningProcess }
+    return $null
+}
+
+function Test-ProcessDescendsFrom {
+    # F-03-A1 的正面证据：端口不仅要「启动前空闲」，监听它的进程还必须是从这次启动的宿主派生出来的。
+    # 只靠预检 + 200 仍可能被中途抢占的进程骗过，这里沿 ParentProcessId 走上去核对血缘。
+    param([int]$ChildPid, [int]$AncestorPid)
+
+    $current = $ChildPid
+    for ($depth = 0; $depth -lt 12 -and $current -gt 0; $depth++) {
+        if ($current -eq $AncestorPid) { return $true }
+        $info = Get-CimInstance Win32_Process -Filter "ProcessId=$current" -ErrorAction SilentlyContinue
+        if (-not $info) { return $false }
+        $current = [int]$info.ParentProcessId
+    }
+    return $false
+}
+
 try {
     Assert-PortFree ([uri]$ApiBaseUrl).Port
     if (-not $SkipWeb) { Assert-PortFree 5199 }
@@ -274,6 +300,15 @@ if (-not $live) {
 try {
     if ($live) {
         Write-Host "[ok] /health/live 200（免租户）"
+
+        # F-03-A1：200 必须来自本次启动的进程树，否则判失败（残留实例顶端口时最容易踩）。
+        $listenerPid = Get-PortListenerPid ([uri]$ApiBaseUrl).Port
+        if ($listenerPid -and -not (Test-ProcessDescendsFrom -ChildPid $listenerPid -AncestorPid $hostProcess.Id)) {
+            $failures.Add("$($ApiBaseUrl) 的监听者 pid $listenerPid 不属于本次启动的进程树（宿主 pid $($hostProcess.Id)），200 不是本次实例给的")
+        }
+        else {
+            Write-Host "[ok] $ApiBaseUrl 由本次启动的进程树监听（pid $listenerPid）"
+        }
 
     $ready = Invoke-WebRequest -Uri "$ApiBaseUrl/health/ready" -TimeoutSec 10 -SkipHttpErrorCheck
     $readyBody = $ready.Content | ConvertFrom-Json
