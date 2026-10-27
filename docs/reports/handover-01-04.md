@@ -170,7 +170,7 @@ A5 的 A 组那一行就栽在这上面：那一格被写成「`:85` 那一行**
   - **定性**：**未定性，与 `E:\pzd` 的 ACL 无因果**，也**不与主仓 aspire 那单合并**——两件事。不要从这条推出任何原因。
 - **测试运行方式：`dotnet test` 在本项目的 agent 会话里不可用——机制**待重测**（张一一实测，2026-10-28；老登 2026-10-28 降级）**：测试平台要经 `NamedPipeClientStream` 连 testhost，报 `Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.`，栈顶 `System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)` → `Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(...)`。**原先写「跟 ACL 无关」这个定论要收回**：树里 `Pzd.AppHost.exe` 被继承成 **Low** 标签（见下条），Low 进程连 Medium 的命名管道同样会被 “no write up” 拦，所以它**很可能与低完整性标签同源**。但**反证据也要一起记**：干净副本 `E:\pzd-webcheck`（无标签）里也一样挂过——两条都摆着，**复测前不下结论**。绕行方式不变且照旧可用：`dotnet run --project tests/<工程>/<工程>.csproj`（**常态做法，不是临时将就**）；普通目录/CI（无沙箱）仍用 `dotnet test Pzd.slnx`。
   注意这条和下面那条 ACL 污染**是两件事**：两者报的都是 `UnauthorizedAccessException`，但一个在**命名管道**（无文件路径，任何目录都挂），一个在 **`E:\pzd` 根目录的 SACL**（写文件被拒）。别合并成一条写。
-- **主仓 aspire 跑不起来的机制：仓库根目录的低完整性标签（`SACL` 里的强制完整性标签，**不是** Deny ACE）——静态已确认，端到端复测未做（老登/张一一，2026-10-28）**：三个静态事实，都是 `icacls` 量出来的
+- **主仓 aspire 跑不起来的机制：仓库根目录的低完整性标签（`SACL` 里的强制完整性标签，**不是** Deny ACE）——静态确认 + 树外正控通过，**完整验收未做**（老登/张一一，2026-10-28）**：三个静态事实，都是 `icacls` 量出来的
 
   ```
   E:\pzd              Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)   ← 根，带 (OI)(CI) 继承给全树
@@ -179,8 +179,20 @@ A5 的 A 组那一行就栽在这上面：那一格被写成「`:85` 那一行**
   src/Pzd.AppHost/bin/Debug/net10.0/Pzd.AppHost.exe → …Low Mandatory Level:(I)(NW)
   ```
 
-  链条：根目录那条标签带 `(OI)(CI)` → 继承到树里每个文件 → 树里的 exe 就是 Low → **Windows 规则：从 Low 标签可执行文件启动的进程，令牌也是 Low** → Low 进程往 Medium 目录（用户 `TEMP`、`E:\.pzd-aspire-tmp-pzd` 那种 `Authenticated Users:(M)`）写，被 “no write up” 拒绝。这正好对得上 `CreateTempSubdirectory` 那条 `Access is denied`。**修它需要改 SACL**：`/reset` 删不掉标签，`/setintegritylevel` 要 `SeSecurityPrivilege`（当前令牌没有）→ **没有管理员权限不可能就地修好**。
-  **边界（老登，2026-10-28，别合并成一句）**：机制静态确认 ≠ 两个拒绝点同源。01:40 那两个拒绝点**可能不是一个原因**——`CreateTempSubdirectory` 被拒（写 Medium 目录）**对得上低完整性**；`CreateSecurityInfo`/`SetSecurityInfo` 被拒（改 SACL）**对得上缺 `SeSecurityPrivilege`**。两者都表现为 `Access denied`，但一个是 IL、一个是特权，**入档分开写**。
+  链条：根目录那条标签带 `(OI)(CI)` → 继承到树里每个文件 → 树里的 exe 就是 Low → **Windows 规则：从 Low 标签可执行文件启动的进程，令牌也是 Low** → Low 进程往 Medium 目录（用户 `TEMP`、`E:\.pzd-aspire-tmp-pzd` 那种 `Authenticated Users:(M)`）写，被 “no write up” 拒绝。**动态对照（张一一）**：树内 `E:\pzd\artifacts\ilprobe.exe` 起出来是 `Low (S-1-16-4096)`，树外 `C:\Windows\System32\cmd.exe` 起出来是 `Medium (S-1-16-8192)`——同一个动作，只差位置。
+
+  **两个拒绝点、两个原因，分开写、不合并（老登，2026-10-28 定稿）**：
+
+  | 拒绝点 | 原因 | 性质 |
+  | --- | --- | --- |
+  | `CreateTempSubdirectory`（建 DCP 会话临时目录）被拒 | **Low IL 写不进 Medium 目录**（no write up） | **致命**，因果闭合，静态标签对得上 |
+  | `SetSecurityInfo` / `CreateSecurityInfo`（改目录权限）被拒 | 令牌缺 **`SeSecurityPrivilege`** | **非致命**——`orchestration logging` 那条 warning，**Medium 轮里也同样出现**，所以它**从来不是主因** |
+
+  别把两件事写成一句「ACL 挡路」，也别写成「与 ACL 无关、主因是特权」——正确的是上面这两行。
+  **正面证据（张一一，2026-10-28，正控不是排除法）**：把 AppHost 的 `bin\Debug\net10.0` **原样复制**到树外 `E:\.pzd-apphost-bin`，**cwd 仍设成 `E:\pzd\src\Pzd.AppHost`**，由树外副本启动 → `Distributed application starting.` / `Starting DCP with arguments: start-apiserver --monitor 6272 …` / `Dashboard: https://localhost:55487` / 会话目录建出 `probe-0218\aspire-dcpdnd51uv4.x2b`，只剩上面那条非致命 logging warning。**唯一变量是 exe 位置**（复制的是同一份 build 产物、cwd 未变，复制过程不许顺手再 build）。
+  **要升「主仓正向」（A11）还差三条（老登）**：① 完整验收跑完（`/api/version` + 前端 `X-Pzd-Run-Id` 同 runId + `/` 回 SPA 外壳，三条缺一不算）；② **脚本改动先入库再引用**，否则证据锚在未提交的脚本上、双锚不成立；③ 写清「复制的是同一份 build 产物、cwd 未变」。
+  **脚本要做成自适应（老登建议，避免坑别人机器/CI）**：先判当前树 exe 的强制完整性标签，**是 Low 才走树外绕行**，否则原地跑——别人的树没有那层标签，无条件复制只是白折腾，还会把「本机特有绕行」变成「所有环境的默认行为」。
+  **修标签本身需要改 SACL**：`/reset` 删不掉标签，`/setintegritylevel` 要 `SeSecurityPrivilege`（当前令牌没有）→ **没有管理员权限不可能就地修好**；但按上面的绕行，**不需要动权限也能跑通**。
 - **主仓 aspire 的失败表现与历史观测**（Aspire 加固在仓库根留下污染是**成因之一**，与上一条的 IL 标签同一次加固动作产生）：`scripts/verify-apphost.ps1` `:221` 把 `TEMP`/`TMP` 指到**仓库内**的 `E:\pzd\.aspire-tmp`，Aspire 的 `SocketPermissionHelper` 给「临时目录」做加固时**把 ACE 与标签加到了仓库根上**。实测 `icacls E:\pzd`（2026-10-27 23:5x）：
 
   ```
