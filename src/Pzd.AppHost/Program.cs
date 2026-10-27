@@ -74,14 +74,27 @@ if (!string.IsNullOrWhiteSpace(runId))
     web = web.WithEnvironment("PZD_RUN_ID", runId);
 }
 
-// F-03-A5 根因候选（锋哥 2026-10-27 复现）：`NODE_ENV=production` 撞上 `react-router dev` 时，
-// Vite 的 SSR 变换仍生成 `jsxDEV` 调用，而 production 的 `react/jsx-dev-runtime` 没有 `jsxDEV`，
-// 于是在 `renderToPipeableStream` 调用点**同步抛出**——默认 entry 的 `abort` 停在 TDZ，6 秒后
-// 进程以 exit 1 退出，5199 从头到尾没人监听，和 aspire 现场完全同形。
+// F-03-A5 根因（雨哥 2026-10-27 定因；老登独立核实了前提）：
+// Aspire 的 JavaScript 托管集成会按 `IsDevelopment()` 决定给 node 资源的 `NODE_ENV`。本工程
+// **没有** `Properties/launchSettings.json`，代码与脚本也都没设 `DOTNET_ENVIRONMENT` /
+// `ASPNETCORE_ENVIRONMENT`，所以 `DistributedApplication.CreateBuilder` 拿到的宿主环境是
+// Production，web 资源就被写入了 `NODE_ENV=production`。
+// 而 `react-router dev` 在 production 语义下，Vite 的 SSR 变换仍生成 `jsxDEV` 调用，production 的
+// `react/jsx-dev-runtime` 没有这个导出，于是在 `renderToPipeableStream` 调用点**同步抛出**——默认
+// entry 的 `abort` 停在 TDZ，6 秒后进程以 exit 1 退出，5199 从头到尾没人监听，与 aspire 现场同形。
+// 边界：那个集成里的赋值形状是 `IsDevelopment() ? "development" : "production"`，由程序集元数据
+// 反推（未反编译 IL）；即使写法不同，只要宿主环境是 Production，写进 web 的仍然是 production，
+// 不影响这条链的方向。`dcp.exe` 里 `NODE_ENV` 零命中，所以注入方不是 DCP。
 //
-// 这里把 web 的 `NODE_ENV` 显式钉成 development：这个资源跑的是 package.json 的 `dev` 脚本，
-// 语义上本来就该是 development，钉住之后不吃 supervisor 传下来的任何值。没被注入时它是个无害的
-// 显式声明；被注入 production 时它就是修复。
+// **这一行无条件保留**，它不是「因为宿主恰好是 Production 才加的临时补丁」：
+//   1. 它只影响 `web` 一个资源，而 web 跑的就是 package.json 的 `dev` 脚本，development 本来就是
+//      它的语义；钉住之后它不再吃上层传下来的任何值。
+//   2. 若将来有人补了 `launchSettings.json` 把宿主改成 Development，这里看着「不再需要」；一旦
+//      删掉，任何宿主环境为 Production 的场景（CI、容器、别人的机器）立刻复发。
+//   3. 反过来说，也**不要用 `launchSettings.json` 去「根治」**：那会把整个 AppHost 带进
+//      Development（开发者异常页、详细日志、所有 `IsDevelopment()` 分支都翻转），为了一个资源的
+//      行为去改整个宿主，代价和风险都大于这一行。
+// 值到底从哪一层来，交给下面 `[pzd-diag] apphost 自身 …` 那行在运行期回答，不靠注释自证。
 web = web.WithEnvironment("NODE_ENV", "development");
 
 web
@@ -101,7 +114,7 @@ var app = builder.Build();
 // 一个字段、不含凭据，用来把两者分开：若**这里**就是 production，属 ②；若这里是 `<unset>` 而 web
 // 的资源快照里是 production，则注入发生在编排器侧（①）。对照物是 web 那行 `[pzd-diag] env NODE_ENV=`。
 // 注意它必须在 `app.Run()` 之前打：DCP 起不来时（主仓被 ACL 挡住那种）也照样有输出。
-Console.WriteLine($"[pzd-diag] apphost 自身 NODE_ENV={Environment.GetEnvironmentVariable("NODE_ENV") ?? "<unset>"}");
+Console.WriteLine($"[pzd-diag] apphost 自身 NODE_ENV={Environment.GetEnvironmentVariable("NODE_ENV") ?? "<unset>"} 宿主环境={app.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>().EnvironmentName} DOTNET_ENVIRONMENT={Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "<unset>"} ASPNETCORE_ENVIRONMENT={Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "<unset>"}");
 
 // 诊断（李总 F-03-A5）：本机 DCP 的编排日志通道被 ACL 挡住（"Failed to enable orchestration logging"），
 // AppHost 输出里没有任何资源级事件，于是「web 资源压根没被 DCP 拉起」在运行期完全不可见——只能等
