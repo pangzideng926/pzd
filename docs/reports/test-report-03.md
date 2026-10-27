@@ -228,13 +228,56 @@ fail: Aspire.Hosting.Dcp.DcpHost[0] Failed to enable orchestration logging.（�
 `-NoCredentials`（无凭据 → 期望 Degraded 且仍 200）这一轮**没跑成**，被端口占用挡住：
 
 ```
-[preflight] 端口 5199 已被占用：pid 32236 node。先关掉占用进程再验本脚本。
-[preflight] 这不是环境/占用问题，而是本票缺陷：请占用用户安装的…
+[preflight] 端口 5199 已被占用（pid 32236 node）。先关掉占用进程再跑，否则验到的是别人实例的结果。
+[preflight] 这是环境/占用问题，不是本票缺陷：清掉占用或装好依赖后重跑。
 退出码：2
 ```
+
+> 引文校注（老卫）：本段原先转录成「这不是环境/占用问题，而是本票缺陷」，与脚本原话**语义相反**。脚本自 `8307b4d` 起原文一直是「这是环境/占用问题，不是本票缺陷」（现 `scripts/verify-apphost.ps1:256`），端口占用那句也补全为脚本真实拼接格式。结论不变：这是**环境预检**（`exit 2`），不是本票缺陷。
 
 占用者不是我起的：`pid 32236` 的命令行是 `node "E:\pzd\apps\web\node_modules\.bin\..\@react-router\dev\bin.js" dev`，17:20:44 启动，跑在**主仓库**目录下（我的副本是 `C:\tmp\pzd-f033`）。我没有动它。预检按退出码 2 拒绝执行是正确行为（不是假绿），待占用释放后可补这一条；降级语义本身已在 §8 与 `-Mode api` 覆盖。
 
 ### 10.2 一条给脚本的加固建议（假绿风险，非本轮缺陷）
 
 脚本对前端只断言「`127.0.0.1:5199` 返回 200 且含 SPA 标记」，**不校验这个 200 是否来自本次宿主拉起的进程**。如果别人恰好在 5199 上跑着 dev，本脚本可能拿别人的实例当自己的成果（本轮之所以可信，是因为起跑时预检显示 5199 空闲）。建议：探活前记录当前宿主进程树的 pid，或断言占用 5199 的 pid 属于本次 AppHost 的子进程。
+
+## 11. `-Mode api` @ `7c5f411`（前端 5199 首屏：真绿，附归属证明）
+
+> 按调度口径（2026-10-27）：aspire 项记为「待用户终端证明」，前端首屏结论落在 `-Mode api`。
+> 干净 worktree `C:/tmp/pzd-api03` @ `7c5f411`；`pnpm install --frozen-lockfile` 成功；`dotnet build Pzd.slnx -warnaserror` 0 警告 0 错误；起跑前确认 5080/5199 均空闲。
+
+| 验收项 | 结果 |
+|---|---|
+| `/health/live` | 200（免租户） |
+| `/health/ready` | 200；根 `Healthy`、mysql `Healthy`、redis `Healthy` |
+| `/api/version` | `0.1.1-alpha.0.104+7c5f411` |
+| `/`（无租户） | 400 |
+| 前端 `127.0.0.1:5199` | 200 且是 SPA 外壳（`lang="zh-CN"`） |
+| 前端是否**本副本自启** | 是：`verify-web.log` 尾部 `➜ Local: http://127.0.0.1:5199/`；`verify-web.log.err` 只有 `$ react-router dev`，**无** `already in use` |
+| 脚本退出码 | 0 |
+| 退出后监听 | 5080、5199 均无监听（无残留） |
+
+### 11.1 我第一轮跑出过一次假绿（已复现、已留证）— F-03-A3
+
+第一次运行（17:25:32）时 5199 被另一个 dev 实例占着（pid 123312，`E:\pzd\apps\web` 的孤儿 vite）。结果：
+
+- 我自己的 web **启动失败**：`verify-web.log.err` 里是 `Error: Port 5199 is already in use` + `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`；
+- 但脚本仍然打印 `[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳` 并 **exit 0**——它探到的是别人的实例。
+
+**F-03-A3（blocker 级：验收工具会假绿）**：前端断言不校验 200 的来源，只要本机有别的 dev 占着 5199，「自己前端起不来」就会被报成通过。修法（建议 1+2 都做）：
+
+1. 启动 web 后检查 `$webProcess.HasExited`，并检查 `verify-web.log.err` 是否含 `already in use` / `ERR_PNPM`，命中即判失败；
+2. 断言 5199 的 LISTENING 占用 pid 属于本次 `$webProcess` 的子进程树；
+3. 探活请求带一个只属于本次运行的标记（自定义 header/path），响应缺标记即失败。
+
+注意：`-Mode api` 下前端腿在**上表这份证据**之前，§2 与 §7 的历史结论没有做归属校验，若当时 5199 上有别人的实例，同样可能是假绿。此后再报前端结论，一律附 `verify-web.log` 的 `Local:` 行或占用 pid 归属。
+
+### 11.2 两次孤儿 dev 实例（环境事实，不是缺陷）
+
+17:20:44、17:24:55 各有一个 `pnpm --filter @pzd/web dev` 在 `E:\pzd` 下启动，两条进程链的链根（pid 37028 / 100796）**均已不存在** → 是被中断的 `-Mode api` 运行留下的孤儿（脚本被强杀时 `Stop-ProcessTree` 没机会跑）。我按「链根已死」逐条确认后清理，并记录在此，避免把在跑的实例当孤儿误杀。
+
+### 11.3 aspire 项状态（按调度口径）
+
+- `6f18a9f` 上我有一次 aspire 全链路通过（§10），**后端证据硬**：`/api/version` 的 `0.1.1-alpha.0.118+6f18a9f` 只能来自该副本的构建。
+- 但按 §11.1 的实测，那次**前端腿的归属没有被校验**（脚本当时无 provenance 断言），因此不拿它当「前端腿在 aspire 下成立」的独立证据。
+- 结论：**aspire 项按调度口径记为「待用户终端证明」**；F-03-1 代码缺陷已修并入库（`7c5f411`），不再重复判定。
