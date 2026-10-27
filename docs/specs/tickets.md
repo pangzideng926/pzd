@@ -145,14 +145,22 @@ pnpm -w typecheck
 **Status:** ready-for-agent
 
 - [ ] API 在 AppHost 中固定 `http://127.0.0.1:5080`（便于前端 proxy 与脚本验证）
-- [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**，明细 mysql=Up、redis=Up
+- [ ] 提供 `ConnectionStrings__mysql`（本机 3306）与 `ConnectionStrings__redis`（6379）时：启动成功，`/health/ready` **Healthy**（根 `status` 与两个明细都是 **`Healthy`**，用 .NET 原生三态，**不映射 `Up/Down`**）
 - [ ] 凭据只来自环境变量 / `local.env`：仓库内 `git grep` 无密码，`local.env` 已被 `.gitignore` 忽略
-- [ ] 实例或凭据缺失：降级启动，日志含 `Degraded mode: MySQL/Redis unavailable`，`/health/ready` 200 + Degraded，`/health/live` 200
+- [ ] 实例或凭据缺失：降级启动，**启动期必须真的打出** `Degraded mode: MySQL/Redis unavailable` 这条 Warning（每个不可用资源一条，字符串可按原文 grep 到），`/health/ready` **200** + `Degraded`，`/health/live` 200
+- [ ] **缺资源绝不允许变 503**：格式非法的连接串（如 redis `host=` 空主机、`ArgumentException`/`UriFormatException`）也必须降级为 `Degraded`，不得冒泡成 `Unhealthy`；补一条「空 host → `Degraded` 且 `/health/ready` 200」用例
 - [ ] **F-05-4（硬前置）**：无 claim / `X-Tenant` / 子域时，`/health/live`、`/health/ready`、`/api/version` 均返回 **200**；豁免端点之外的请求仍返回 400 `Tenant.NotFound`
 - [ ] `GET /api/version` 返回 `version`、`buildId`、`buildTime`，version 与 `dotnet msbuild -t:Build -getProperty:Version` 一致（以 tag 为基准，F6）
 - [ ] 不注册 MySQL / Redis 容器资源（无 Docker，容器编排不在本轮验收）
 - [ ] `scripts/verify-apphost.ps1` 在本机退出码 0，并贴出 Healthy（有 env）/ Degraded（无 env）证据
 - [ ] Ctrl+C / 停止父进程后子进程退出，无残留监听端口
+
+**票 03 口径决定（老何定，2026-10-27；老登预警四条的处理结论）**
+
+1. **健康状态取值＝.NET 原生三态** `Healthy`/`Degraded`/`Unhealthy`（取 `entry.Value.Status`），**不改票面为 `Up/Down`、也不加映射层**：多一层映射就多一处能和框架漂移的地方。报告与脚本一律按 `Healthy` 断言。
+2. **「有实例时必须是 Healthy」只能由真实实例断言**（`scripts/verify-apphost.ps1` 在有 env 时断言根 `status == Healthy` **且** `mysql`/`redis` 两个明细都是 `Healthy`）；**单元测试只守 200 + 免租户 + JSON 结构**。**禁止** `Contains(status, ["Healthy","Degraded"])` 这类「两个分支都算过」的断言——那是本票唯一的假绿风险点，审计按此判。
+3. **缺资源一律降级，不许 503**：`RedisConnectionSettings.Parse` 遇空 host 要先校验并拒绝，健康检查的 catch 必须覆盖非网络异常（`ArgumentException`/`FormatException`/`UriFormatException` 等）→ `Degraded`；否则 `/health/ready` 变 503，直接违反第 150 行口径。
+4. **日志那句话必须真有出处**：启动期对每个不可用资源打一条 Warning，含原文 `Degraded mode: MySQL/Redis unavailable`；举证时用 grep 给出实际输出，不接受「代码里应该会打」。
 
 **验证命令**
 
