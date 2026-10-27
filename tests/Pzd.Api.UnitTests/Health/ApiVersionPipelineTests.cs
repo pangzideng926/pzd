@@ -41,6 +41,12 @@ public class ApiVersionPipelineTests
 
         using var response = await client.GetAsync("/api/version", TestContext.Current.CancellationToken);
 
+        // 这里**故意不写** `Assert.Null(ApiRunId.Current)`：脚本 verify-apphost.ps1:126 会用
+        // Process 作用域设 PZD_RUN_ID，只要在同一个终端里先跑过脚本再跑测试，Current 就有值，
+        // 那条断言会假红、且红得像实现坏了（老登、雨哥都提过这个环境坑）。
+        // 改用不变式后两种环境都成立：头存在 ⟺ 本进程注入过，且值就是 Current。
+        // 代价是「注入态」这条分支在这里覆盖不到——它由 ApiRunIdTests 直接测 Apply 覆盖，
+        // 不需要为了造注入态去 Environment.SetEnvironmentVariable（那会污染并行跑的用例）。
         var expected = ApiRunId.Current;
         var present = response.Headers.TryGetValues(ApiRunId.HeaderName, out var values);
         var actual = present ? values!.Single() : null;
