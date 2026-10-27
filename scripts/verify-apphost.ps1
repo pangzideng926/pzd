@@ -433,37 +433,35 @@ try {
             if ($web.Content -notmatch 'lang="zh-CN"') { $failures.Add("前端首屏缺 SPA 标记，可能不是 React Router 外壳") }
             else {
                 # F-03-A10/A11：5199 的 200 也必须来自本次运行。只断言「200 + SPA 标记」时，
-                # 别人在这端口上跑的 dev 会让前端腿假绿。判定分两种模式，因为证据形状不同：
-                #  - api 模式：前端是脚本自己的子进程 → 进程树血缘可用；
-                #  - aspire 模式：DCP reparent 过（dcp.exe → dcp.exe → 已退出），血缘一定断，
-                #    改用「监听进程的命令行里含本次副本 apps/web 绝对路径」判归属（老登）。
+                # 别人在这端口上跑的 dev 会让前端腿假绿。
+                #
+                # 归属判据前后端统一：脚本注入的 PZD_RUN_ID 经 pnpm（api 模式）或 AppHost 的
+                # WithEnvironment（aspire 模式）传到 vite，dev server 把它作为 X-Pzd-Run-Id
+                # 响应头回显（见 apps/web/vite.config.ts），两边比对同一个期望值。
+                # 为什么不用另外两种证据：
+                #  - 命令行路径匹配：同目录的上一轮残留实例路径完全一致，只证明「来自这个目录」；
+                #  - 进程树血缘：api 模式可用，但 aspire 下 DCP reparent（dcp.exe → dcp.exe → 已退出），一定断。
+                $webRunIdHeader = @($web.Headers[$ApiRunIdHeaderName]) | Select-Object -First 1
+                $webRunIdHeader = if ($null -eq $webRunIdHeader) { $null } else { [string]$webRunIdHeader }
+                $webAttributed = $false
+
+                if ([string]::IsNullOrWhiteSpace($webRunIdHeader)) {
+                    $failures.Add("前端 127.0.0.1:5199 没有 $ApiRunIdHeaderName 响应头：vite 没收到本次运行的 PZD_RUN_ID，无法证明 200 来自本次启动（F-03-A11）")
+                }
+                elseif ($webRunIdHeader -cne $runId) {
+                    $failures.Add("前端 127.0.0.1:5199 的 $ApiRunIdHeaderName '$webRunIdHeader' 与本次运行的 '$runId' 不符：5199 上是别的实例（同目录残留也会这样）")
+                }
+                else {
+                    $webAttributed = $true
+                }
+
                 $webListenerPid = Get-PortListenerPid 5199
 
-                if ($Mode -eq "aspire") {
-                    $expectedWebDir = Join-Path $repoRoot "apps\web"
-
-                    if (-not $webListenerPid) {
-                        $failures.Add("前端 127.0.0.1:5199 取不到监听者 pid，无法确认 200 是否来自本次运行")
-                    }
-                    else {
-                        $webProc = Get-CimInstance Win32_Process -Filter "ProcessId=$webListenerPid" -ErrorAction SilentlyContinue
-                        $webCmdLine = $webProc.CommandLine
-
-                        if ([string]::IsNullOrWhiteSpace($webCmdLine)) {
-                            $failures.Add("前端 127.0.0.1:5199 读不到监听进程（pid $webListenerPid）的命令行，无法确认归属")
-                        }
-                        elseif ($webCmdLine.IndexOf($expectedWebDir, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
-                            $failures.Add("前端 127.0.0.1:5199 的监听进程（pid $webListenerPid）命令行不含本次副本路径 $expectedWebDir，200 来自别的实例")
-                        }
-                        elseif ($webProc.CreationDate -and ([System.Management.ManagementDateTimeConverter]::ToDateTime($webProc.CreationDate) -lt $runStartedAt)) {
-                            # 老何：同目录的残留实例也满足路径匹配。补一条时间判据——
-                            # 监听进程必须晚于本次脚本启动，早于它的一定是上一轮遗留。
-                            $failures.Add("前端 127.0.0.1:5199 的监听进程（pid $webListenerPid）启动于 $([System.Management.ManagementDateTimeConverter]::ToDateTime($webProc.CreationDate))，早于本次运行（$runStartedAt），是残留实例")
-                        }
-                        else {
-                            Write-Host "[ok] 前端 127.0.0.1:5199 由本次运行拉起（pid $webListenerPid，命令行指向本次副本 $expectedWebDir，启动晚于本次运行），且是 SPA 外壳"
-                        }
-                    }
+                if (-not $webAttributed) {
+                    # 归属已经判红，不再补一条「pid 取不到」的重复失败。
+                }
+                elseif ($Mode -eq "aspire") {
+                    Write-Host "[ok] 前端 127.0.0.1:5199 的 $ApiRunIdHeaderName 与本次运行一致（pid $webListenerPid），且是 SPA 外壳：由本次运行拉起"
                 }
                 else {
                     $webAncestor = if ($webProcess) { $webProcess.Id } else { $null }

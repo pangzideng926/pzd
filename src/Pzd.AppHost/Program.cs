@@ -58,11 +58,22 @@ if (!Directory.Exists(webDirectory))
 // 5199 就永远没有监听者，脚本与票面探测点全部失效；关掉代理后 Vite 自己按 vite.config.ts
 // 绑 127.0.0.1:5199，端口仍然只有一处定义。
 // WaitFor 让前端等 API 起来再跑，避免 proxy 先接到 ECONNREFUSED。
-builder
+var web = builder
     .AddViteApp("web", webDirectory, "dev")
     .WithPnpm(install: false)
     .WithReference(api)
-    .WaitFor(api)
+    .WaitFor(api);
+
+// F-03-A11：aspire 模式下 5199 的归属也靠本次运行标记。DCP reparent 后父链到不了本宿主
+// （dcp.exe → dcp.exe → 已退出），命令行路径匹配又排除不了同目录的残留实例（路径一模一样），
+// 只有脚本本轮新生成、残留实例拿不到的值能证明「这个 200 是本次启动的实例给的」。
+// 必须传给 **vite 进程本身**（不是传给 AppHost）：vite.config.ts 读的是自己的 process.env。
+if (!string.IsNullOrWhiteSpace(runId))
+{
+    web = web.WithEnvironment("PZD_RUN_ID", runId);
+}
+
+web
     .WithHttpEndpoint(port: 5199, name: "http")
     .WithEndpoint("http", endpoint =>
     {

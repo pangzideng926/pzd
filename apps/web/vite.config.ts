@@ -2,12 +2,56 @@ import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
+// `types` 里只有 vite/client（没有 @types/node）：vite 配置本身就跑在 Node 里，
+// 取值没问题，只是类型不自带，这里显式声明一下。
+declare const process: { env: Record<string, string | undefined> };
+
+/**
+ * F-03-A11：本次运行的唯一标记，由启动方注入 `PZD_RUN_ID`，dev server 原样作为响应头回显。
+ *
+ * 为什么 aspire 模式下不能靠进程血缘：AppHost 起的 web 经 DCP 编排，父链是
+ * `node → dcp.exe → dcp.exe → 已退出`，够不到本次宿主。为什么也不能靠命令行路径：
+ * 同目录的上一轮残留实例路径完全一致，它只证明「来自这个目录」，不证明「来自本次启动」。
+ * 只有启动方每轮新生成、残留实例拿不到的值，才能证明「这个 200 是本次实例给的」。
+ *
+ * 未注入时不加任何响应头——生产构建与日常 `pnpm dev` 不该多出一个内部标识（与 API 同一条原则）。
+ */
+const runId = process.env.PZD_RUN_ID?.trim() ?? "";
+
+/**
+ * 把标记加在**每一个** dev server 响应上。
+ *
+ * 不能用 `server.headers`：它只作用于 Vite 自身那层中间件，而 `/`（SPA 文档）是
+ * React Router 的文档中间件应答的，实测 `/@vite/client` 带上了头、`/` 却没有——
+ * 而脚本要验的正是 `/`（200 + `lang="zh-CN"`）。所以改用最前面的一道中间件直接
+ * `setHeader`，后续任何 handler 复用同一个 res 都会带上它。
+ */
+const runIdHeaderPlugin = {
+  name: "pzd-run-id-header",
+  configureServer(server: {
+    middlewares: {
+      use: (handler: (req: unknown, res: { setHeader: (name: string, value: string) => void }, next: () => void) => void) => void;
+    };
+  }) {
+    if (!runId) {
+      return;
+    }
+
+    // configureServer 里直接 use 的中间件排在 Vite 内部中间件之前，React Router 的
+    // 文档中间件也在其后注册，因此 `/` 的响应同样带这个头。
+    server.middlewares.use((_req, res, next) => {
+      res.setHeader("X-Pzd-Run-Id", runId);
+      next();
+    });
+  },
+};
+
 /**
  * 开发期把 `/api`、`/hubs` 代理到 `Pzd.Api`（架构 §14.1）。
  * 生产由 `Pzd.Api` 托管 `build/client`，同源部署，不需要代理（§14.5）。
  */
 export default defineConfig({
-  plugins: [reactRouter(), tsconfigPaths()],
+  plugins: [runIdHeaderPlugin, reactRouter(), tsconfigPaths()],
   server: {
     // 票 02：端口与绑定写死，不靠默认值漂移。
     // host 显式绑 127.0.0.1：默认 "localhost" 在 Windows 上只监听 ::1，而 ::1 在部分环境
