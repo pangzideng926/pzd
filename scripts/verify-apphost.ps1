@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # 票 03 一键验收。
 #
 # 两种模式：
@@ -86,7 +86,10 @@ elseif (-not (Get-Env "ConnectionStrings__mysql")) {
 if (-not $NoCredentials -and -not (Get-Env "ConnectionStrings__redis")) {
     $redisHost = if (Get-Env "PZD_REDIS_HOST") { Get-Env "PZD_REDIS_HOST" } else { "127.0.0.1" }
     $redisPort = if (Get-Env "PZD_REDIS_PORT") { Get-Env "PZD_REDIS_PORT" } else { "6379" }
-    [Environment]::SetEnvironmentVariable("ConnectionStrings__redis", "$redisHost`:$redisPort", "Process")
+    # 票 03 审计 low：原来丢弃了 PZD_REDIS_PASSWORD，有密码的实例一律连不上。
+    $redisPassword = Get-Env "PZD_REDIS_PASSWORD"
+    $redisConnection = if ($redisPassword) { "$redisHost`:$redisPort,password=$redisPassword" } else { "$redisHost`:$redisPort" }
+    [Environment]::SetEnvironmentVariable("ConnectionStrings__redis", $redisConnection, "Process")
 }
 
 if (-not (Get-Env "ConnectionStrings__mysql")) {
@@ -117,19 +120,29 @@ function Stop-ProcessTree {
 function Remove-StaleDcpState {
     # 受限令牌环境下 DCP 偶发「apiserver 从未就绪」（EnsureKubernetesAsync 2 分钟超时），
     # 上一次被强杀的 dcp.exe / 通知套接字 / 会话目录就是最常见的诱因，启动前先清掉。
-    Get-Process dcp, Aspire.Dashboard -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    # 只清**属于本仓库**的 dcp：无差别杀全机 dcp 会误伤其他会话正在跑的实例（F-03-A2 low）。
+    Get-CimInstance Win32_Process -Filter "Name='dcp.exe' OR Name='Aspire.Dashboard.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($repoRoot) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
     Get-ChildItem -Path $env:TEMP -Filter "aspire-dcp*" -Directory -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -Path (Join-Path $env:LOCALAPPDATA "dcp\dcp-notify-sock-*") -Force -ErrorAction SilentlyContinue
 }
 
 function Wait-ForUrl {
-    param([string]$Url, [int]$TimeoutSeconds)
+    param([string]$Url, [int]$TimeoutSeconds, [System.Diagnostics.Process]$ProcessToWatch)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastError = ""
 
     while ((Get-Date) -lt $deadline) {
+        # 宿主自己崩掉时要立刻失败：否则残留 API 顶着端口，脚本会把「别人的 200」当成自己的结果
+        # （F-03-A1：导出 Outbox__MaxAttempts=0 让宿主秒崩，脚本仍全绿）。
+        if ($ProcessToWatch -and $ProcessToWatch.HasExited) {
+            throw "启动的宿主进程已退出（exit code $($ProcessToWatch.ExitCode)），$Url 不是它提供的。"
+        }
+
         try {
             $response = Invoke-WebRequest -Uri $Url -TimeoutSec 5 -SkipHttpErrorCheck
             if ($response.StatusCode -eq 200) { return $response }
@@ -218,6 +231,15 @@ catch {
     exit 2
 }
 
+# 票 03 审计 F-03-A2：脚本原来只带 --no-build 却从不构建，干净副本第一次跑必失败、
+# 工作区有未提交改动时会验到过期二进制（报告 hash 与二进制对不上）。启动前显式构建。
+Write-Host "构建 $target（-warnaserror）"
+& dotnet build $target -warnaserror --nologo -v q | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[preflight] 构建失败（$target），先修编译再验票。" -ForegroundColor Red
+    exit 2
+}
+
 for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     if ($Mode -eq "aspire") { Remove-StaleDcpState }
     if ($attempt -gt 1) { Write-Host "[retry] 第 $attempt 次启动（已清理 DCP 残留）" -ForegroundColor Yellow }
@@ -227,7 +249,7 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         -RedirectStandardOutput $logPath -RedirectStandardError "$logPath.err"
 
     try {
-        $live = Wait-ForUrl "$ApiBaseUrl/health/live" $TimeoutSeconds
+        $live = Wait-ForUrl "$ApiBaseUrl/health/live" $TimeoutSeconds $hostProcess
         break
     }
     catch {
@@ -306,7 +328,9 @@ try {
 
     if (-not $SkipWeb) {
         try {
-            $web = Wait-ForUrl "http://127.0.0.1:5199/" $TimeoutSeconds
+            # aspire 模式下前端是宿主的子资源：宿主崩了就别再等 240 秒。
+            $watch = if ($Mode -eq "aspire") { $hostProcess } else { $null }
+            $web = Wait-ForUrl "http://127.0.0.1:5199/" $TimeoutSeconds $watch
             if ($web.Content -notmatch 'lang="zh-CN"') { $failures.Add("前端首屏缺 SPA 标记，可能不是 React Router 外壳") }
             else { Write-Host "[ok] 前端 127.0.0.1:5199 200 且是 SPA 外壳" }
         }
