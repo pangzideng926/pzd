@@ -31,12 +31,22 @@ var api = builder
     // when both TargetPort and Port are specified with the same value."）。
     .WithHttpEndpoint(port: 5080, name: "http");
 
-// 前端 dev server：monorepo 用 pnpm，端口由 vite.config.ts 固定 5199（strictPort），
-// 这里不重复指定端口，免得同一事实两处定义；WaitFor 让前端等 API 起来再跑，避免 proxy 先接到 ECONNREFUSED。
+// 前端 dev server：monorepo 用 pnpm，端口由 vite.config.ts 固定 5199（strictPort）。
+// 这里只声明「对外就是 5199」并关掉代理：不关的话 Aspire 会给它另分配一个动态端口再转发，
+// 5199 就永远没有监听者，脚本与票面探测点全部失效；关掉代理后 Vite 自己按 vite.config.ts
+// 绑 127.0.0.1:5199，端口仍然只有一处定义。
+// WaitFor 让前端等 API 起来再跑，避免 proxy 先接到 ECONNREFUSED。
 builder
     .AddViteApp("web", "../apps/web", "dev")
     .WithPnpm(install: false)
     .WithReference(api)
-    .WaitFor(api);
+    .WaitFor(api)
+    .WithHttpEndpoint(port: 5199, name: "http")
+    .WithEndpoint("http", endpoint =>
+    {
+        endpoint.IsProxied = false;
+        endpoint.Port = 5199;
+        endpoint.TargetPort = 5199;
+    });
 
 builder.Build().Run();
