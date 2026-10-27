@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -82,4 +83,47 @@ web
         endpoint.TargetPort = 5199;
     });
 
-builder.Build().Run();
+var app = builder.Build();
+
+// 诊断（李总 F-03-A5）：本机 DCP 的编排日志通道被 ACL 挡住（"Failed to enable orchestration logging"），
+// AppHost 输出里没有任何资源级事件，于是「web 资源压根没被 DCP 拉起」在运行期完全不可见——只能等
+// 脚本 240 秒超时，事后也无法判断是「没拉起」还是「起来了又挂」。这里直接订阅资源状态流，
+// 把 api/web 每次状态变化打到 stdout：失败时能看到 State（如 FailedToStart/Exited）、ExitCode 和
+// 资源快照里的错误文本，让这条腿的失败可诊断。
+// 只订阅、不改资源定义。DistributedApplication 上没有 Lifetime 属性，所以这里不用
+// ApplicationStarted 回调：`app.Run()` 会阻塞到宿主退出，直接把订阅任务挂在 Build() 之后即可。
+_ = Task.Run(async () =>
+{
+    var notifications = app.Services.GetRequiredService<ResourceNotificationService>();
+    var watched = new[] { "api", "web" };
+
+    try
+    {
+        await foreach (var resourceEvent in notifications.WatchAsync())
+        {
+            var name = resourceEvent.Resource.Name;
+            if (!watched.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var snapshot = resourceEvent.Snapshot;
+            var state = snapshot.State?.Text ?? "(unknown)";
+            var exitCode = snapshot.ExitCode?.ToString() ?? "-";
+
+            Console.WriteLine($"[pzd-diag] resource={name} state={state} exitCode={exitCode}");
+
+            if (!string.IsNullOrWhiteSpace(snapshot.State?.Text) &&
+                snapshot.State.Text.Contains("error", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"[pzd-diag] resource={name} 状态文本含 error：{snapshot.State.Text}");
+            }
+        }
+    }
+    catch (OperationCanceledException)
+    {
+        // 宿主退出：正常收尾，不打印噪声。
+    }
+});
+
+app.Run();
