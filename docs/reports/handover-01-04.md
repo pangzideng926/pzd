@@ -9,14 +9,14 @@
 
 | 项 | 值 |
 |---|---|
-| 分支 / 代码基线 | `main` / `7f699c5`（07 终审通过；其后仅文档提交，02 的前端文件尚未入库） |
+| 分支 / 代码基线 | `main` / `aaf077f`（票 02 已入库）；后端代码基线仍是 `7f699c5`（07 终审通过），185 条不受前端影响 |
 | tag | `v0.1.0`（MinVer 基准） |
 | 版本号 | `0.1.1-alpha.0.<提交数>`（tag `v0.1.0` 之后；查询必须带 `-t:Build`） |
 | 构建 | 0 警告 0 错误（`-warnaserror --no-incremental`，我在 `7f699c5` 跑过） |
 | 测试 | 185 条、0 失败（架构 30 / SharedKernel 35 / Infrastructure 86 / Api 33 / 集成 1；见各票测试报告） |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`） |
-| 进行中 | 票 02 前端 monorepo 骨架（`apps/web` + `packages/*` + turbo/pnpm，工作区未提交） |
-| 下一张票 | 02 → 03 Aspire（受 F-05-4 约束）→ 08 → 10 → 11 |
+| 进行中 | 票 02 前端 monorepo 骨架已提交 `aaf077f`（`host: "127.0.0.1"` + `port: 5199`、`.react-router/` 已清出索引），等老登审计、李总按 hash 定稿报告 |
+| 下一张票 | 02 审计 → 03 Aspire（受 F-05-4 约束）→ 08 → 10 → 11 |
 
 ## 2. 未完成项 / 待办与已落票约束
 
@@ -71,7 +71,7 @@
 
 ## 3. 下一步顺序
 
-1. **旺总 / Chief**：票 **02 前端 monorepo 骨架**（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、dev proxy）已在工作区，按票面四条验收命令跑通后提交——它是 03 Aspire 与 11 的唯一前置。
+1. **老登 / 李总**：票 **02** 已提交 `aaf077f`（`apps/web` + `packages/*` + pnpm/turbo，React Router v7、`ssr: false`、`host: "127.0.0.1"` + `port: 5199`）；老登出审计结论，李总按 hash 在干净副本复跑四条命令后把 [`test-report-02.md`](test-report-02.md) 定稿（我入库的是入库前的快照版）。[`test-report-02.md`](test-report-02.md) 记录三条 low：turbo 对 echo 型包报 `no output files`（票面 `b761c94` 已要求 `outputs: []`）、`react-router dev` 默认只绑 `localhost`（票面已要求显式 `server.host`）、端口曾写死 5173（已改 5199）。
 2. **之后**：03 Aspire（受 F-05-4 约束，`/health`、`/api/version` 用 `AllowAnonymousTenant`）→ 08 可观测性 + 审计 + 安全横切 → 10 租户隔离集成测试（用本机 MySQL/Redis 真实例，无实例则 Skip）→ 11 验收脚本。
 3. **老何**：票面进度行要改——07 已 ✅（`7f699c5`，185 条，终审 `review-07.md`）、02 已开工；03 开工前确认 F-05-4 已生效；维护「步骤 3 移交清单」。
 4. **已定收尾小项（不阻塞、不重开票，票面 `f8b886c`）**：`appsettings.json` 里那 3 行 `"Outbox": { "MaxAttempts": 5 }` 要删掉，让「缺键走 `OutboxOptions.DefaultMaxAttempts`」成为唯一路径；删后跑一次 `Pzd.Infrastructure.UnitTests` 确认「缺键回默认 5」用例仍绿即可，**不需要新 hash 终审**。README 已补 `Outbox:MaxAttempts`（缺省 5）。
