@@ -1,9 +1,9 @@
 # 审计报告：票 02（前端 monorepo 骨架）
 
 > 审计：老登｜日期：2026-10-27｜方法：`code-review`（Spec / Standards 两轴）+ 实跑验收 + 变异
-> 被测：`2f48e7d`（骨架由 `1dc8f74` 引入；`df94f80` 清出误入库的 `.react-router/types`；`aaf077f` 固定端口与绑定；`2f48e7d` 为当前 HEAD，与前端文件无关）
+> 被测：`022fd4e`（骨架 `1dc8f74` → 端口/绑定 `aaf077f` → 清出 `.react-router/types` `df94f80` → **F-02-1 修复 `57c226e`** → 票据/文档 `022fd4e`）
 > 依据：[`tickets.md`](../specs/tickets.md) 票 02、[`architecture.md`](../architecture.md) §14.1/§14.2/§14.5、[`foundation.md`](../specs/foundation.md) §9 偏差记录
-> **结论：需修改。** 骨架本身与四条验收命令我全部实跑通过（install / build / typecheck / dev），但票面第 8 条「turbo 对 echo 型包不应报 `no output files`」**未实现**——缓存命中把它掩盖了，冷缓存下 `build` 与 `typecheck` 都会打三条 WARNING。另 4 条 low。
+> **结论：通过（复核 `022fd4e`，185 条后端 / 前端四条验收命令全绿）。** 首轮我判「需修改」的唯一必修 **F-02-1**（echo 包 `no output files` 告警）已在 `57c226e` 按包级 `turbo.json` 修好，我用 `--force` 冷缓存复核 build 与 typecheck **均零 `no output files` WARNING**；F-02-3、F-02-4 同批闭环。剩 F-02-2、F-02-5 两条**登记项**（不阻塞，见 §3、§5）。
 
 ---
 
@@ -28,7 +28,7 @@
 | 5 | 端口与绑定显式写死：`port = 5199`、`host = "127.0.0.1"`、strictPort | **通过**（`vite.config.ts` 三项都在，注释也写清了 host 留空只绑 `::1` 的坑） |
 | 6 | 包关系正确、lockfile 提交 | **通过**（web 声明三个 workspace 包；见 F-02-4 的措辞边界） |
 | 7 | 产物与生成物不入库 | **通过**（`.gitignore` 覆盖 `node_modules/`、`build/`、`.react-router/`、`*.tsbuildinfo`、`.turbo/`；HEAD 树里查无 build/生成物。`1dc8f74` 曾把 `.react-router/types` 5 个文件带进仓库，`df94f80` 已删除，现为未跟踪） |
-| 8 | 生产 build 链路无噪音：echo 型包不得报 `no output files` | **未通过 → F-02-1** |
+| 8 | 生产 build 链路无噪音：echo 型包不得报 `no output files` | **通过（复核）**：首轮未通过（F-02-1），`57c226e` 修好后 `--force` 冷缓存零 WARNING |
 | 9 | shadcn preset 失败则退化并在 foundation §9 记录偏差 | **通过**（§9 记了「交互式命令在非 TTY 下无法完成」、`packages/ui` 只有包骨架与导出面、剩余项归步骤 4、以及 pnpm 12 `esbuild` 的 `allowBuilds` 偏差） |
 | 10 | `vite.config.ts` dev proxy `/api`、`/hubs` → `127.0.0.1:5080` | **通过**（`/hubs` 带 `ws: true`） |
 | 11 | 不含登录页、侧边栏、多页签 | **通过**（`app/root.tsx` + `routes.ts` + 一个占位 `home.tsx`） |
@@ -36,6 +36,8 @@
 ## 3. 发现
 
 ### F-02-1 · medium（必修）· echo 包的 `no output files` 警告没消除，只是被缓存藏住了
+
+> **状态：已闭环（`57c226e`）。** 三个包各加 `packages/<pkg>/turbo.json`（`extends: ["//"]`、`tasks.build.outputs: []`，三份内容一致，md5 相同）。我在干净 worktree `022fd4e` 按 `--force` 冷缓存复核：`turbo run build --force` **零 `no output files` WARNING**、`turbo run typecheck --force`（含 `dependsOn: ^build`）**同样零 WARNING**。以下为原始发现，保留作证据。
 
 - **位置**：[`turbo.json:4-7`](../../turbo.json#L4-L7)（只有全局 `build` 的 `outputs: ["build/**", "dist/**"]`）；`packages/api|realtime|ui` 的 `build` 是 `echo`，不产出任何文件。
 - **实测**（干净 worktree，非缓存路径）：
@@ -54,7 +56,9 @@
   ```
   我只给 `packages/ui` 加了一份并 `turbo run build --force` → `@pzd/ui#build` 那条 WARNING 消失，只剩 api/realtime 两条，证明按包覆盖生效。三个包都加即清空。加完请把 `pnpm -w build` 与 `pnpm -w typecheck` 各跑一次 `--force`，确认零 WARNING。
 
-### F-02-2 · low · 每次 build 都有 5 条 React Router v8 future-flag 告警
+### F-02-2 · low（登记项）· 每次 build 都有 5 条 React Router v8 future-flag 告警
+
+> **状态：登记，不阻塞。** 属 React Router 7→8 的迁移提示，不是本票引入的缺陷；判定责任在票 11（用退出码）。
 
 - **位置**：`apps/web/react-router.config.ts`（未设任何 `future` 标记）+ RR 7.18 的构建日志。
 - **实测**：`pnpm -w build` 输出固定 5 条 `⚠️ Future Flag Warning: … changing in React Router v8`（route middleware、route module splitting、Vite Environment API、passThroughRequests、trailingSlashAwareDataRequests）。
@@ -63,17 +67,23 @@
 
 ### F-02-3 · low · 端口写死在两处，改一处会漂
 
+> **状态：已闭环。** `apps/web/package.json` 的 `dev` 现在就是 `react-router dev`，端口只在 `vite.config.ts` 一处。
+
 - **位置**：[`apps/web/vite.config.ts`](../../apps/web/vite.config.ts#L12-L16)（`port: 5199`）与 [`apps/web/package.json`](../../apps/web/package.json#L7)（`"dev": "react-router dev --port 5199"`）。
 - **问题**：两处字面值；CLI `--port` 优先级高于配置，两处不一致时以 `--port` 为准，`strictPort` 下的表现是「换个端口起不来」而不是报错说明。
 - **建议**：dev 脚本去掉 `--port 5199`，端口只留 `vite.config.ts` 一处（票面要求的「写死」本来就在配置里）。
 
 ### F-02-4 · low · web 声明了三个 workspace 依赖，但当前零 import
 
+> **状态：已闭环。** `app/routes/home.tsx` 现在 import 了 `API_PACKAGE`、`REALTIME_PACKAGE`、`UI_PACKAGE` 三个占位导出，workspace 链路在构建与渲染路径上真被走到。
+
 - **位置**：[`apps/web/package.json`](../../apps/web/package.json#L13-L17) 的 `@pzd/ui`、`@pzd/api`、`@pzd/realtime`。
 - **问题**：票面验收写「web 依赖 ui/api/realtime 中**实际需要的**包」，骨架阶段三个都没被 import，`pnpm -w build` 也不校验它们被用到；现在等于「先声明、后使用」的预留。
 - **判断**：不阻塞（`turbo typecheck` 会覆盖三个包源码，不产生死代码）；但要么在占位页引用一次（例如渲染 `UI_PACKAGE`）证明链路通，要么在票面把「预留」写明，免得后续以为已验证。
 
-### F-02-5 · low · `lint` 是 echo 占位，`pnpm -w lint` 恒 0
+### F-02-5 · low（登记项）· `lint` 是 echo 占位，`pnpm -w lint` 恒 0
+
+> **状态：登记，不阻塞。** 票面 `d32eb67` 已标注「lint 是占位、不得当证据」。
 
 - **位置**：根 `package.json` 的 `lint`、四个 workspace 包的 `lint`（`echo "...: no linter yet"`）。
 - **问题**：票面只要求根脚本里有 `lint`（未要求真 linter），但 `pnpm -w lint` 通过不代表任何东西；票 11 的一键验收若把它当门禁，是假的绿灯。建议在票 11 的脚本里明确「lint 本轮不参与判定」，或标注 TODO。
@@ -87,6 +97,11 @@
 
 ## 5. 结论
 
-- **必须修**：**F-02-1**（三个 echo 包按包设 `outputs: []`，用 `--force` 验证 build 与 typecheck 均零 WARNING）。
-- **建议随本轮或票 11 处理**：F-02-2（票 11 用退出码判定）、F-02-3（端口只留一处）、F-02-4（引用一次或票面写明预留）、F-02-5（lint 不算门禁）。
-- 修完给我 hash，我只复核 `turbo run build --force` / `turbo run typecheck --force` 的 WARNING 是否清零 + 其余文件未回退，不再重跑四条验收。
+**票 02：通过（复核 `022fd4e`）。**
+
+- **必须修 0 项**：F-02-1 已在 `57c226e` 闭环（包级 `turbo.json` + `outputs: []`，我用 `--force` 冷缓存验到 build/typecheck 零 `no output files` WARNING）；F-02-3（端口单处）、F-02-4（三个包被 import）同批闭环。
+- **四条验收命令复核（干净 worktree `022fd4e`）**：`pnpm install --frozen-lockfile` exit 0；`turbo run build --force` 4/4、产出 `apps/web/build/client/index.html`；`turbo run typecheck --force` 7/7；dev 在 `127.0.0.1:5199` 上 `GET /` = **200**、`<html lang="zh-CN">`（SPA 模式下静态 HTML 无 `<title>`、无正文文案属预期）。
+- **登记项（不阻塞）**：
+  - **F-02-2**：每轮 build 仍有 5 条 React Router v8 future-flag `⚠️` 告警。**票 11 的一键脚本必须用退出码判定，不要按输出里出现 `WARNING`/`⚠️` 判失败**；要不要落 `future` 标记属行为选择，由老何定。
+  - **F-02-5**：`lint` 是 echo 占位，`pnpm -w lint` 恒 0，不得当质量证据（票面 `d32eb67` 已标注同一口径）。
+- 偏差记录：shadcn preset 未执行（交互式 + 仓库根已按扁平结构铺好，跑模板会生成第二套根结构），`packages/ui` 只有导出面，剩余项随步骤 4 —— foundation §9 与 `2c60daa` 已写清，**报告不得写成「shadcn 已接入」**。
