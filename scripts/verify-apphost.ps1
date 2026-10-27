@@ -185,6 +185,39 @@ $hostProcess = $null
 $live = $null
 $startError = $null
 
+# 验票前先排除两种「不是代码问题」的假红，否则很容易把别人的进程或没装依赖当成本票缺陷：
+#   1) 端口被别人的实例占着（strictPort 会正确拒绝，但验出来的是别人实例的结果）；
+#   2) 前端没装依赖（AddViteApp 不跑 install，node_modules 缺失时 web 资源秒失败、连 node 进程都没有）。
+function Assert-PortFree {
+    param([int]$Port)
+
+    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) { return }
+
+    $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($listener) {
+        $proc = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+        throw "端口 $Port 已被占用（pid $($listener.OwningProcess) $($proc.ProcessName)）。先关掉占用进程再跑，否则验到的是别人实例的结果。"
+    }
+}
+
+try {
+    Assert-PortFree ([uri]$ApiBaseUrl).Port
+    if (-not $SkipWeb) { Assert-PortFree 5199 }
+
+    if ($Mode -eq "aspire") {
+        $webNodeModules = Join-Path $repoRoot "apps/web/node_modules"
+        if (-not (Test-Path $webNodeModules)) {
+            throw "apps/web/node_modules 不存在：AddViteApp 不会自动 install，前端会秒失败。先执行 pnpm install（或从已装好的副本复用）再跑。"
+        }
+    }
+}
+catch {
+    Write-Host "[preflight] $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[preflight] 这是环境/占用问题，不是本票缺陷：清掉占用或装好依赖后重跑。" -ForegroundColor Yellow
+    exit 2
+}
+
 for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     if ($Mode -eq "aspire") { Remove-StaleDcpState }
     if ($attempt -gt 1) { Write-Host "[retry] 第 $attempt 次启动（已清理 DCP 残留）" -ForegroundColor Yellow }
