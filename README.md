@@ -12,12 +12,12 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
 | 02 / 03 | 前端 monorepo / Aspire 编排 | ready-for-agent |
-| 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`；票面回填中） |
+| 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ready-for-agent |
 | 07–10 | UoW + Outbox、可观测性、Quartz、租户隔离集成测试 | ready-for-agent |
 | 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/06–10 |
 
-下一张票是 **06 异常处理 + Result→HTTP**（测试先行）。票 03 开工前需先落 **F-05-4**（`/health`、`/api/version` 免租户），细节见 [交接记录](docs/reports/handover-01-04.md)。
+下一张票是 **06 异常处理 + Result→HTTP**（测试先行）。票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现时按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
 
 ## 多租户内核（票 05）
 
@@ -94,7 +94,7 @@ dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
 - `PZD_TEST_MYSQL`（票 10 集成测试）
 - `PZD_REDIS_TEST_DB`（票 10，约定用 `15` 号逻辑库）
 
-仓库、日志、测试报告与提交信息中**零密码**。`Tenants` 的非法值（`Status` 拼错或数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛异常；`Tenants` 为空时能启动，但所有请求 400（是否启动期 fail-fast 待定）。
+仓库、日志、测试报告与提交信息中**零密码**。`Tenants` 的非法值（`Status` 拼错或数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛异常；`Tenants` 为空允许启动，但所有请求返回 400（不做启动期 fail-fast）；`ExpiresAt` 缺省或 `null` 视为永不过期，空字符串为配置错误、启动失败。
 
 ## 开发约定
 
