@@ -21,7 +21,7 @@
 | # | 来源 | 类型 | 强度 |
 | --- | --- | --- | --- |
 | 1 | `web-stdout.log:17` | vite **进程内** `process.env.NODE_ENV` 打印的字符串 | **最硬**——进程自己说的，不是反推、不是声明 |
-| 2 | `verify-apphost.log:39` | AppHost 侧资源快照（`Running`、103 项） | 中等——是资源声明快照，**不能单独当进程环境**，但与本条同值可互证 |
+| 2 | `verify-apphost.log:39` | AppHost 侧资源快照（`Running`、103 项，来源 `ResourceNotificationService.WatchAsync()` 的 `Snapshot.EnvironmentVariables`） | 中等偏上——是**解析后的完整环境集合**（含 `PATH`，所以不是我们自己的声明），比声明强、比进程 `process.env` 弱；能看值，**仍不能替代进程级读数** |
 | 3 | `web-stderr.log:2` | 同一进程同一请求的真错误原文（同步抛出） | 硬——抛出点在调用点，且与 #1 相隔 **106ms** |
 | 4 | `GET / → 500` + `X-Pzd-Run-Id` 一致 | HTTP 面回包 | 硬——证明应答来自本轮启动的进程，不是残留实例 |
 
