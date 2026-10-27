@@ -15,7 +15,7 @@
 | 构建 | 0 警告 0 错误（`-warnaserror`，`f778a32` 上老登实跑；`6b67c2d` 上张一一实跑 0 警告 0 错误） |
 | 测试 | **204 条、0 失败 0 Skip**（SharedKernel 35 / 架构 30 / Infrastructure 86 / Api 43 / 集成 10；`f778a32` 快照；此前的 185 是 `7f699c5`、173 是 `0da4a18`，已作废）。票 08 在 `e8f2e2d` 上实测 **229 条**（Api 68）；`1259466` 后 Api 73，`beb83f3` 后 **Api 78**（张一一实测全绿），别把三个数混用 |
 | 生产代码 | 05：`Infrastructure/Tenancy/*`；06：`Api/Errors/*` + `Infrastructure/Errors/ProblemDetailsWriter.cs`；07：`Infrastructure/Persistence/*`（含 `OutboxOptions`）；08：`Infrastructure/{Observability,Audit,Security}`；09：`Infrastructure/Scheduling/*` |
-| 进行中 | **08 ✅ 审计通过**（锚 `e8f2e2d`，229 条；**不是** `79bbe36`——那版跑绿属旧契约自洽）；**09 ✅ 审计通过且已在当前脚本复跑通过**（原锚 `6b67c2d` + 当时脚本；老登 2026-10-28 在**当前脚本 + 当前代码 `68f0bef`** 上回归：`EXIT=0`、8 条 `[ok]`、pid 55852、runId `06b465e2…`、Quartz 未退内存——`Degraded mode:` 0 条、37 schema objects、`LocalTransactionJobStore`、`persistence: True, clustered: True`）；**10 已审计通过**；**A5 定因已封口**（宿主环境驱动 `NODE_ENV`，单变量实测）；11 门禁只剩 **A11**：正向证据已有（**5 次**，含无 pin + Development 那次），缺「aspire 形态的同 hash 外来实例反例」+「主仓复跑」+「老登复审」 |
+| 进行中 | **08 ✅ 审计通过**（锚 `e8f2e2d`，229 条；**不是** `79bbe36`——那版跑绿属旧契约自洽）；**09 ✅ 审计通过且已在当前脚本复跑通过**（原锚 `6b67c2d` + 当时脚本；老登 2026-10-28 在**当前脚本 + 当前代码 `68f0bef`** 上回归：`EXIT=0`、8 条 `[ok]`、pid 55852、runId `06b465e2…`、Quartz 未退内存——`Degraded mode:` 0 条、37 schema objects、`LocalTransactionJobStore`、`persistence: True, clustered: True`）；**10 已审计通过**；**A5 定因已封口**（宿主环境驱动 `NODE_ENV`，单变量实测）；**A11 ✅ 老登复审通过**（锚副本树 `db17a9b`，runId `f730b9e2…`：前端头与 `/api/version` 同 runId、pid 22096、`/` 回 SPA 外壳、8 条 `[ok]`、`EXIT=0`）；**唯一留下的边界是「副本树、不是主仓」**，主仓正向待 `E:\pzd` ACL 批准（不批准就按已知限制写）。票 11 因此解除门禁 |
 | 下一张票 | 08/09 送审计 → 主仓 aspire 实跑（先解决 §5 的 ACL，需用户点头）→ A11 三条补齐 → 11 收口（`CLAUDE.md` + 一键脚本文档） |
 
 ## 2. 未完成项 / 待办与已落票约束
@@ -112,6 +112,24 @@ git diff --stat 6b67c2d..HEAD -- src/Pzd.Api src/Pzd.Infrastructure
 **被测代码没变，但「怎么测」变了**（TEMP 位置、BOM 处理、A13 端口清理都在脚本里）。所以「09 通过」严格说是「**09 在 `6b67c2d` 那份脚本上通过**」；要写「现在仍然通过」，必须在**当前脚本**上复跑一次。
 
 **规矩**：验收结论一律锚「代码 hash + 脚本 hash（或 commit）」两个坐标。只写代码 hash 的结论，脚本一改就变成悬空结论；反过来，脚本改了就默认旧结论**待复跑**，不默认仍然成立。
+
+## 4.6 通则：说「相同/不同」必须点明是**字节、文本、还是语义**层面（老登，2026-10-28）
+
+同一天里我们已经三次栽在「层面没说清」上：
+
+| 断言 | 层面 | 实际情况 |
+| --- | --- | --- |
+| `grep -c 'WithEnvironment("NODE_ENV"'` = 1，所以「带 pin」 | 计数 | 命中的是**注释行**，活代码是 0 |
+| 「日志是 GBK」/「日志是 UTF-8」 | 编码 | 同一批产物里**两种都有**（`verify-apphost.log` UTF-8、脚本 `[ok]` 行 GBK） |
+| `.bak` 与 `62b80ed` 原件「逐字节相同」 | 字节 vs 文本 | **内容相同、行尾不同**：15480 vs 15167 字节，**差 313 = 313 个 CR**（CRLF）；`diff --strip-trailing-cr` 后完全一致 |
+
+**规矩**：任何「相同 / 不同 / 有 / 没有」的断言，都要写清判据的层面——
+
+- **字节**：`sha256`、`cmp`、字节数。行尾/BOM/编码一变就不同；
+- **文本**：去掉行尾差异后比（`diff --strip-trailing-cr`）、按行比；
+- **语义**：这段代码是否**生效**（注释掉的不算）、这个值是否**进了进程**（快照 ≠ 进程）。
+
+不写层面，就会有人拿「字节不同」去推翻一个在文本层面正确的结论，或者拿「计数是 1」去推翻一个在语义层面正确的结论。**今晚这三次都是同一族错误：判据的层面搞错了，而不是观测错了。**
 
 ## 5. 环境约束（踩过的坑，别再踩）
 
