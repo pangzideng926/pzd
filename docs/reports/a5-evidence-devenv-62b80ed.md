@@ -8,7 +8,7 @@
 
 | 组 | 树 | pin | `DOTNET_ENVIRONMENT` | runId | 时间 |
 | --- | --- | --- | --- | --- | --- |
-| A（反向对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **当轮文件状态不可考、也不需要考**——判据是**进程读数 + runId**，不是事后文件状态 | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07（本地 00:07） |
+| A（反向对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **当轮文件状态不可考（本行不依赖它）**——判据是**当轮进程读数 + runId + 会话目录 mtime 包住该轮** | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07（本地 00:07） |
 | B（实验）· **主证据（按归属）** | `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本；**代码 `62b80ed` + 脚本 `ce094d7d…`（+34/−7）**） | **已删**（整行移除；活代码 pin **0**） | **`Development`** | `cf7b5542b12142d18c5349496d720292` | 17:48 |
 | B′（同格，**第二份独立运行**） | `C:/tmp/pzd-fin`（李总） | **也是 un-pin**：`:85` 是注释态，活代码 pin **0**（`mtime 01:47:53.771`、sha256 `f1ea6ffc…`，比探针首行早 18 秒） | `Development` | `968c1848dbe84ebd89294b33662749d8` | 17:48 |
 
@@ -16,13 +16,24 @@
 
 A 组那一轮（`pzd-fin`，`f6b32412…`，本地 00:07）**有自己的进程级证据**，会话目录现在还留着：
 
+该轮的会话目录**只包含 00:07 这一轮**，四条记录连成一条闭环证据链（张一一 2026-10-28 复核）：
+
 ```
-C:/tmp/pzd-fin/.aspire-tmp/aspire-dcpi4124qsy.vok/d973dad1-…_out:1   2026-10-27T16:07:27.712Z [pzd-web] NODE_ENV=production
-                                            d973dad1-…_out:17  2026-10-27T16:07:27.801Z [pzd-web] NODE_ENV=production
-                                            d973dad1-…_out:20  2026-10-27T16:07:29.151Z [pzd-web] entry loaded（NODE_ENV=production）
+C:/tmp/pzd-fin/.aspire-tmp/aspire-dcpi4124qsy.vok/d973dad1-…
+  _out:1    2026-10-27T16:07:27.712Z [pzd-web] NODE_ENV=production
+  _out:17   2026-10-27T16:07:27.801Z [pzd-web] NODE_ENV=production
+  _out:20   2026-10-27T16:07:29.151Z [pzd-web] entry loaded（NODE_ENV=production）
+  _err:1    2026-10-27T16:07:27.100Z $ react-router dev --port 5199
+  _err:2    2026-10-27T16:07:29.247Z [pzd/entry.server] renderToPipeableStream 同步抛出：
+              TypeError: (0 , __vite_ssr_import_0__.jsxDEV) is not a function
+                at eval (C:/tmp/pzd-fin/apps/web/app/entry.server.tsx:39:113)
+目录 mtime  00:07:26.950（该轮启动）
+_out mtime  00:07:29.244（该轮结束）
 ```
 
-同毫秒、两条独立通道、同一次运行：探针文件里 `16:07:27.712Z … NODE_ENV=production PZD_RUN_ID=f6b32412…` 与 `_out:1` 是**同一毫秒**。
+**「包住该轮」的证明**：目录 `mtime 00:07:26.950` 到 `_out mtime 00:07:29.244` 正好夹住四条记录的 `16:07:27.100Z`–`16:07:29.247Z`；栈路径指向 `C:/tmp/pzd-fin` 这棵树；目录里只有这一轮内容。
+
+同毫秒、两条独立通道、同一次运行：探针文件里 `16:07:27.712Z … NODE_ENV=production PZD_RUN_ID=f6b32412c3464c40a99c0cdf802bb9a6` 与 `_out:1` 是**同一毫秒**。所以**当轮文件状态不可考、但这一行不依赖它**——作证的是当轮运行读数。
 
 **所以「那一轮当时是不是 un-pin」这个问题不必靠文件状态回答**——vite 进程自己读出了 `production`，是**当轮读数**。谁要说那不是反向证据，得先解释为什么「基座原件 `:85` 本来有 pin、又读到了 `production`」；这恰恰是 pin 生效与不生效的分界。
 
