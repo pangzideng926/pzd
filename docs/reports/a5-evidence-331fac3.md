@@ -92,7 +92,24 @@ GET http://127.0.0.1:5199/  →  HTTP 500，耗时 4.6ms，body 88B
 
 读法：**520 次真错误、0 次 TDZ**。也就是说在真实 DCP 编排下，自定义 entry 每次都在调用点把真错误打出来并回 500，**没有任何一次退化成「6 秒后 `Cannot access 'abort' before initialization` 带崩进程」**。1.6MB 是「每个请求几段栈 × 520 次」的结果，不是异常膨胀以外的第二种问题。
 
-## 8. 结论
+## 8. 通道边界（这条最容易判反）
+
+**两个地方，两条通道，别混：**
+
+| 地方 | 装什么 |
+| --- | --- |
+| `artifacts/verify-apphost.log` | **只有 AppHost 自己的输出**（`[pzd-diag]` 之类） |
+| `<TEMP>/aspire-dcp*/<guid>_out` / `_err`（仓库内模式下是 `.aspire-tmp/aspire-dcp*/…`） | **DCP 给每个资源捕获的 stdout/stderr**（`[pzd-web]`、`[pzd/entry.server]` 在这里） |
+
+**硬事实（李总/旺总，`db17a9b`）**：一次**全链路成功**的 aspire（`EXIT=0`、web 全程 `Running`、`/` 正确回包、runId 一致）里，44 行 `artifacts/verify-apphost.log` 中 `[pzd-web]` = **0 行**、`[pzd/entry.server]` = **0 行**。entry 必然加载过、`handleRequest` 必然调用过，但 AppHost 日志一行都没有。
+
+所以：**「AppHost 日志里没有 entry 行」是零判别力信号**，它既不能证明「错误在入口之前」，也不能证明「修复没生效」——写成判据会把「一切正常」判成「模块加载期失败」。这条我们今晚踩了四次同族错误，记成通用规则：**「日志里没有」永远不能当判据，只能当「去看别的通道」的提示。**
+
+**诚实的边界**：目前只有**失败那轮**的 `_out` 里见过 `entry loaded`（本文件 §3 就是）；**成功那轮**（`db17a9b`）的会话目录已被清理，所以「成功时 `_out` 里也有这两行」**尚未验证**——别外推。
+
+**操作纪律（今晚吃过两次亏）**：结果重要的那一轮，**先把 DCP 会话目录整个复制走（`%TEMP%/aspire-dcp*` 或 `.aspire-tmp/aspire-dcp*`），再停进程**。锋哥那轮因为先复制到 `C:/tmp/a5-ab-331fac3-nopin/` 才可复核；另外两轮的会话目录都没了，只能靠转述。
+
+## 9. 结论
 
 DCP/supervisor 向 web 资源注入 `NODE_ENV=production`；未钉住时 vite 进程拿到 production 的 JSX 运行时，而 `react-router dev` 的 SSR 变换仍生成 `jsxDEV` 调用 → 在 `renderToPipeableStream` 调用点**同步抛出** → 500。钉成 `development` 后该路径不再触发（`37bd872` 是修复，不是巧合）。
 
@@ -102,14 +119,15 @@ DCP/supervisor 向 web 资源注入 `NODE_ENV=production`；未钉住时 vite �
 
 **两条边界（引用时不能省）**：① 这一侧是 `331fac3` **手工删掉钉住行的对照件**（不是某个 un-pinned 提交，也不是 `git revert`）；② **两侧来自两次不同的运行**（`331fac3` 删行 vs `5682cd0` 含钉住），是「同一改动差异、不同运行现场」的对照，不是同一次运行里的 A/B 开关。
 
-## 9. 不能写的话
+## 10. 不能写的话
 
 - 不能写「**aspire 下看不到 `[pzd-web]` 就等于模块图失败**」：web 资源的 stdout/stderr 落在 `.aspire-tmp/aspire-dcp*/<guid>_out` / `_err`，不在 `artifacts/verify-apphost.log`。读法 `grep -a -r "pzd-web\|pzd/entry.server" .aspire-tmp`。
 - 不能写「**已有进程级 `NODE_ENV` 的文件探针证据**」：本包是 DCP 会话目录的 `_out`/`_err`，`331fac3` 上还没有 `writeFileSync` 探针（那是 `cd17520`）。
-- 不能写「**`bf08bd4` 上失败也回 500**」：`bf08bd4` 上同一变异测得 200，回 500 是 `db17a9b`（含 `4485ca0`）的行为，**按 hash 分家**。
+- 不能写「**`bf08bd4` 上失败也回 500**」：那个 200 已被李总解释为「干净态跑的（变异撤了或没生效）」，**这个观察撤回、不算缺陷**；要引用失败回 500，只用 `db17a9b` 变异态的三次实测（`onShellError`、归属头仍在），**按 hash 分家**。
+- 不能说「AppHost 日志里没有 `[pzd-web]` / `[pzd/entry.server]` → 错误在入口之前」：`db17a9b` 全链路成功那轮两者同样 0 行（见 §8），这条是零判别力。
 - 不能把本包当成「仓库里的一次可复现运行」：它来自人工删行的对照件，复现需重建同一改动。
 - 不能把 `Cannot access` 计数为 0 读成「**TDZ 在全部场景都消失了**」：这只覆盖「该调用点同步抛出 → 失败回 500」这一类，且是 `331fac3` 的自定义 entry；别的失败形态（`onShellError`、卡死超时）各有各的实测，见交接 §5。
 
-## 10. 复制件位置（非权威，目录可能已被清理）
+## 11. 复制件位置（非权威，目录可能已被清理）
 
 本文件内容抄自 `C:\tmp\a5-ab-331fac3-nopin\`（`web-stdout.log` 1.8KB、`web-stderr.log` 1.6MB、`verify-apphost.log` 4.7KB、`verify-apphost.log.err` 103B、`README-证据说明.txt`）。**该目录随时可能被删；以本文件正文为准。**
