@@ -124,7 +124,10 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 # 它只在本次进程树里有，同一 hash 的残留实例不会有——这是脚本判定「200 归属」的唯一依据。
 $runId = [guid]::NewGuid().ToString("N")
 [Environment]::SetEnvironmentVariable("PZD_RUN_ID", $runId, "Process")
-Write-Host "本次运行标记 runId=$runId" -ForegroundColor Cyan
+
+# 归属标记只走响应头：/api/version 的三字段是票 03 验证过的公开契约，不扩充。
+$ApiRunIdHeaderName = "X-Pzd-Run-Id"
+Write-Host "本次运行标记 $ApiRunIdHeaderName=$runId" -ForegroundColor Cyan
 
 function Stop-ProcessTree {
     param([int]$ProcessId)
@@ -389,17 +392,25 @@ try {
     if (-not $versionBody.buildTime) { $failures.Add("/api/version 缺 buildTime") }
     if ($failures.Count -eq 0) { Write-Host "[ok] /api/version $($versionBody.version)+$($versionBody.buildId)" }
 
-    # F-03-A11：归属证据。runId 由本脚本在启动前生成并注入进程环境，API 原样从 /api/version 回显；
-    # 一比对就能区分「本次启动的进程」与「同一 hash 的残留实例」（后者拿不到这个值）。
-    # 老何的口径：buildId 只证明版本相同，不能当归属；取不到证据也必须判失败。
-    if ([string]::IsNullOrWhiteSpace($versionBody.runId)) {
-        $failures.Add("/api/version 没有 runId：API 没收到本次运行的 PZD_RUN_ID，无法证明应答来自本次启动（F-03-A11）")
+    # 三字段是票 03 验证过的公开契约：归属标记不能混进响应体，否则等于在验过的契约上多加一项。
+    if ($versionBody.PSObject.Properties.Name -contains "runId") {
+        $failures.Add("/api/version 响应体多出 runId 字段：归属标记只能走 X-Pzd-Run-Id 响应头，不得扩充已验契约")
     }
-    elseif ($versionBody.runId -ne $runId) {
-        $failures.Add("/api/version 的 runId '$($versionBody.runId)' 与本次运行的 '$runId' 不符：5080 上是别的实例（同 hash 的残留也会这样）")
+
+    # F-03-A11：归属证据。runId 由本脚本生成并注入进程环境，API 以响应头 X-Pzd-Run-Id 回显；
+    # 一比对就能区分「本次启动的进程」与「同一份构建的残留实例」（后者没有这个值）。
+    # 老何的口径：buildId 只证明版本相同，不能当归属；取不到证据也必须判失败。
+    $runIdHeader = @($version.Headers[$ApiRunIdHeaderName]) | Select-Object -First 1
+    $runIdHeader = if ($null -eq $runIdHeader) { $null } else { [string]$runIdHeader }
+
+    if ([string]::IsNullOrWhiteSpace($runIdHeader)) {
+        $failures.Add("/api/version 没有 $ApiRunIdHeaderName 响应头：API 没收到本次运行的 PZD_RUN_ID，无法证明应答来自本次启动（F-03-A11）")
+    }
+    elseif ($runIdHeader -ne $runId) {
+        $failures.Add("$ApiRunIdHeaderName '$runIdHeader' 与本次运行的 '$runId' 不符：$ApiBaseUrl 上是别的实例（同 hash 的残留也会这样）")
     }
     else {
-        Write-Host "[ok] /api/version runId 与本次运行一致（$runId）：应答来自本次启动的进程"
+        Write-Host "[ok] $ApiRunIdHeaderName 与本次运行一致（$runId）：应答来自本次启动的进程"
     }
 
     # 豁免之外仍要有租户：无租户访问 / 必须 400 Tenant.NotFound。

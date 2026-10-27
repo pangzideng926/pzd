@@ -131,8 +131,18 @@ app.MapGet("/", () => "PZD API");
 app.MapGet("/health/live", () => Results.Ok(new { status = "Healthy" }))
     .WithMetadata(new AllowAnonymousTenantAttribute());
 
-app.MapGet("/api/version", () => Results.Ok(ApiVersionInfo.Current))
-    .WithMetadata(new AllowAnonymousTenantAttribute());
+// F-03-A11：本次运行的身份标记只走响应头，而且仅在启动方注入 PZD_RUN_ID 时才输出——
+// /api/version 的载荷仍是票 03 验证过的三字段，生产环境不会多出任何字段。
+// 账号归属判定用它能区分「本次启动的进程」与「同一份构建的残留实例」（后者没有这个值）。
+app.MapGet("/api/version", (HttpContext context) =>
+{
+    if (ApiRunId.Current is { } runId)
+    {
+        context.Response.Headers[ApiRunId.HeaderName] = runId;
+    }
+
+    return Results.Ok(ApiVersionInfo.Current);
+}).WithMetadata(new AllowAnonymousTenantAttribute());
 
 // 就绪探针：带 mysql/redis 明细；两项缺配置即 Degraded，MapHealthChecks 对 Degraded 仍回 200。
 app.MapHealthChecks("/health/ready", new HealthCheckOptions

@@ -8,17 +8,15 @@ namespace Pzd.Api.Endpoints;
 /// 用于前端比对新版本（架构 §15.1）。buildTime 取程序集文件写入时间——
 /// 它等价于构建产物时间，前端只用来展示，不参与任何比对。
 /// <para>
-/// <c>runId</c> 是**本次启动**的唯一标记（F-03-A11）：由启动方通过环境变量 <c>PZD_RUN_ID</c> 注入，
-/// 原样回显。它证明「应答的这个进程是本次运行拉起来的」，而 <c>buildId</c> 只能证明版本相同——
-/// 同一 hash 的残留实例也满足后者，所以归属判定只认 runId。
+/// 这三项是票 03 验证过的公开契约，**不要再加字段**：本次运行的身份标记走响应头
+/// <see cref="ApiRunId.HeaderName"/>（见 <see cref="ApiRunId"/>），生产未注入时端点载荷与这里逐字节一致。
 /// </para>
 /// </summary>
-public sealed record ApiVersionInfo(string Version, string BuildId, DateTimeOffset BuildTime, string? RunId = null)
+public sealed record ApiVersionInfo(string Version, string BuildId, DateTimeOffset BuildTime)
 {
-    public static ApiVersionInfo Current { get; } =
-        Read(typeof(ApiVersionInfo).Assembly, Environment.GetEnvironmentVariable("PZD_RUN_ID"));
+    public static ApiVersionInfo Current { get; } = Read(typeof(ApiVersionInfo).Assembly);
 
-    internal static ApiVersionInfo Read(Assembly assembly, string? runId = null)
+    internal static ApiVersionInfo Read(Assembly assembly)
     {
         var informational = assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
@@ -26,22 +24,16 @@ public sealed record ApiVersionInfo(string Version, string BuildId, DateTimeOffs
 
         var buildTime = GetBuildTime(assembly);
 
-        // 归属标记：没有就是没有（null），不编造默认值，验收侧取不到证据就判失败。
-        if (string.IsNullOrWhiteSpace(runId))
-        {
-            runId = null;
-        }
-
         if (string.IsNullOrWhiteSpace(informational))
         {
-            return new ApiVersionInfo("0.0.0", "unknown", buildTime, runId);
+            return new ApiVersionInfo("0.0.0", "unknown", buildTime);
         }
 
         var plus = informational.IndexOf('+', StringComparison.Ordinal);
 
         if (plus < 0)
         {
-            return new ApiVersionInfo(informational, "unknown", buildTime, runId);
+            return new ApiVersionInfo(informational, "unknown", buildTime);
         }
 
         var buildId = informational[(plus + 1)..];
@@ -49,8 +41,7 @@ public sealed record ApiVersionInfo(string Version, string BuildId, DateTimeOffs
         return new ApiVersionInfo(
             informational[..plus],
             buildId.Length > 7 ? buildId[..7] : buildId,
-            buildTime,
-            runId);
+            buildTime);
     }
 
     private static DateTimeOffset GetBuildTime(Assembly assembly)
