@@ -8,9 +8,30 @@
 
 | 组 | 树 | pin | `DOTNET_ENVIRONMENT` | runId | 时间 |
 | --- | --- | --- | --- | --- | --- |
-| A（对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **已删**（`:85` 整行移除/注释掉） | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07 |
+| A（反向对照） | `C:/tmp/pzd-fin`（`62b80ed`） | **当轮文件状态不可考、也不需要考**——判据是**进程读数 + runId**，不是事后文件状态 | **未设置**（宿主 Production） | `f6b32412c3464c40a99c0cdf802bb9a6` | 16:07（本地 00:07） |
 | B（实验）· **主证据（按归属）** | `C:/tmp/pzd-envtest`（张一一，`pzd-fin` 的完整副本；**代码 `62b80ed` + 脚本 `ce094d7d…`（+34/−7）**） | **已删**（整行移除；活代码 pin **0**） | **`Development`** | `cf7b5542b12142d18c5349496d720292` | 17:48 |
 | B′（同格，**第二份独立运行**） | `C:/tmp/pzd-fin`（李总） | **也是 un-pin**：`:85` 是注释态，活代码 pin **0**（`mtime 01:47:53.771`、sha256 `f1ea6ffc…`，比探针首行早 18 秒） | `Development` | `968c1848dbe84ebd89294b33662749d8` | 17:48 |
+
+## 1.5 A 组（反向对照）的判据：进程读数，不是文件状态
+
+A 组那一轮（`pzd-fin`，`f6b32412…`，本地 00:07）**有自己的进程级证据**，会话目录现在还留着：
+
+```
+C:/tmp/pzd-fin/.aspire-tmp/aspire-dcpi4124qsy.vok/d973dad1-…_out:1   2026-10-27T16:07:27.712Z [pzd-web] NODE_ENV=production
+                                            d973dad1-…_out:17  2026-10-27T16:07:27.801Z [pzd-web] NODE_ENV=production
+                                            d973dad1-…_out:20  2026-10-27T16:07:29.151Z [pzd-web] entry loaded（NODE_ENV=production）
+```
+
+同毫秒、两条独立通道、同一次运行：探针文件里 `16:07:27.712Z … NODE_ENV=production PZD_RUN_ID=f6b32412…` 与 `_out:1` 是**同一毫秒**。
+
+**所以「那一轮当时是不是 un-pin」这个问题不必靠文件状态回答**——vite 进程自己读出了 `production`，是**当轮读数**。谁要说那不是反向证据，得先解释为什么「基座原件 `:85` 本来有 pin、又读到了 `production`」；这恰恰是 pin 生效与不生效的分界。
+
+**同时记两个不许用的论证**（今晚各踩一次）：
+
+- **不许用 mtime 反推历史**：`mtime 01:47:53.771` 只记**最后一次写入**。00:07 那轮把整行删掉、01:47 改回注释态，两次都会更新 mtime，所以现在的 mtime 对「00:07 时是活代码」和「00:07 时是整行删除」**完全无差别**。这条对 `pzd-fin` 与 `pzd-envtest` 一视同仁。
+- **不许用现查计数/现查状态反推历史**：`git status` 显示 `M src/Pzd.AppHost/Program.cs` 只说明**改过**，不说明**当时**是什么。
+
+**第三份独立反向证据**：锋哥那份 `331fac3-nopin`（`C:/tmp/a5-ab-331fac3-nopin/`，基座 `331fac3:85` 本身有 pin、当轮 `git diff --stat` 2 增 1 删、`_out:17` 读到 `production`、`_err:2` 是 `jsxDEV`）。它**并列**存在，不替换 A 组——A 组那份有毫秒对齐，更硬；它的价值是**当轮 diff 留存**。
 
 > **两棵树都是真 un-pin，两条运行各自成立、互不依赖（2026-10-28 定稿，中间经过一次撤回）**：
 >
