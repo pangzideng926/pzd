@@ -35,6 +35,8 @@ appsettings.local.json
 .env
 .env.*
 !.env.example
+local.env
+*.local.env
 
 # DSH tooling artifacts
 .dsh-ops/

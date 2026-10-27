@@ -15,10 +15,10 @@ internal static class ArchRules
     internal const string SqlSugarDependency = "SqlSugar";
     internal const string AspNetCoreDependency = "Microsoft.AspNetCore";
 
-    private const string SharedKernelProject = "Pzd.SharedKernel";
-    private const string InfrastructureProject = "Pzd.Infrastructure";
-    private const string ApiProject = "Pzd.Api";
-    private const string AppHostProject = "Pzd.AppHost";
+    internal const string SharedKernelProject = "Pzd.SharedKernel";
+    internal const string InfrastructureProject = "Pzd.Infrastructure";
+    internal const string ApiProject = "Pzd.Api";
+    internal const string AppHostProject = "Pzd.AppHost";
     private const string ContractsSuffix = ".Contracts";
 
     internal static readonly Assembly SharedKernelAssembly = Assembly.Load(SharedKernelProject);
@@ -67,7 +67,9 @@ internal static class ArchRules
 
         if (!Directory.Exists(sourceDirectory))
         {
-            return [];
+            // 仓库根定位错误时不能静默返回空集：那会让规则④对任何模块都「绿得毫无提示」（同 F2 的漏检形态）。
+            throw new InvalidOperationException(
+                $"No 'src' directory under repository root '{repositoryRoot}': module discovery would silently pass.");
         }
 
         return Directory.GetDirectories(sourceDirectory, "Pzd.*")

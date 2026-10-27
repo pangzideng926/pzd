@@ -24,13 +24,22 @@ public class DependencyRulesTests
     [Theory]
     [InlineData(ArchRules.SqlSugarDependency)]
     [InlineData(ArchRules.AspNetCoreDependency)]
-    public void Domain_namespaces_do_not_depend_on_persistence_or_web_libraries(string forbiddenDependency)
+    [InlineData(ArchRules.InfrastructureProject)]
+    [InlineData(ArchRules.ApiProject)]
+    public void Domain_namespaces_do_not_depend_on_persistence_web_or_infrastructure_libraries(string forbiddenDependency)
     {
         var result = ArchRules.DomainDependencyViolations(ArchRules.ProductAssemblies, forbiddenDependency);
 
         Assert.True(
             result.IsSuccessful,
             "违规类型：" + string.Join(", ", ArchRules.FailingTypeNames(result)));
+    }
+
+    [Fact]
+    public void Repository_root_points_at_a_real_source_tree()
+    {
+        Assert.True(File.Exists(Path.Combine(RepositoryRoot, "Pzd.slnx")), $"{RepositoryRoot} 下没有 Pzd.slnx");
+        Assert.True(Directory.Exists(Path.Combine(RepositoryRoot, "src")), $"{RepositoryRoot} 下没有 src");
     }
 
     [Fact]
