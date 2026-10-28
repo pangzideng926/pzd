@@ -175,13 +175,48 @@ function Remove-StaleDcpState {
     # 受限令牌环境下 DCP 偶发「apiserver 从未就绪」（EnsureKubernetesAsync 2 分钟超时），
     # 上一次被强杀的 dcp.exe / 通知套接字 / 会话目录就是最常见的诱因，启动前先清掉。
     # 只清**属于本仓库**的 dcp：无差别杀全机 dcp 会误伤其他会话正在跑的实例（F-03-A2 low）。
+    #
+    # F-03-B5：审计怀疑这里会删掉整机所有 aspire-dcp* 会话目录。按调用时序这不成立——
+    # 本函数被调用时 TEMP/TMP 已被指到本轮专用目录 `run-<时间戳>`，所以 `$env:TEMP` 下
+    # 只可能有本轮的会话目录，整机其它会话在各自的 TEMP 根下，扫不到。实测证据：
+    #   重定向后 $env:TEMP = E:\.pzd-aspire-tmp-pzd\run-probe-scope
+    #   预置一个真实 TEMP 下的 aspire-dcp-OTHERSESSION，调用后 Test-Path = True（未被删）
+    # 但「删哪个根」必须能从日志看出来，所以三条路径分开写、各打一行诊断；顺带补两处
+    # 真正的范畴缺口：历史 run-* 目录原先清不到（TEMP 已换根），通知套接字是按用户全局的。
+    param([string]$SessionRoot, [string]$KeepSessionDir)
+
     Get-CimInstance Win32_Process -Filter "Name='dcp.exe' OR Name='Aspire.Dashboard.exe'" -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -and $_.CommandLine.Contains($repoRoot) } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-    Get-ChildItem -Path $env:TEMP -Filter "aspire-dcp*" -Directory -ErrorAction SilentlyContinue |
-        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path (Join-Path $env:LOCALAPPDATA "dcp\dcp-notify-sock-*") -Force -ErrorAction SilentlyContinue
+    # ① 本轮会话目录内的残留（重试路径）。
+    $currentSession = @(Get-ChildItem -Path $env:TEMP -Filter "aspire-dcp*" -Directory -ErrorAction SilentlyContinue)
+    foreach ($dir in $currentSession) {
+        Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "[diag] DCP 会话目录清理：本轮 $($currentSession.Count) 个（根 $env:TEMP）" -ForegroundColor DarkGray
+
+    # ② 之前运行留下的一次性根目录（run-<时间戳>）：只在本仓库自己的 -TempRoot 下找，
+    #    只删 6 小时以前的，避免误删并行会话正在用的那一份。
+    if ($SessionRoot -and (Test-Path -LiteralPath $SessionRoot)) {
+        $stale = @(Get-ChildItem -Path $SessionRoot -Filter "run-*" -Directory -ErrorAction SilentlyContinue |
+                Where-Object { ($_.FullName -ne $KeepSessionDir) -and ((Get-Date) - $_.LastWriteTime).TotalHours -ge 6 })
+        foreach ($dir in $stale) {
+            Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "[diag] 历史运行目录清理：$($stale.Count) 个（根 $SessionRoot，仅 >6h）" -ForegroundColor DarkGray
+    }
+
+    # ③ 通知套接字位于 LOCALAPPDATA\dcp，是**按用户全局**的，删掉会连带影响别的仓库正在跑的 dcp。
+    #    所以先看有没有其它仓库的 dcp.exe 存活，有就跳过并说明。
+    $foreignDcp = @(Get-CimInstance Win32_Process -Filter "Name='dcp.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and -not $_.CommandLine.Contains($repoRoot) })
+    if ($foreignDcp.Count -gt 0) {
+        Write-Host "[diag] 跳过通知套接字清理：另有 $($foreignDcp.Count) 个其它仓库的 dcp.exe 在跑（pid $((@($foreignDcp | ForEach-Object { $_.ProcessId })) -join ',')）" -ForegroundColor Yellow
+    }
+    else {
+        Remove-Item -Path (Join-Path $env:LOCALAPPDATA "dcp\dcp-notify-sock-*") -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Wait-ForUrl {
@@ -384,7 +419,7 @@ if ($Mode -ne "aspire" -and -not $SkipWeb) {
 }
 
 for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-    if ($Mode -eq "aspire") { Remove-StaleDcpState }
+    if ($Mode -eq "aspire") { Remove-StaleDcpState -SessionRoot $TempRoot -KeepSessionDir $aspireTempDir }
     if ($attempt -gt 1) { Write-Host "[retry] 第 $attempt 次启动（已清理 DCP 残留）" -ForegroundColor Yellow }
 
     if ($Mode -eq "aspire" -and $appHostLaunchPath) {
