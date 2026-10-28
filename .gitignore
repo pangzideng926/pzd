@@ -50,3 +50,8 @@ local.env
 # Aspire DCP 会往 TEMP 里建会话目录；受限令牌写不动系统 TEMP 时脚本把 TEMP/TMP 指到这里
 # （见 scripts/verify-apphost.ps1）。属于运行期产物，不入库。
 .aspire-tmp/
+
+# skills 安装器在根目录建的符号链接，实体在 .agents/skills/（已入库）
+/skills/
+# Agent Notes 看板生成物
+board.html
