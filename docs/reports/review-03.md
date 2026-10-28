@@ -375,7 +375,7 @@ REAL_EXIT=0
 | 03 主路径 | 通过 | `f778a32`（§9） | — |
 | 03 · F-03-A10 | 闭环 | `398b6e8`（§12.4） | — |
 | 03 · F-03-A12 | 闭环 | `562fd88`（§12.5） | — |
-| 03 · F-03-A11 | **闭环** | `db17a9b` + 当轮脚本 | **副本树**，非主仓 |
+| 03 · F-03-A11 | **通过（主仓正向）** | `affad87` + 脚本 sha256 `eff9a210…96db162d`（副本树旧锚 `db17a9b` 并列保留） | 环境绕行，见 13.5 |
 | 03 · A5（entry TDZ） | **通过** | `331fac3` | 仅缩短值超时实跑 |
 | 08 | 通过 | `e8f2e2d` | 三条覆盖边界，见 13.4 |
 | 09 | 通过 | `68f0bef` + 当前脚本 | — |
@@ -402,9 +402,15 @@ REAL_EXIT=0
 
 **`pin`（`37bd872`，`src/Pzd.AppHost/Program.cs:85`）无条件保留。** 三条理由：只影响 `web` 一个资源；宿主环境改成 Development 时确实会绿，但删掉后任何宿主环境为 Production 的场景（CI、容器、别人机器）立刻复发；反对用 `launchSettings.json` 根治（会把整个 AppHost 带进 Development，翻转所有 `IsDevelopment()` 分支）。
 
-**A11 通过 @ `db17a9b`。** 那一轮 aspire `EXIT=0`、脚本 8 条 `[ok]`，其中三条正是 A11 要的：`X-Pzd-Run-Id` 前端头与 `/api/version` **同 runId**（`f730b9e2…`）、前端 pid **22096**、`/` 回 **SPA 外壳**。归属判据满足「不能只证明版本相同」——同 runId + 具体 pid + 内容形态三项同时成立。
+**A11 通过（主仓正向）@ `affad87`。** 主仓 `E:\pzd` 上完整验收 `EXIT=0`、**8 条 `[ok]` 全绿**，原文入库 `docs/reports/verify-apphost-main-affad87.log`（21 行，GBK）：`/api/version 0.1.1-alpha.0.237+affad87`、`X-Pzd-Run-Id 与本次运行一致（1a345d7f…）`、前端 `127.0.0.1:5199` 同 runId（pid 3608）且为 SPA 外壳、`/` 无租户仍 400。
 
-**边界：副本树，不是主仓。** 按老何口径，干净副本的有效证据可验收，主仓故障单列（见 13.5）。
+升档三条件逐条核过（不是照转述）：
+
+1. 三条判据齐：版本三字段、前端头同 runId、`/` 回 SPA 外壳；
+2. 脚本**先入库再引用**：sha256 `eff9a210cb6fb1b17e4e426e4392ebecbaab18fa52b8462349d3e38596db162d`，与 `git show affad87:scripts/verify-apphost.ps1` 及工作区三方逐字节一致；
+3. 单变量仍是 exe 位置：同一份 `bin/Debug/net10.0` **原样复制、不重 build**，cwd 仍 `src/Pzd.AppHost`，日志自报「树内 exe 带受限完整性标签 → 树外副本」。
+
+先前锚点 `db17a9b`（副本树，runId `f730b9e2…`、pid `22096`）**不撤**，作为跨树第二份并列保留。后续主仓 aspire 一律走 `affad87` 起的自适应分支（判据：树内 exe 完整性标签非 Medium/High 才走树外副本）；`-Mode api` 路径未变，08/09 证据不受影响。
 
 ### 13.3 票 08 / 09
 
@@ -427,11 +433,20 @@ REAL_EXIT=0
 
 第 4 条我本人踩过：曾用 `Program.cs` 的 `mtime 01:47` 反推「00:07 那轮不是注释态」，属同类错误，已收回。
 
-### 13.5 剩余已知限制
+### 13.5 主仓 `E:\pzd` 的环境限制（已定因，绕行已验证）
 
-**主仓 `E:\pzd` 根目录 ACL 被 Aspire 的临时目录加固污染**（显式 `Deny Everyone / DeleteSubdirectoriesAndFiles`、AppContainer SID、整棵仓库带低完整性标签），导致主仓跑 aspire 在 DCP 会话目录创建阶段被拒（`Locations.GetOrCreateDcpSessionDir` → `CreateTempSubdirectory`；同一秒 `SocketPermissionHelper.CreateSecurityInfo` 也被拒）。删除 `.aspire-tmp` 无效——受限 ACE 是 `(I)` 继承自根，重建即回。
+**根因**：`E:\pzd` 根目录带 `Mandatory Label\Low Mandatory Level:(OI)(CI)(NW)`——属 **SACL 的强制完整性标签，不是 Deny ACE**——继承给整棵树，树内每个 exe 也带 `(I)(NW)`；**从这类 exe 启动的进程，令牌直接是 Low**。对照：`E:\pzd-webcheck` 与 `E:\` 都无标签行。
 
-- 定性：**失败阶段已定性；指向根 ACL 是当前最强假设，未定案。** 定案需修完 ACL 后在**同一棵树**上做前后对照。
-- 修复需用户批准；备份与回滚已就绪（`icacls /save` 到 `artifacts/acl-backup-pzd.txt`，32,472 项）。
-- `exit -532462766`（`0xE0434352`）是 .NET 未处理异常的通用退出码，**不作因果证据**；只用上面两个调用点。
-- 不影响 §13.1 的四项结论。
+后果有三条，**分开记，不合并**：
+
+| 现象 | 原因 | 性质 |
+| --- | --- | --- |
+| 主仓 aspire 建 DCP 会话目录被拒（`Locations.GetOrCreateDcpSessionDir` → `CreateTempSubdirectory`） | Low 进程写不进 Medium 目录（no write up） | 致命；绕行后已全绿（见 13.2） |
+| `dotnet test` 握手失败 `UnauthorizedAccessException @ NamedPipeClientStream.TryConnect`，退出码 `-532462766`（`0xE0434352`） | 同一机制：树内 testhost 是 Low，连 Medium 侧 vstest 的命名管道被拒 | 致命；**成对实验**：同一条命令 `dotnet test tests/Pzd.SharedKernel.UnitTests`，无标签树 `C:\tmp\pzd-db17` → 35/35 通过 `EXIT=0`；`E:\pzd` → 上述失败。唯一变量是树 |
+| `SetSecurityInfo` / `CreateSecurityInfo` 被拒 | 令牌缺 `SeSecurityPrivilege` | **非致命**：只是 orchestration logging warning，**Medium 轮里同样出现**，从来不是主因 |
+
+- **不能就地修标签**：`/reset` 删不掉标签；`/setintegritylevel` 要 `SeSecurityPrivilege`，当前令牌没有（`whoami /priv` 查不到）。有效权限实测 `writeDac=true`/`writeOwner=true`，但那只管 DACL，管不到 SACL。备份与回滚就绪（`icacls /save` → `artifacts/acl-backup-pzd.txt`，32,472 项），但**修不修都需要管理员权限**，绕行不需要。
+- **绕行（已验证，不动任何权限）**：aspire 把 `bin/Debug/net10.0` 原样复制到树外启动（`d630247` 起自适应）；测试同理，把 `tests/<工程>/bin/Debug/net10.0` 复制到树外跑。
+- **我先前那条“`dotnet test` 与会话沙箱有关、与 ACL 无关”已撤回**——它把现象归到了错误的层，现在的 A/B 原文即上表第二行。
+- `0xE0434352` 单独出现时只是 .NET 未处理异常的通用退出码，**不单独作因果证据**；因果只挂在上面两个具体调用点上。
+- **不影响 §13.1 的四项结论**：08/09 走 `-Mode api`（实测在带标签的树上照常通过，不需要写 Medium 目录、也不需要跨 Medium 侧 IPC）；A5/A11 都在绕行路径上复验过。
