@@ -14,9 +14,11 @@ PZD 由多个 Bot 并行开发，但此前分工没有成文，步骤 1–2 期�
 
 ## Decision
 
-`AGENTS.md`「Bot 分工」一节是现行规则，要点如下：
+> 下面「票用 GitHub Issues」和「审计结论写在 PR 评论里」两条，已被[导入 pzd_Workflow 通用规则](2026-10-28-adopt-pzd-workflow.md)取代：票改放在仓库内 `docs/work/`，审计结论写进票文件，worktree 统一放在 `.worktree/<票号>/`。其余各条仍然成立。
 
-- **四个角色**：维护者（用户本人）、调度 Bot、实现 Bot、审计 Bot。各角色职责和禁止事项见 `AGENTS.md` 的角色表。架构决定和合并到 `main` 只由维护者做。
+[`.ai/规则/Bot分工.md`](../../../../.ai/规则/Bot分工.md) 是现行规则，要点如下：
+
+- **四个角色**：维护者（用户本人）、调度 Bot、实现 Bot、审计 Bot。各角色职责和禁止事项见 `.ai/规则/Bot分工.md` 的角色表。架构决定和合并到 `main` 只由维护者做。
 - **票用 GitHub Issues**，通过留言认领。一张票对应一个分支、一个 PR，分支命名为 `feat|fix|docs|chore/<票号>-<主题>`，从 `main` 拉，同步只用 `git merge main`。
 - **一个工作树同一时间只允许一个写入方**：每个实现 Bot 在自己的 `git worktree` 里工作。开工前看到不属于自己的未提交改动，必须停下报告，不许删除或覆盖。
 - **交接必须带四项**：目标、commit hash、验证命令和原样输出、遗留问题，缺一项接手方直接退回。
@@ -48,6 +50,6 @@ PZD 由多个 Bot 并行开发，但此前分工没有成文，步骤 1–2 期�
 
 ## Verification
 
-- `AGENTS.md` 有「Bot 分工」一节，包含角色表、票与认领、单写入方、交接四项、完成与合并五个小节。
-- `AGENTS.md`「提交」一节有署名规则，并给出了 `git -c user.name=… -c user.email=… commit` 示例。
+- `.ai/规则/Bot分工.md` 包含角色、票、单写入方、交接与审计结论、完成与合并、提交六节。
+- `.ai/规则/Bot分工.md`「6. 提交」有署名规则，并给出了 `git -c user.name=… -c user.email=… commit` 示例。
 - 规则生效之后，`git log --format='%an <%ae>'` 里的 Bot 提交都应该是 `PZD-…Bot` 身份，且提交信息里没有 `Co-Authored-By`。

@@ -13,8 +13,8 @@ Status: implemented
 ## Decision
 
 - 删除 `.agents/skills/write-notes-like-deepseek/` 和 `skills-lock.json`，仓库里不再有任何外部技能或校验脚本。
-- `AGENTS.md`「决策笔记规则」一节自包含：判定、检索、落位与流转、三种笔记的骨架、归档做法、提交前自查 8 条，全部写在这一个文件里。
-- 卡控方式是规则加自查：没有机器检查，agent 每次改了笔记，提交前都要按 `AGENTS.md` §5 逐条核对，并向用户汇报缺口。
+- `.ai/规则/决策笔记.md` 自包含：判定、检索、落位与流转、三种笔记的骨架、归档做法、提交前自查 8 条，全部写在这一个文件里；`AGENTS.md` 只在路由表里指向它。
+- 卡控方式是规则加自查：没有机器检查，agent 每次改了笔记，提交前都要按 `.ai/规则/决策笔记.md` §5 逐条核对，并向用户汇报缺口。
 - 归档不再使用 SHA-256 封印和 `manifest.json`。只把笔记 `git mv` 到 `archived/`，加一行 `Archived: yyyy-mm-dd`，之后不再修改；用 `git diff --cached -- .agents/notes/archived/` 确认没人改动已归档的笔记。
 - 笔记的目录结构、6 个类别、头块格式与之前一致，已有笔记不用迁移。
 
@@ -26,15 +26,15 @@ Status: implemented
 
 ## Consequences
 
-- **收益**：规则只有 `AGENTS.md` 一处，不用在规则和技能文档之间来回查。提交前不需要 Node，agent 自己就能做完全部检查。仓库不跟踪任何第三方文件。
+- **收益**：决策笔记规则只有 `.ai/规则/决策笔记.md` 一处，不用在规则和技能文档之间来回查。提交前不需要 Node，agent 自己就能做完全部检查。仓库不跟踪任何第三方文件。
 - **代价**：没有任何东西能机械地拦住格式错误、缺节、`Status` 和文件夹对不上、断链，或者有人改了已归档的笔记，全靠 agent 遵守规则、用户在评审时把关。归档篇失去了哈希封印，「只增不改」只能靠 `git diff` 自查和 git 历史追溯。
 - **重访信号**：只要出现一次以下情况，就改用自写校验脚本加 pre-commit 钩子（上面第二个备选）：提交进 main 的笔记结构不合规（缺节、`Status` 与文件夹不一致、断链），或者已归档的笔记被修改。
 
 ## Verification
 
 - `git ls-files .agents/` 只列出 `.agents/notes/` 下的笔记，没有 `.agents/skills/`；仓库里也没有 `skills-lock.json`。
-- 用下面的命令在 `AGENTS.md`、`README.md`、`.agents/notes/` 里搜，除了本篇和上一篇追溯来源的文字，没有其他命中：
+- 用下面的命令在 `AGENTS.md`、`.ai/`、`.agents/notes/` 里搜，除了本篇和上一篇追溯来源的文字，没有其他命中：
 
   ```bash
-  rg -n "write-notes-like-deepseek|npx tsx|skills-lock|\.agents/skills" AGENTS.md README.md .agents/notes/
+  rg -n "write-notes-like-deepseek|npx tsx|skills-lock|\.agents/skills" AGENTS.md .ai/ .agents/notes/
   ```

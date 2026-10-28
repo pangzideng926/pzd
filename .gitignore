@@ -1,53 +1,34 @@
-# Build output
-bin/
-obj/
-artifacts/
-
-# Rider / VS
-.vs/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-.idea/
-
-# Test results
-TestResults/
-*.trx
-coverage/
-*.coverage
-
-# Node
-node_modules/
-.turbo/
-.pnpm-store/
-dist/
-build/
-*.tsbuildinfo
-
-# React Router typegen output
-.react-router/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Local config / secrets
-*.local.json
-appsettings.local.json
+# 凭据与本地配置：任何时候都不入库（工作原则 A4）
+local.env
+*.local.env
 .env
 .env.*
 !.env.example
-local.env
-*.local.env
-
-# DSH tooling artifacts
-.dsh-ops/
-
-# Data Protection 本地密钥环（票 08：路径来自 DataProtection:KeyPath，密钥不入库）
+*.local.json
 .dp-keys/
 
-# Aspire DCP 会往 TEMP 里建会话目录；受限令牌写不动系统 TEMP 时脚本把 TEMP/TMP 指到这里
-# （见 scripts/verify-apphost.ps1）。属于运行期产物，不入库。
-.aspire-tmp/
+# pzd_Workflow 约定的目录：任务 worktree、一次性产物、恢复备份、归档、回收站
+.worktree/
+.tmp/
+backups/
+归档/
+回收站/
 
+# 构建与依赖产物（按 architecture.md 重新实现后会出现）
+bin/
+obj/
+artifacts/
+TestResults/
+node_modules/
+.turbo/
+build/
+dist/
+.react-router/
+*.tsbuildinfo
+
+# IDE 与系统
+.vs/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
