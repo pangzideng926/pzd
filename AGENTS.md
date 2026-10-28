@@ -21,6 +21,23 @@ PZD 是模块化单体后台系统，采用轻量 SDD、关键逻辑 TDD，速�
 - 首次处理本项目任务，必须读取并遵循 [.ai/规则/工作原则.md](.ai/规则/工作原则.md)；本会话已加载则跳过。读取范围、写入意图与停止条件以其 B 节为准。
 - 用户明确更新规则或恢复任务时，重读本次变更或任务依赖的现行规则；「已加载跳过」仅适用于内容未变的文件。
 - 多 Bot 协作时，开场先按 [Bot分工](.ai/规则/Bot分工.md) 说明自己的角色和 git 身份。
+- **接手任务或用户说「继续」时，先找票再动手。** 在仓库根目录依次运行，Git Bash、PowerShell 5.1 和 7 通用；PowerShell 里中文显示成乱码时，先运行 `[Console]::OutputEncoding = [Text.Encoding]::UTF8`：
+
+  ```bash
+  git --version
+  git fetch -q origin
+  git grep -n -A1 -E -f docs/work/.find-tickets/open.txt -- docs/work/
+  git grep -n -A1 -E -f docs/work/.find-tickets/claimed.txt $(git for-each-ref --exclude=refs/remotes/origin/HEAD --format='%(refname:short)' refs/remotes/origin/) -- docs/work/
+  git ls-files docs/work/
+  git worktree list
+  ```
+
+  - 第一条失败说明没有 git，第二条失败说明拿不到远端最新状态，都按 [Bot分工：找票](.ai/规则/Bot分工.md#找票) 的退路处理：只读汇报，不认领。
+  - 第三条列出当前 checkout 里未完成的票；第四条列出各远端分支上**已被认领**的票。认领只发生在任务分支上，main 上同一张票仍显示「待实施」，**以分支上的状态为准**。`-A1` 带出的下一行是主写入者。
+  - 第五条只用来防误判：前两条 grep 没有输出，第五条却列出了 `tickets/` 下的票，说明是搜索失败，不是没有票。
+  - 第六条看本机其他 worktree：未推送的工作不算认领，但出现同票号的 worktree 时，先问维护者，不要并行开工。
+  - 找完票再按需读记忆：`.ai/记忆.md` 还是空白模板时跳过，有真实内容时读与这张票相关的部分。
+  - 只列出、不自动认领；候选不止一张又无法从上下文判断时让用户选。
 - 新会话或跨工具接手时按需读 [.ai/记忆.md](.ai/记忆.md)，有具体交接只读对应文件；不扫描全部历史。
 - 保留用户和其他 AI 的未提交改动，不输出或记录凭据；未经明确允许，不主动操作电脑界面。
 

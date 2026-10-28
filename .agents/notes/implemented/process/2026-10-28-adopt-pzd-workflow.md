@@ -67,5 +67,5 @@ Status: implemented
 - 用下面的命令在 PZD 专项规则里搜，只命中「文字编辑」类的说法，不再有「删除文件」的规定：
 
   ```bash
-  rg -n "删" AGENTS.md .ai/规则/Bot分工.md .ai/规则/决策笔记.md
+  git grep -n "删" -- AGENTS.md .ai/规则/Bot分工.md .ai/规则/决策笔记.md
   ```

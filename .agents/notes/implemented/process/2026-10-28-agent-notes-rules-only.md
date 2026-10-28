@@ -36,5 +36,5 @@ Status: implemented
 - 用下面的命令在 `AGENTS.md`、`.ai/`、`.agents/notes/` 里搜，除了本篇和上一篇追溯来源的文字，没有其他命中：
 
   ```bash
-  rg -n "write-notes-like-deepseek|npx tsx|skills-lock|\.agents/skills" AGENTS.md .ai/ .agents/notes/
+  git grep -n -E "write-notes-like-deepseek|npx tsx|skills-lock|\.agents/skills" -- AGENTS.md .ai/ .agents/notes/
   ```
