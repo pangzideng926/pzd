@@ -6,7 +6,7 @@ Claude Code 通过 `CLAUDE.md` 里的 `@AGENTS.md` 引用加载本文件；规�
 
 ## 决策笔记规则
 
-本节是 [write-notes-like-deepseek](https://github.com/czm15053/write-notes-like-deepseek) 技能（项目级安装在 `.agents/skills/write-notes-like-deepseek/`）的项目内精简版。**本节与技能原文冲突时以本节为准**；格式细节、归档流程查技能的 `SKILL.md` 与 `references/`。
+本节自包含，不依赖任何外部技能或脚本。**没有机器检查，全靠这里的规则**：每条都是硬性要求，提交前必须按 §5 逐条自查。
 
 ### 1. 先判要不要写
 
@@ -25,50 +25,90 @@ rg --hidden --glob '!.agents/notes/archived/**' "<关键词>" .agents/notes/
 
 ### 3. 写在哪、改哪篇
 
-- 路径：`.agents/notes/{proposed|implemented|rejected|archived}/{feature|bug-fix|simplification|architecture|process|testing}/yyyy-mm-dd-主题.md`。日期是**首次提出日**，之后不改；只有这 6 个类别，没有 `refactor`（行为变了归对应类，没变归 `simplification`）。
+- 路径：`.agents/notes/{proposed|implemented|rejected|archived}/{feature|bug-fix|simplification|architecture|process|testing}/yyyy-mm-dd-主题.md`。
+  - 日期是**首次提出日**，之后不改；主题用小写英文加连字符。
+  - 只有这 6 个类别，没有 `refactor`：行为变了归对应类，没变归 `simplification`。
 - **优先原地更新**：路径、类名、默认值等事实变了，直接改持有该决定的那篇，不追加流水账。
 - **决定或理由翻转就新开一篇**并互链，不许把旧篇的 `## Decision` 改成反面。
-- 新想法先写 `proposed/`；落地时在**同一个提交**里挪到 `implemented/`，`Status` 改成 `implemented`，`## Proposal` 改成现在时的 `## Decision`，`## Acceptance criteria` / `## Risks` 并进 `## Consequences`。
-- 写新篇时当场审计同主题旧篇：无关 / 部分重叠（互链）/ 完全吸收（删或归档）/ 过时提案（转 rejected 或删）。不许留到以后。
-- 过时提案转 `Status: rejected — <原因>`，**不许归档**；没有防坑价值的被否记录直接删。归档只用 `archive-agent-note.ts`，归档篇不可再改。
+  - 部分取代：两篇都留，互相加相对链接，旧篇只更新仍然成立的事实。
+  - 完全取代：新篇接管旧篇全部独特的理由、备选和后果，改完所有指向旧篇的链接后删除旧篇；旧篇仍有独立参考价值才归档。
+- 新想法先写 `proposed/`；落地时在**同一个提交**里挪到 `implemented/`：`Status` 改成 `implemented`，`## Proposal` 改成现在时的 `## Decision`，`## Acceptance criteria` / `## Risks` 并进 `## Consequences`，删掉计划段。
+- 写新篇时当场审计同主题旧篇，逐篇归为：无关 / 部分重叠（互链）/ 完全吸收（删或归档）/ 过时提案（转 rejected 或删）。不许留到以后。
+- 过时提案转 `Status: rejected — <一句话原因>`，**不许归档**；没有防坑价值的被否记录直接删。
+- **归档**：只对已完成、以后参考价值低的 `implemented` 笔记做。用 `git mv` 挪到 `archived/<同类别>/`，在 `Status: implemented` 下一行插入 `Archived: yyyy-mm-dd`。归档后**永不再改**，指向替代者的链接写在新篇里，不写进归档篇。
 
 ### 4. 怎么写
 
-前三行固定，`Status` 必须与所在文件夹一致：
+正文用简体中文；`Agent Note:`、`Status:`、`Archived:` 和节标题保持英文，方便检索。前三行固定，`Status` 必须与所在文件夹一致。
+
+**implemented**（`## Decision` 一律现在时，不许出现 `## Proposal` / `## Plan` / `## Acceptance criteria` 这类计划标题）：
 
 ```markdown
 # Agent Note: <标题>
 
 Status: implemented
+
+## Problem
+
+<什么破了、什么要变、不做会怎样；删掉 Decision 后这段仍然成立>
+
+## Decision
+
+<已落地的事实。可在后面加契约、Schema、包拓扑等自由节>
+
+## Alternatives considered
+
+- **<备选>** — 最强理由：<…>。没选，是因为<具体条件>。
+
+## Consequences
+
+- **收益**：<…>
+- **代价**：<…>
+- **重访信号**：<出现什么情况必须重新评估>
+
+## Verification
+
+<可选：哪条路径、跑什么命令能证明这个决定仍然生效>
 ```
 
-- 正文用简体中文；`Agent Note:`、`Status:` 和节标题保持英文，脚本靠它们核对。
-- `implemented` 的骨架：`## Problem` → `## Decision`（现在时）→ 自由节 → `## Alternatives considered` → `## Consequences`，可加 `## Verification`。`proposed` 用 `## Proposal` / `## Acceptance criteria` / `## Risks`。模板在技能的 `templates/`。
-- `## Problem` 脱离方案也要成立：什么破了、什么要变、不做会怎样。
-- `## Alternatives considered` 必填，只写**真考虑过**的方案，每个先写它最强的理由再否定；确实没有就写「无」，不许编。
-- `## Consequences` 同时写收益和代价，写明什么信号出现时要重访；没有基线就不写「更快」「提升」这类相对量词。
-- 笔记互相引用用相对 Markdown 链接，不用裸编号。
+**proposed**：头块写 `Status: proposed`，骨架为 `## Problem` → `## Proposal`（可用将来时）→ 自由节 → `## Alternatives considered` → `## Acceptance criteria`（什么可观察状态算完成）→ `## Risks`（风险与已知取舍）。
 
-### 5. 提交前校验
+**rejected**：头块写 `Status: rejected — <一句话原因>`，正文保持被否时的 proposed 原样，不改写成反面。
 
-写完或改完任何笔记都必须跑，全绿才能提交；不许以「没配 npm script」为由跳过：
+内容要求：
 
-```bash
-npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-tree.ts
-```
+- `## Alternatives considered` 必填，只写**真考虑过**的方案，每个先写它最强的理由再否定，否定理由落到具体条件；确实没有就写「无」，不许编。
+- `## Consequences` 收益和代价都要写；简化类必须写已知上限和重访信号；没有基线就不写「更快」「提升」这类相对量词。
+- 笔记互相引用用相对 Markdown 链接，不用裸编号；一个事实只在一篇里讲透，其他篇链过去。
 
-```bash
-npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-agent-note-format.ts
-```
+### 5. 提交前自查（每次必做）
 
-```bash
-npx tsx .agents/skills/write-notes-like-deepseek/scripts/verify-archived-agent-notes.ts
-```
+改了任何笔记，提交前逐条核对，有一条不满足就先修再提交：
 
-脚本只管结构。写完再按技能的 `references/quality-gate.md` 自检语义，只向用户报缺口和写得好的地方，不超过 5 行。
+1. 路径是 `.agents/notes/<生命周期>/<6 类之一>/yyyy-mm-dd-主题.md`，日期是首次提出日。
+2. 第 1 行是 `# Agent Note: <标题>`，第 3 行是 `Status: …`，状态与所在文件夹一致；`rejected` 带原因，归档篇紧跟一行 `Archived: yyyy-mm-dd`。
+3. 必备节齐全且顺序正确；`implemented` 里没有计划类标题，`Decision` 是现在时。
+4. `## Alternatives considered` 里每个备选都先写了最强理由；没有编造的选项。
+5. `## Consequences` 同时有收益和代价。
+6. 笔记里的相对链接都能打开：先列出所有相对链接（不含 `http`、`#` 开头的），再逐个确认目标文件存在，路径相对笔记自己所在的目录：
+
+   ```bash
+   rg -o '\]\([^)h#][^)]*\)' .agents/notes/
+   ```
+
+7. 没有改动 `archived/` 下的任何文件：
+
+   ```bash
+   git diff --cached --name-only -- .agents/notes/archived/
+   ```
+
+   输出必须为空。只有新归档的那一次提交例外，且只能是新增文件。
+
+8. 笔记和它记录的代码改动在同一个提交里。
+
+自查完向用户汇报，不超过 5 行：只说缺口（每条附具体修法）和写得好的地方。
 
 ## 提交
 
 - 提交保持单一主题，提交信息用 `feat|fix|test|docs|chore(scope): …`。
 - 笔记与它记录的改动放在**同一个提交**里。
-- 技能文件 `.agents/skills/` 与 `skills-lock.json` 入库；不要手改技能文件，升级用 `npx skills` 重新安装。

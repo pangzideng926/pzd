@@ -10,7 +10,9 @@ Status: implemented
 
 ## Decision
 
-- 仓库只跟踪 `docs/architecture.md`、`README.md`、`AGENTS.md`、`CLAUDE.md`、`.editorconfig`、`.gitignore`，以及决策笔记和技能文件。实现代码、工程配置、`docs/specs`、`docs/notes`、`docs/reports` 全部删除；清空前最后一个完整提交是 `d34cf66`。
+> 下面第 3–5 条（采用技能、以技能为底的精简规则、`npx tsx` 校验）已被 [决策笔记去掉外部技能，全靠 AGENTS.md 规则卡控](2026-10-28-agent-notes-rules-only.md) 取代，现行做法以那篇为准；其余各条仍然成立。
+
+- 仓库只跟踪 `docs/architecture.md`、`README.md`、`AGENTS.md`、`CLAUDE.md`、`.editorconfig`、`.gitignore`，以及 `.agents/notes/` 下的决策笔记。实现代码、工程配置、`docs/specs`、`docs/notes`、`docs/reports` 全部删除；清空前最后一个完整提交是 `d34cf66`。
 - `docs/architecture.md` 保持原样，仍然是上游架构的唯一来源。
 - 决策记录采用 write-notes-like-deepseek 技能：项目级安装在 `.agents/skills/write-notes-like-deepseek/`，用 `skills-lock.json` 锁定来源；笔记放在 `.agents/notes/`。
 - 项目内执行的是 `AGENTS.md`「决策笔记规则」一节里的精简版规则，与技能原文冲突时以 `AGENTS.md` 为准；`CLAUDE.md` 只有一行 `@AGENTS.md`，供 Claude Code 加载。
@@ -31,5 +33,5 @@ Status: implemented
 
 ## Verification
 
-- `git ls-files` 只列出上述文件，加上 `.agents/` 下的笔记与技能文件、`skills-lock.json`。
-- 在仓库根目录跑 `AGENTS.md`「提交前校验」里的三条 `npx tsx` 命令，全部通过。
+- `git ls-files` 只列出上述文件，加上 `.agents/notes/` 下的笔记。
+- 笔记的提交前检查方式见[取代篇](2026-10-28-agent-notes-rules-only.md)。

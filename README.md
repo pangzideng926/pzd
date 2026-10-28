@@ -7,13 +7,7 @@ PZD 是一个模块化单体后台系统（.NET 10 + React Router SPA）。仓�
 
 ## 决策笔记
 
-决策笔记采用 [write-notes-like-deepseek](https://github.com/czm15053/write-notes-like-deepseek) 技能，存放在 `.agents/notes/{proposed|implemented|rejected|archived}/{类别}/yyyy-mm-dd-主题.md`。技能已随仓库提交在 `.agents/skills/`，版本由 `skills-lock.json` 锁定；升级时在仓库根目录重新安装：
-
-```bash
-npx skills add czm15053/write-notes-like-deepseek
-```
-
-规则与提交前的校验命令见 [AGENTS.md](AGENTS.md)。决策笔记在 [`.agents/notes/`](.agents/notes/)。
+非平凡改动的「为什么这样做、放弃了什么」记在 [`.agents/notes/`](.agents/notes/)，路径为 `{proposed|implemented|rejected|archived}/{类别}/yyyy-mm-dd-主题.md`。规则、模板和提交前自查清单全部在 [AGENTS.md](AGENTS.md)，不依赖外部技能或脚本。
 
 ## 历史
 
