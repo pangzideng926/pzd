@@ -1,149 +1,24 @@
 # PZD
 
-PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端）。当前处于第二轮，范围是架构文档 §18 的**步骤 1（工程底座）**与**步骤 2（横切能力）**；登录外壳与业务模块留到后续轮次。
+PZD 是一个模块化单体后台系统（.NET 10 + React Router SPA）。仓库目前**只保留架构设计**，实现代码已清空，之后按架构文档重新实现。
 
-> 文档入口：[架构](docs/architecture.md) · [规格](docs/specs/foundation.md) · [票](docs/specs/tickets.md) · [测试/审计/交接](docs/reports/)
+- 架构：[docs/architecture.md](docs/architecture.md)（技术选型、分层与依赖规则、多租户、异常处理、实施路线 §18、ADR §19）
+- AI 协作约定：[CLAUDE.md](CLAUDE.md)（重要改动必须先留决策笔记）
 
-## 当前进度（2026-10-28）
+## 决策笔记
 
-| 票 | 内容 | 状态 |
-|---|---|---|
-| 01 | 仓库与 .NET 骨架 | ✅ 审计通过 |
-| 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
-| 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
-| 02 | 前端 monorepo 骨架 | ✅ 审计通过（`57c226e`，[review-02](docs/reports/review-02.md)） |
-| 03 | Aspire 编排 + 健康检查/版本端点 | ✅ 后端面审计通过（`f778a32`，[review-03](docs/reports/review-03.md) §9）；前端腿在 aspire 下未单独标通过（审计口径，见 review-03） |
-| 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
-| 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
-| 07 | UoW + Outbox + 领域事件 | ✅ 审计通过（`7f699c5`，185 条，[review-07](docs/reports/review-07.md)） |
-| 08 | 可观测性 + 审计 + 安全横切 | ✅ 审计通过（锚 `e8f2e2d`，229 条，[test-report-08](docs/reports/test-report-08.md)） |
-| 09 | Quartz + 健康检查 + 版本 | ✅ 审计通过（锚 `6b67c2d` + 当时脚本，[test-report-09](docs/reports/test-report-09.md)）；当前脚本 + `68f0bef` 复跑通过 |
-| 10 | 租户隔离集成测试 | ✅ 审计通过（锚 `204f93e`，11/11，四条变异全红，[review-10](docs/reports/review-10.md)） |
-| 11 | CLAUDE.md + 一键验收脚本 | 进行中：A10 ✅ `79bbe36`、A12 ✅ `562fd88`、A13 ✅ `16bd0f4`、A11 ✅ 主仓正向 `affad87`（[日志原文](docs/reports/verify-apphost-main-affad87.log)）；`CLAUDE.md` 未交付 |
+决策笔记采用 [write-notes-like-deepseek](https://github.com/czm15053/write-notes-like-deepseek) 技能，存放在 `.agents/notes/{proposed|implemented|rejected|archived}/{类别}/yyyy-mm-dd-主题.md`。首次使用先在仓库根目录安装技能：
 
-验收结论一律锚「代码 hash + 脚本 hash」两个坐标（[交接 §4.5](docs/reports/handover-01-04.md)）。各票的证据链、复审过程与口径细节在 [`docs/reports/`](docs/reports/)，README 只记结论。
-
-### 必须知道的约束与遗留
-
-- **`XSRF-TOKEN` 无人发放**（票 08）：登录壳落地时必须同时提供，否则前端所有 POST 都会 400。
-- **Outbox 三条口径**（票 07）：多处理器部分失败重放是明确遗留（与步骤 3 Outbox 落库同批）；事务只有补偿删除，不等于已回滚验证；拒绝 ≠ 死信队列（本轮只有终态标记）。
-- **Quartz**（票 09）：`qrtz_execution_history` 是可选预留、未接线（不是缺陷，要用就在 `QuartzRegistration` 加 `UseExecutionHistory()`）；`QRTZ_TRIGGERS` 时间列是 .NET ticks，不是 Unix 毫秒。
-- **A5 前端崩溃已修**（`bf08bd4` + `4485ca0` + `37bd872`）：`react-router` 7.18.4 默认 `entry.server` 的 `abort` TDZ 缺陷，被注入 `NODE_ENV=production` 时触发。AppHost 钉住 `NODE_ENV=development` 解决「不再崩」，自定义 [`entry.server.tsx`](apps/web/app/entry.server.tsx) 解决「崩了也看得见、失败不留定时器」——**两者都不能撤**，也不许靠删 `setTimeout` 绕过。根因与证据见[交接 §5](docs/reports/handover-01-04.md)、[a5-evidence-331fac3](docs/reports/a5-evidence-331fac3.md)。
-- **`run-id` 头**：vite 回 `X-Pzd-Run-Id` 必须用 `configureServer` 最前置中间件，不能用 `server.headers`（后者不覆盖 `/`）。接线靠源码守卫、写头靠实跑，仍没有注入态的 HTTP 自动化测试。
-- A13 退出清理超时只 `[warn]`、不 `exit 2`（判决语义若改需老何裁定）。
-
-## 多租户内核（票 05）
-
-- 解析顺序：登录 claim `tid`（忽略 `X-Tenant`）→ 匿名 `X-Tenant` → 子域名；每个请求重新查 `ITenantStore`，`ITenantContext` 为 Scoped、不跨请求。
-- 停用/过期：中间件直接 403（`Tenant.Disabled` / `Tenant.Expired`）；`Tenants` 配置在启动期严格校验，非法值启动失败。
-- 连接：每租户独立 `SqlSugarScope`，懒加载 + 双检 + `ConcurrentDictionary`；禁止 `ChangeDatabase`，架构测试扫描 `src/Pzd.*`。
-- 后台任务：用显式 `GetConnectionScopeAsync(tenantId)`（每次校验状态）；无参重载已改名 `GetCurrentConnectionScopeAsync`（票 07 F-07-1），后台路径禁止使用。
-
-## 异常处理（票 06）
-
-- 端点返回 `Result` / `Result<T>`，`ToHttpResult()` 映射为准确的 200/204/400/401/403/404/409/422/426/503 ProblemDetails；`type = https://pzd/errors/{kebab-code}`，`traceId` 与 `X-Trace-Id` 同源。
-- `ProblemDetailsWriter` 是唯一实现：租户中间件短路、`ToHttpResult`、全局异常、框架 401/403 兜底共用一份；404/405 保持 `Http.*`，空 body 的 401/403 落 `Auth.*`。
-- 未知异常 500 不带堆栈/类型名；`errors` 键在出口统一 camelCase（FluentValidation 管线属步骤 3，本轮未验证）。
-
-## 仓库结构
-
-```text
-Pzd.slnx                     解决方案（src / tests 解决方案文件夹）
-global.json                  SDK 锁定 10.0.4xx（本机实测 10.0.402）
-Directory.Build.props        Nullable / ImplicitUsings / TreatWarningsAsErrors / MinVer
-Directory.Packages.props     NuGet 中央包管理
-NuGet.config                 packageSourceMapping，保证 restore 可复现
-src/
-  Pzd.SharedKernel/          领域原语、Result/Error、ITenantContext/IClock/ICurrentUser
-  Pzd.Infrastructure/        多租户内核（含 AllowAnonymousTenant 豁免）、ProblemDetailsWriter、UoW/Outbox（07 ✅）
-  Pzd.Api/                   最小 API + 租户中间件 + Result→HTTP / 异常处理 + 健康检查/版本
-  Pzd.AppHost/               Aspire 编排（API + Vite，引用本机 MySQL / Redis）
-tests/
-  Pzd.ArchitectureTests/     分层规则 + 租户隔离规则（ChangeDatabase）+ 反向用例
-  Pzd.SharedKernel.UnitTests/
-  Pzd.Infrastructure.UnitTests/  Pzd.Api.UnitTests/  Pzd.IntegrationTests/
-apps/web/                    React Router 7 SPA（`ssr: false`）
-packages/                    ui / api / realtime（pnpm workspace + turbo）
-db/master/                   master 库 SQL（Quartz 表）
-scripts/                     init-master-db.ps1、verify-apphost.ps1（一键验收，退出码 0/1/2）
-docs/
-  architecture.md            已确认的上游架构
-  specs/                     foundation.md（规格）、tickets.md（票）
-  notes/                     环境约定（集成测试时区/大小写等）
-  reports/                   测试报告、审计报告、交接记录
+```bash
+npx skills add czm15053/write-notes-like-deepseek
 ```
 
-## 环境要求
+规则与提交前的校验命令见 [CLAUDE.md](CLAUDE.md)。
 
-- **.NET SDK 10.0.4xx**（`global.json` 锁 `10.0.400` + `latestPatch`）
-- **Git**：MinVer 从 git tag 推导版本，`git clone` 时不要浅到丢 tag
-- 可选：本机 MySQL 8.0.46 与 Redis（Memurai）实例，供票 03/09/10 使用；无 Docker 也能完成本轮验收
-- **Node.js ≥ 22**（`package.json` 的 `engines`）与 **pnpm 12.14.0**（`packageManager` 字段锁定；用 `corepack enable` 或同版本 pnpm，别用别的包管理器，lockfile 会漂）
-- 前端票 02 已开工，`apps/web` 在 `apps/`、`packages/*` 同仓（pnpm workspace + turbo）
+## 历史
 
-## 构建与测试
+清空前的实现（步骤 1–2：工程底座与横切能力，票 01–12）以及测试、审计、交接报告都保存在 git 历史里，最后一个完整提交是 `d34cf66`：
 
-```powershell
-dotnet build Pzd.slnx -warnaserror
+```bash
+git show d34cf66 --stat
 ```
-
-五个测试工程（当前 35 + 30 + 86 + 68 + 10 = **229 条全绿**，于票 08 锚 `e8f2e2d` 实测；顺序同下，即 SharedKernel 35、架构 30、Infrastructure 86、Api 68、集成 10）：
-
-```powershell
-dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
-dotnet run --project tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj
-dotnet run --project tests/Pzd.Infrastructure.UnitTests/Pzd.Infrastructure.UnitTests.csproj
-dotnet run --project tests/Pzd.Api.UnitTests/Pzd.Api.UnitTests.csproj
-dotnet run --project tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
-```
-
-测试运行器是 xUnit v3 的 Microsoft.Testing.Platform（`tests/Directory.Build.props` 统一配置，不引用 `Microsoft.NET.Test.Sdk`）。
-
-> **为什么用 `dotnet run`**：当前工作区 `E:\pzd` 被标了 Low Mandatory Level，MTP 的 `dotnet test` 命名管道握手会失败（不是测试失败）。工作区内一律用等价的 `dotnet run --project`；普通目录或 CI 可以 `dotnet test Pzd.slnx`。
-
-## 版本号
-
-版本来自 git tag（`v0.1.0`），由 MinVer 推导：tag 提交上是 `0.1.0`，之后是 `0.1.1-alpha.0.<提交数>`。查询必须带 `-t:Build`，否则只有 MSBuild 求值默认值 `1.0.0`：
-
-```powershell
-dotnet msbuild src/Pzd.Api/Pzd.Api.csproj -t:Build -getProperty:Version
-```
-
-## 本地运行
-
-```powershell
-# 后端（票 03 的 AppHost 把 API 固定在 127.0.0.1:5080）
-dotnet run --project src/Pzd.Api/Pzd.Api.csproj
-
-# 前端（pnpm workspace；dev 端口固定 5199）
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-- **前端 dev 地址是 `http://127.0.0.1:5199/`**：`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`，并且**显式绑定 `server.host = "127.0.0.1"`**，与后端统一走 IPv4。**别把 `server.host` 留空**——留空时 Node 只绑 `::1`，此时 `curl 127.0.0.1:5199` 会连接被拒（`curl` 返回 `000`），那是假红不是服务没起来；遇到先查 `server.host` 有没有写。
-- **后端地址是 `http://127.0.0.1:5080`**，前端 dev 期把 `/api`、`/hubs` 代理到它（`/hubs` 带 WebSocket）；生产由 `Pzd.Api` 托管 `build/client`，同源部署，不需要代理。
-- **aspire 全链路**（`scripts/verify-apphost.ps1 -Mode aspire`）主仓可直接跑（`affad87` 起 8 条 `[ok]`、`EXIT=0`）：`E:\pzd` 根目录带低完整性标签，脚本会自适应把构建产物复制到树外启动，**不需要改任何权限**。启动 shell 必须能写 `%TEMP%`；DCP 起来不等于编排成功（`CreateDcpObjectsAsync` 另有两分钟超时）。细节见[交接 §5](docs/reports/handover-01-04.md)。
-- 健康检查与版本端点免租户（票 03 的 F-05-4 前置）：`/health/live`、`/health/ready`、`/api/version` 不带 claim / `X-Tenant` / 子域也返回 200，其余端点仍 400。
-
-## 配置与凭据
-
-数据库连接串与租户清单只允许通过环境变量或本地 `local.env` 注入（`local.env` 已被 `.gitignore` 忽略）：
-
-- `ConnectionStrings__master`：API 主库连接串（`appsettings.json` 里是空密码占位）
-- `Tenants__0__Id` / `Code` / `Status` / `ExpiresAt` / `ConnectionString`：租户清单（等价于 `appsettings.json` 的 `Tenants` 数组）
-- `ConnectionStrings__redis`：Redis（票 09 起使用）
-- `PZD_TEST_MYSQL`（票 10 集成测试）
-- `PZD_REDIS_TEST_DB`（票 10，约定用 `15` 号逻辑库）
-
-仓库、日志、测试报告与提交信息中**零密码**。`Tenants` 的非法值（`Status` 拼错或数字、非法 `ExpiresAt`、重复 Id/Code）会在**启动期**抛异常；`Tenants` 为空允许启动，但所有请求返回 400（不做启动期 fail-fast）；`ExpiresAt` 缺省或 `null` 视为永不过期，空字符串为配置错误、启动失败。
-
-**Outbox 重试上限**：配置键 `Outbox:MaxAttempts`，缺省 **5**。默认值只有一处定义——`OutboxOptions.DefaultMaxAttempts`；`appsettings.json` **不写**这个键（缺键即走默认），将来要改默认值只改代码那一处，否则会出现两处字面值、改了不生效。`0`、`-1`、非数字会在启动期直接抛异常，不静默回退；达到上限的消息进入终态「已拒绝」并同时写 `RejectionReason` 与 `LastError`，消息保留、同批后续消息继续处理——**「拒绝」不是死信队列**，死信表与人工重放属步骤 3。
-
-## 开发约定
-
-- 工作以 [票](docs/specs/tickets.md) 为单位，每张票完成时必须贴「验证命令 + 实际输出摘要」；失败不许标完成。
-- 测试先行：新行为先写用例；架构分层由 `tests/Pzd.ArchitectureTests` 自动拦截，不靠人工 review。
-- 提交保持单一主题，提交信息用 `feat|test|docs|chore(scope): …`。
-- **产物与生成物不入库**：`node_modules/`、`apps/web/build/`、`apps/web/.react-router/`（typegen 产物）、`*.tsbuildinfo` 都不提交；**`pnpm-lock.yaml` 必须入库**（加 `--frozen-lockfile` 才能复现），两件事别混。
-- 集成测试环境约定见 [integration-test-environment.md](docs/notes/integration-test-environment.md)：`MySqlConnector 2.6.2` 不支持连接串时区参数，每次取连接执行 `SET time_zone = '+00:00'` 并断言（连接池会重置会话）；`lower_case_table_names=1`，隔离证据只认数据行与库名。
-- 改动前先读 [规格](docs/specs/foundation.md) 对应章节与票面，不要猜 API。

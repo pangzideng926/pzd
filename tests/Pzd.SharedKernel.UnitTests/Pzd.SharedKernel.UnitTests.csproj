@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="../../src/Pzd.SharedKernel/Pzd.SharedKernel.csproj" />
-  </ItemGroup>
-
-</Project>
