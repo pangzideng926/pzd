@@ -4,26 +4,33 @@ PZD 是一个模块化单体后台系统（.NET 10，后续接入 React 前端�
 
 > 文档入口：[架构](docs/architecture.md) · [规格](docs/specs/foundation.md) · [票](docs/specs/tickets.md) · [测试/审计/交接](docs/reports/)
 
-## 当前进度（2026-10-27）
+## 当前进度（2026-10-28）
 
 | 票 | 内容 | 状态 |
 |---|---|---|
 | 01 | 仓库与 .NET 骨架 | ✅ 审计通过 |
 | 04 | SharedKernel + 架构测试基线 | ✅ 审计通过（返工后 `49ee09a`） |
 | 12 | `Error.Metadata` 只读快照（F8） | ✅ 审计通过（`1463e9e`） |
-| 02 | 前端 monorepo 骨架 | ✅ 审计通过（`57c226e` 闭环 F-02-1；报告 `review-02.md`） |
-| 03 | Aspire 编排 + 健康检查/版本端点（F-05-4） | ✅ 审计通过（`f778a32`，报告 `review-03.md` §9；A1/A2/A9 全闭环，退出码 `0/1/2` 与票面 `756c1fc` 一致） |
+| 02 | 前端 monorepo 骨架 | ✅ 审计通过（`57c226e`，[review-02](docs/reports/review-02.md)） |
+| 03 | Aspire 编排 + 健康检查/版本端点 | ✅ 后端面审计通过（`f778a32`，[review-03](docs/reports/review-03.md) §9）；前端腿在 aspire 下未单独标通过（审计口径，见 review-03） |
 | 05 | 多租户内核 + 单测 | ✅ 审计通过（`e593225`，116 条） |
 | 06 | 异常处理 + Result→HTTP | ✅ 审计通过（`abde749`，156 条） |
-| 07 | UoW + Outbox + 领域事件 | ✅ 审计通过（`7f699c5`，185 条） |
-| 08 | 可观测性 + 审计 + 安全横切 | ✅ **审计通过**（锚 `e8f2e2d`，报告 `test-report-08.md`：229 条 = 35+30+86+68+10，0 失败 0 Skip；两条覆盖边界见报告 §4，非缺陷）。**锚是 `e8f2e2d`，不是 `79bbe36`**——后者跑绿属旧契约自洽。**硬依赖一条**：现在没有任何端点发放 `XSRF-TOKEN` cookie，登录壳落地时必须同时提供，否则前端所有 POST 都会 400 |
-| 09 | Quartz + 健康检查 + 版本 | ✅ **审计通过（锚 `6b67c2d` + 当时的脚本）**，报告 `test-report-09.md`：一键脚本 exit 0、37 个 schema 对象、95s 真实驻留两次触发、重启后 job 行不重复且 `next` 推进、无连接串降级内存。**已在当前脚本 + 当前代码上复跑通过**（老登，2026-10-28，`68f0bef`）：`EXIT=0`、8 条 `[ok]`、pid 55852、runId `06b465e2…`、`/api/version 0.1.1-alpha.0.218+68f0bef`、Quartz 未退回内存（`Degraded mode:` 0 条、37 个 schema 对象、`LocalTransactionJobStore initialized`、`persistence: True, clustered: True`）。原锚 `6b67c2d` + **当时脚本**，脚本此后改了 34 增 7 删、被测代码无变动——**验收结论一律锚「代码 hash + 脚本 hash」两个坐标**（见交接 §4.5）。两条观察别误用：`qrtz_execution_history` **是可选预留、未接线**（Quartz 内置配置项，`db/master/quartz_tables.sql:203` 注释里有 `UseExecutionHistory()`，代码里零命中；不是「history 插件」，也**不是缺陷**，要用就在 `QuartzRegistration` 加一行）、`QRTZ_TRIGGERS` 时间列是 **.NET ticks 不是 Unix 毫秒** |
-| 10 | 租户隔离集成测试 | ✅ 审计通过（锚 `204f93e`，11/11、Failed 0、Skipped 0；四条变异全打红；报告 `review-10.md`） |
-| 11 | CLAUDE.md + 一键验收脚本 | 依赖 02/03/07–10（按退出码判定：0 通过 / 1 票面缺陷 / 2 环境问题）。A10 ✅ `79bbe36`、A12 ✅ `562fd88`、A13 ✅ `16bd0f4`。**A11 代码面已全部落地**：`X-Pzd-Run-Id` 响应头 + 载荷锁死三字段（`beb83f3`）、vite 回同一响应头 + AppHost 给 **vite 资源**透传 + 脚本两腿比对同一个 `$runId`（`564ae6d`；**注意不能用 `server.headers`**——它只管 Vite 自身中间件，`/` 由 RRD 文档中间件应答，实测 `/@vite/client` 带头而 `/` 不带头，故改用 `configureServer` 最前置中间件）、HTTP 管道断言（`3f2e667`）、源码级接线守卫（`0a2c998` → `d674420`：全文恰好一处 `ApiRunId.Apply(` 且必须落在 `/api/version` 端点片段内，变异「挪到 `/health/live`」必红；**三层保护 ≠ 注入态 HTTP 自动化测试**——接线靠源码守卫、写头靠实跑，仍没有自动化能在注入态打一次 `/api/version` 并断言头）、aspire 腿「取不到监听 pid 即判失败」（`728536a`）。**A11 正向证据已拿到**（aspire 全链路 `EXIT=0`，`[ok] 前端 127.0.0.1:5199 的 X-Pzd-Run-Id 与本次运行一致（pid 58668），且是 SPA 外壳`；锚 `5682cd0`，跑在干净副本里）。**✅ 老登复审通过（2026-10-28）**：锚**副本树 `db17a9b` 那一轮**，runId `f730b9e2…`；判据三项同时成立——`X-Pzd-Run-Id` 前端头与 `/api/version` **同 runId**、前端 **pid 22096**、`/` 回 **SPA 外壳**，加 8 条 `[ok]` 与 `EXIT=0`。这满足 A11 的核心要求「证明应答来自本次运行，不能只证明版本相同」（同 runId + 具体 pid + 外壳内容）。**A11 主仓正向已拿到（`affad87`，2026-10-28）**：`EXIT=0`、**8 条 `[ok]` 全绿**、runId `1a345d7f…`、前端 pid 3608、`/api/version 0.1.1-alpha.0.237+affad87`、`/` 回 SPA 外壳、`/` 无租户仍 400；脚本 sha256 `eff9a210…96db162d`（与 `git show affad87:scripts/verify-apphost.ps1` 逐字节相同），日志原文入库 `2b9a17a`（`docs/reports/verify-apphost-main-affad87.log`）。「副本树 `db17a9b`/`f730b9e2…`」作为**副本正向**保留。**根因已定**：`E:\pzd` 根目录的**低完整性标签**（SACL，带 `(OI)(CI)` 继承）→ 树内 exe 启动的子进程令牌为 Low → 写 Medium 目录、命名管道握手均被拒；**不是 Deny ACE**。`SetSecurityInfo` 那条另记：缺 `SeSecurityPrivilege`、**非致命**、Medium 轮里同样出现。**所以不需要改任何权限**：`d630247` 起脚本**自适应**（先判树内 exe 标签，非 Medium/High 才把同一份 `bin/Debug/net10.0` 复制到树外启动、cwd 仍 `src/Pzd.AppHost`、不重 build），主仓由此全绿；`dotnet test` 属同一机制（成对实验：无标签树 35/35 通过、`E:\pzd` 握手失败）。**A5 已改判为前端代码缺陷（high），不是环境/权限问题**：`react-router` 7.18.4（锁文件实为 7.18.4，`package.json` 写 `^7.8.0`）默认 `entry.server.node.tsx` 里 `setTimeout(() => abort(), 6000)`（:42，`streamTimeout 5_000` + 1000）**先于** `const { pipe, abort } = renderToPipeableStream(...)`（:47），首次文档请求进 SSR 时同步抛错 → `abort` 停在 TDZ，6 秒后定时器抛 `ReferenceError` 把进程带崩（`exit 1`），5199 自始至终无人监听；手动跑 5/5 正常是因为没人那么早请求 `/`。**修复已交付 `bf08bd4` + `4485ca0`**：`apps/web/app/entry.server.tsx` 里 `abort` 先占位（`let abort: (() => void) | undefined`）、定时器**挪到渲染成功之后才挂**（`:144`）、同步抛出在 `:126` 的 `catch` 里立即打印真错并 `reject`（`:129` 兜底 `clearTimeout`）、`:148` 到点仍未就绪则显式 `reject`（超时保护仍在）；锋哥本机 A/B 已复现因果链 `NODE_ENV=production` → `jsxDEV is not a function` → 同步抛出 → TDZ `exit 1`（同环境下自定义 entry 0.16 秒打真错、进程存活），AppHost 侧已钉住 `37bd872`（`web.WithEnvironment("NODE_ENV", "development")`：被注入 `production` 时它就是修复，没注入时是无害的显式声明），进程真实值由 `331fac3` 的 `[pzd-web] entry loaded（NODE_ENV=…）` 锚点打印（`:45`）；**判别必须读钉住之前那一跑**，之后只会显示 `development`。**根因已定位**（锋哥 A/B，同一份对照件只删 `WithEnvironment("NODE_ENV", …)` 一行）：DCP 拉起的 vite 进程 stdout 打出 `[pzd-web] entry loaded（NODE_ENV=production）`，同一秒 `[pzd/entry.server] …jsxDEV is not a function` 同步抛出；含钉住那行的对照跑（`5682cd0`）打出 `development` 且 `EXIT=0`，两边唯一差异就是那一行 → `37bd872` 是修复。另有 HTTP 级旁证（旺总，独立于日志文件）：un-pinned 实例上 `curl http://127.0.0.1:5199/` 直接 `500`，**响应体就是** `jsxDEV is not a function`，响应头 `X-Pzd-Run-Id` 与同轮 `/api/version` 一致。**进程级字符串证据已留存并复核**：该轮 web stdout 复制件在 `C:\tmp\a5-ab-331fac3-nopin\`，`web-stdout.log:17` 是 `[pzd-web] entry loaded（NODE_ENV=production）`（15:52:27.658Z），`web-stderr.log:2` 是同秒 `jsxDEV` 同步抛出——现场 `pzd-a5pre` 已删，但物证在、可复核。**入档要标清**：这是**两次运行、两棵树**拼的对照（500/production 侧＝`331fac3` 手工删钉住行；200/development 侧＝`5682cd0` 含钉住），不是单次运行内换行；`[pzd-diag]` 是 AppHost 自己打的、`[pzd-web]` 是 web stdout，两类前缀可见性不同，别互相证明。**注意归属**：那次 A/B 是谁启动的未知（是不是 DCP 拉起已由父链证明），hash 与日志原文由跑它的人给；也别把 A5 根因和 `.aspire-tmp` 的 ACL 问题混成一条，两者无关。修法分工别写混：**钉住解决「不再崩」，自定义 entry 解决「崩了也看得见、失败不留定时器」**，所以钉住生效也别撤 entry——注意 `ResourceNotifications` 的快照只反映「资源声明」，那一跑实测 `EnvironmentVariables` 共 0 项，所以「快照里没有」不能当反证；另 `artifacts/*.log` 实测是 **UTF-8**（`file -bi` 先确认再决定读法，别凭印象写死编码），**运行侧也已通过**：aspire 全链路 `EXIT=0`，44 行日志里 `web` 的 `Finished` 出现 0 次、`exitCode` 非 `-` 出现 0 次、`state=Running` 稳定收尾。老登已对 `331fac3` 逐行审计：**修复件通过**（定时器在 `abort` 回填后才挂、两个 `| undefined` 提前声明、三处 `clearTimeout`、`pzd-probe` 计数 0），但**代码通过不等于 A11 放行**；超时保护有**两版实跑**：缩短值（`streamTimeout` 200ms／限制 1.2s，2.58s 得 500）证明「到点显式中止而非挂死」；真实值（`5000`）那次返回 500 的实测总耗时是 **12.16 秒**，因为**观测到失败路径两次调用 `handleRequest`**（正常路径只有 1 次）。这条**只按观测记**：只覆盖「流永久 suspend 到超时」一种形态，同步 `catch`/`onShellError` 未测，两次的发起方未定，所以**不能写「dev SPA 模式下超时固定 12.2 秒」**，也不外推到 aspire/生产。**验收口径按老何定的「15 秒内结束并返回失败」**（6 秒是单次 entry 的保护窗口，不是请求 SLA；12.16 是实测值不是上限），资源释放只按「请求结束、后续请求正常、无未处理异常」记，不写句柄级验证。**不许靠删 `setTimeout`**——那只是拿掉掩盖层，真错还在（修完按老何四条验收：真错可见且脱敏／失败路径不遗留定时器／6 秒 SSR 超时保护仍在／脱敏机械判据；②与③是一对反作用力，「进程不崩」不能当通过信号）。诊断可见性已由 `6b67c2d`（AppHost 订阅资源状态流，打印 `web` 状态与退出码）和 `90ee1b2`（订阅中断不再静默吞异常、建订阅打锚点）补上。A13 的退出清理**超时只 `[warn]`、不 `exit 2`**（那一轮应用结论已出，清理滞后不该把整轮判成环境问题；判决语义若改需老何裁定） |
+| 07 | UoW + Outbox + 领域事件 | ✅ 审计通过（`7f699c5`，185 条，[review-07](docs/reports/review-07.md)） |
+| 08 | 可观测性 + 审计 + 安全横切 | ✅ 审计通过（锚 `e8f2e2d`，229 条，[test-report-08](docs/reports/test-report-08.md)） |
+| 09 | Quartz + 健康检查 + 版本 | ✅ 审计通过（锚 `6b67c2d` + 当时脚本，[test-report-09](docs/reports/test-report-09.md)）；当前脚本 + `68f0bef` 复跑通过 |
+| 10 | 租户隔离集成测试 | ✅ 审计通过（锚 `204f93e`，11/11，四条变异全红，[review-10](docs/reports/review-10.md)） |
+| 11 | CLAUDE.md + 一键验收脚本 | 进行中：A10 ✅ `79bbe36`、A12 ✅ `562fd88`、A13 ✅ `16bd0f4`、A11 ✅ 主仓正向 `affad87`（[日志原文](docs/reports/verify-apphost-main-affad87.log)）；`CLAUDE.md` 未交付 |
 
-票 07 已终审通过（`7f699c5`，185 条全绿：SharedKernel 35 + 架构 30 + Infrastructure 86 + Api 33 + 集成 1）：`40f016a`（F-07-1/2/3）、`001a731`（失败原因与重试、反射异常解包、零处理器/零消费者告警）、`0da4a18`（规则第二层）、`0c29633`（F-07-4 规则标识符级 + `Jobs/**`、`*Job.cs`）、`7f699c5`（F-07-5 重试上限只从 `Outbox:MaxAttempts` 读、终态同写 `RejectionReason` 与 `LastError`）。三条口径务必照写：**多处理器部分失败重放是明确遗留（与步骤 3 Outbox 落库同批）**、**事务只有补偿删除，不等于已回滚验证**、**拒绝 ≠ 死信队列（本轮只有终态标记）**。
+验收结论一律锚「代码 hash + 脚本 hash」两个坐标（[交接 §4.5](docs/reports/handover-01-04.md)）。各票的证据链、复审过程与口径细节在 [`docs/reports/`](docs/reports/)，README 只记结论。
 
-当前推进：**08、09 均已审计通过**（08 锚 `e8f2e2d`/[报告](docs/reports/test-report-08.md)；09 锚 `6b67c2d` + 当时脚本/[报告](docs/reports/test-report-09.md)，并已在**当前脚本 + `68f0bef`** 上复跑通过）；**10 已审计通过**（`204f93e`，11/11）。A5 定因已封口、**A11 已拿到主仓正向（`affad87`：8 条 `[ok]` 全绿、`EXIT=0`）**，主仓 aspire 已可跑；根因是仓库根目录的**低完整性标签（SACL）**，脚本自适应绕行，**不再需要 ACL 决策**，去掉标签只是可选根治项（需管理员特权）。**A5 → A11 这条链已闭合**：A5 是 `apps/web` 的前端缺陷（`react-router` 7.18.4 默认 `entry.server` 的 `abort` TDZ，详见票 11 行），已由 `bf08bd4` + `4485ca0` 修复，aspire 全链路才能起来；两件事是**一条链，不是并行**。票 03 后端面已审计通过（`f778a32`，`review-03.md` §9），前端腿在 aspire 下仍**不标通过**（不是断定功能坏，是这条路径既不稳也看不见）。06 的 `ToCamelCaseKeys` 残余 low 已随 `837117f` 修毕；票 03 的 F-05-4（`/health`、`/api/version` 免租户）已落票，实现按票面加 `AllowAnonymousTenant`；细节见 [交接记录](docs/reports/handover-01-04.md)。
+### 必须知道的约束与遗留
+
+- **`XSRF-TOKEN` 无人发放**（票 08）：登录壳落地时必须同时提供，否则前端所有 POST 都会 400。
+- **Outbox 三条口径**（票 07）：多处理器部分失败重放是明确遗留（与步骤 3 Outbox 落库同批）；事务只有补偿删除，不等于已回滚验证；拒绝 ≠ 死信队列（本轮只有终态标记）。
+- **Quartz**（票 09）：`qrtz_execution_history` 是可选预留、未接线（不是缺陷，要用就在 `QuartzRegistration` 加 `UseExecutionHistory()`）；`QRTZ_TRIGGERS` 时间列是 .NET ticks，不是 Unix 毫秒。
+- **A5 前端崩溃已修**（`bf08bd4` + `4485ca0` + `37bd872`）：`react-router` 7.18.4 默认 `entry.server` 的 `abort` TDZ 缺陷，被注入 `NODE_ENV=production` 时触发。AppHost 钉住 `NODE_ENV=development` 解决「不再崩」，自定义 [`entry.server.tsx`](apps/web/app/entry.server.tsx) 解决「崩了也看得见、失败不留定时器」——**两者都不能撤**，也不许靠删 `setTimeout` 绕过。根因与证据见[交接 §5](docs/reports/handover-01-04.md)、[a5-evidence-331fac3](docs/reports/a5-evidence-331fac3.md)。
+- **`run-id` 头**：vite 回 `X-Pzd-Run-Id` 必须用 `configureServer` 最前置中间件，不能用 `server.headers`（后者不覆盖 `/`）。接线靠源码守卫、写头靠实跑，仍没有注入态的 HTTP 自动化测试。
+- A13 退出清理超时只 `[warn]`、不 `exit 2`（判决语义若改需老何裁定）。
 
 ## 多租户内核（票 05）
 
@@ -49,11 +56,16 @@ NuGet.config                 packageSourceMapping，保证 restore 可复现
 src/
   Pzd.SharedKernel/          领域原语、Result/Error、ITenantContext/IClock/ICurrentUser
   Pzd.Infrastructure/        多租户内核（含 AllowAnonymousTenant 豁免）、ProblemDetailsWriter、UoW/Outbox（07 ✅）
-  Pzd.Api/                   最小 API + 租户中间件 + Result→HTTP / 异常处理
+  Pzd.Api/                   最小 API + 租户中间件 + Result→HTTP / 异常处理 + 健康检查/版本
+  Pzd.AppHost/               Aspire 编排（API + Vite，引用本机 MySQL / Redis）
 tests/
   Pzd.ArchitectureTests/     分层规则 + 租户隔离规则（ChangeDatabase）+ 反向用例
   Pzd.SharedKernel.UnitTests/
   Pzd.Infrastructure.UnitTests/  Pzd.Api.UnitTests/  Pzd.IntegrationTests/
+apps/web/                    React Router 7 SPA（`ssr: false`）
+packages/                    ui / api / realtime（pnpm workspace + turbo）
+db/master/                   master 库 SQL（Quartz 表）
+scripts/                     init-master-db.ps1、verify-apphost.ps1（一键验收，退出码 0/1/2）
 docs/
   architecture.md            已确认的上游架构
   specs/                     foundation.md（规格）、tickets.md（票）
@@ -75,7 +87,7 @@ docs/
 dotnet build Pzd.slnx -warnaserror
 ```
 
-五个测试工程（当前 35 + 30 + 86 + 33 + 1 = **185 条全绿**，2026-10-27 于 `7f699c5` 实测；顺序同上，即 SharedKernel 35、架构 30、Infrastructure 86、Api 33、集成 1）：
+五个测试工程（当前 35 + 30 + 86 + 68 + 10 = **229 条全绿**，于票 08 锚 `e8f2e2d` 实测；顺序同下，即 SharedKernel 35、架构 30、Infrastructure 86、Api 68、集成 10）：
 
 ```powershell
 dotnet run --project tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
@@ -110,7 +122,7 @@ pnpm dev
 
 - **前端 dev 地址是 `http://127.0.0.1:5199/`**：`vite.config.ts` 里 `server.port = 5199`、`strictPort: true`，并且**显式绑定 `server.host = "127.0.0.1"`**，与后端统一走 IPv4。**别把 `server.host` 留空**——留空时 Node 只绑 `::1`，此时 `curl 127.0.0.1:5199` 会连接被拒（`curl` 返回 `000`），那是假红不是服务没起来；遇到先查 `server.host` 有没有写。
 - **后端地址是 `http://127.0.0.1:5080`**，前端 dev 期把 `/api`、`/hubs` 代理到它（`/hubs` 带 WebSocket）；生产由 `Pzd.Api` 托管 `build/client`，同源部署，不需要代理。
-- **跑 aspire 全链路（`scripts/verify-apphost.ps1 -Mode aspire`）前先看两件事**：① 主仓当前跑不了——`E:\pzd` 根目录被 Aspire 的临时目录加固污染（低完整性标签 + AppContainer SID + Deny），需要**用户批准**修 ACL；在那之前用干净 worktree 跑（`-Mode api` 不需要 DCP，主仓可跑）；② 启动 shell 必须是能写 `%TEMP%` 的（本机从 bash 工具启动会在 `Directory.CreateTempSubdirectoryCore` 处被拒）。DCP 起来也不等于编排成功：`CreateDcpObjectsAsync` 还有一道两分钟超时，现场是 `state=(unknown)`、零资源事件、env `0 项`。细节见[交接 §5](docs/reports/handover-01-04.md)。
+- **aspire 全链路**（`scripts/verify-apphost.ps1 -Mode aspire`）主仓可直接跑（`affad87` 起 8 条 `[ok]`、`EXIT=0`）：`E:\pzd` 根目录带低完整性标签，脚本会自适应把构建产物复制到树外启动，**不需要改任何权限**。启动 shell 必须能写 `%TEMP%`；DCP 起来不等于编排成功（`CreateDcpObjectsAsync` 另有两分钟超时）。细节见[交接 §5](docs/reports/handover-01-04.md)。
 - 健康检查与版本端点免租户（票 03 的 F-05-4 前置）：`/health/live`、`/health/ready`、`/api/version` 不带 claim / `X-Tenant` / 子域也返回 200，其余端点仍 400。
 
 ## 配置与凭据
