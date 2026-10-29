@@ -1,8 +1,8 @@
-状态：进行中
+状态：阻塞：待环境（容器不可用、缺建库账号）
 主写入者：PZD-实现Bot-3
-更新日期：2026-10-29 21:50 Asia/Shanghai
-下一步：实现 fixture 与 SmokeTests；本机无 Docker，按 spec A1 预案走本机 MySQL80 真服务
-交付状态：待收尾
+更新日期：2026-10-29 22:05 Asia/Shanghai
+下一步：代码已推 test/36-integration-test-fixture；等维护者装 Docker Desktop 或在 .local/mysql-test-connection.txt 提供建库连接串后跑绿灯并回填 R2
+交付状态：待收尾（代码已交付，验收未闭环）
 实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）；本机容器不可用，见「环境与替代方案」
 
 # 36 集成测试库 fixture（真 MySQL）
