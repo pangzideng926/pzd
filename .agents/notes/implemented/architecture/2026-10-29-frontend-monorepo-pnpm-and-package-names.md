@@ -33,11 +33,23 @@ Status: implemented
 - **代价**：模板自带的 `package-lock.json` 被删，`npx shadcn add` 之后再新增组件时要用 `pnpm dlx shadcn@latest add`，不能再用 npm 语义；`@workspace/*` 这个 scope 与仓库名 pzd 不一致，读代码的人会疑惑一次。
 - **重访信号**：①pnpm 升到不再支持 `allowBuilds` 的版本；②26–31 号票里有两张以上因为 `@workspace/*` scope 与后端命名不一致而写错 import；③CI（04 号票）需要 npm 才能跑某一步。
 
+## SPA 模式与回环地址
+
+审计返工时补的两条，和上面的选型同属「模板默认与架构不一致」这一类，记在这里，不另开篇。
+
+- **`ssr: false`，不留服务端渲染**：`react-router.config.ts` 用 SPA 模式（§1、§14.1）。模板默认 `ssr: true`，产物是 `build/server/index.js`、`build/client` 里没有 `index.html`；而 §14.5 要把 `build/client` 拷进 `Pzd.Api` 的 wwwroot 同源部署，§15.2 的版本提示也要纯客户端产物。同时删掉 `start` 脚本与 `@react-router/serve`——SPA 没有 Node 服务可起。
+  - 备选 **保留 SSR** — 最强理由：首屏更快、模板默认即可用。没选，是因为 §1/§14.1 已写死 SPA，改要维护者拍板改架构；本票只是骨架。
+- **`vite.config.ts` 固定 `server.host: "127.0.0.1"`**：SPA 模式构建时会预渲染 `/`，本地起临时服务并**默认连 `::1`**；在禁用 IPv6 回环的环境（本机 Bot 沙箱就是）直接 `Prerender: Request failed for /: connect EACCES ::1`，构建退出 1。A/B 验证过：不加就红，加了输出 `SPA Mode: Generated build\client\index.html` 退出 0。
+  - 备选 **构建时加 `NODE_OPTIONS=--dns-result-order=ipv4first`** — 最强理由：不动仓库文件，纯环境变量。没选，是因为它要求每个跑构建的人（李总、老登、CI）都记得带，漏一个就红；写进配置才是默认正确的。
+
+**重访信号**：§14.5 的部署方式若改成 Node 托管前端（不再拷 `build/client`），或环境恢复 IPv6 回环支持时，可以重新评估这两条。
 ## Verification
 
 ```bash
 cd .worktree/02
 pnpm install                # 退出码 0，esbuild postinstall 有 "Done"
 pnpm build --force          # 日志里 @workspace/api:generate 行号 < web:build 行号
-pnpm test                   # @workspace/api:test pass 2 / fail 0
+pnpm test --force           # @workspace/api:test pass 2 / fail 0
 ```
+
+再补一条：`ls apps/web/build/client/index.html` 必须存在，且 `git status --porcelain` 在 `node packages/api/scripts/generate.mjs` 之后为空。
