@@ -1,0 +1,81 @@
+# PZD 持续集成入口
+#
+# 平台口径：假设 A1 —— GitHub Actions。**尚未由维护者确认**，本注释在有明确答复前不删除。
+# 若口径改为 GitLab CI：只替换本目录下这一个文件（`.github/workflows/ci.yml` → `.gitlab-ci.yml`），
+# 各票引用的验收命令（restore / build / test / install / build）不变，不需要改其他票。
+#
+# 本文件在写下的当时**未在仓库真实运行过**（本机无法触发 CI），首次真实运行结果待回填到票面。
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# 同一分支有新推送时取消上一次运行，省 runner 时间
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端（还原 + 构建 + 架构测试）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          # 与 global.json 的 sdk.version 保持一致；runner 上取不到该版本时只需改这一行
+          dotnet-version: '10.0.402'
+
+      - name: 还原
+        run: dotnet restore Pzd.slnx
+
+      - name: 构建（警告即错误）
+        run: dotnet build Pzd.slnx --no-restore
+
+      - name: 架构测试
+        run: |
+          set -uo pipefail
+          dotnet test Pzd.slnx --no-build 2>&1 | tee dotnet-test.log
+          rc=${PIPESTATUS[0]}
+
+          # 防 0 用例假绿：MTP 在 0 个用例时退出码仍是 0，必须自己数摘要里的用例数。
+          # 中英文摘要都认（`Total: 1` / `总计: 1`）。
+          total=$(sed -nE 's/.*(Total|总计):[[:space:]]*([0-9]+).*/\2/p' dotnet-test.log | head -1)
+          echo "解析到的用例数：${total:-<未解析到>}；dotnet test 退出码：${rc}"
+
+          if [ -z "${total:-}" ] || [ "$total" -le 0 ]; then
+            echo "::error::用例数为 0 或未解析到摘要，一律按「未运行」处理，不得视为通过"
+            exit 1
+          fi
+
+          exit "$rc"
+
+  frontend:
+    name: 前端（install + build）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        # 版本由根 package.json 的 packageManager 字段锁定，不在这里另写一份
+        uses: pnpm/action-setup@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          # 与根 package.json 的 engines.node 保持一致
+          node-version: '22'
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建
+        # --force：turbo 缓存是跨 worktree 共享的，CI 上也要绕开缓存回放，避免「缓存绿」
+        run: pnpm build --force

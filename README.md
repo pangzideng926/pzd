@@ -22,6 +22,19 @@
 - **先迁移后部署**：结构先行，代码随后；租户侧灰度 → 全量，单租户失败不阻塞其它租户。
 - 迁移文件只前滚，不写 down 脚本；不写 `CREATE DATABASE`、账号授权或任何凭据。
 
+### 持续集成
+
+门禁入口是 [.github/workflows/ci.yml](.github/workflows/ci.yml)，两个 job：
+
+- `backend`：`dotnet restore` → `dotnet build`（警告即错误）→ `dotnet test`（架构测试）
+- `frontend`：`pnpm install --frozen-lockfile` → `pnpm build --force`
+
+三点要留意：
+
+- **架构测试那步会数摘要里的用例数，为 0 就判失败。** MTP 在 0 个用例时退出码仍是 0，只看退出码会把「根本没跑到测试」当成通过。
+- **平台口径是假设（GitHub Actions），尚未确认。** 若改成 GitLab CI，只替换这一个文件，其他票的验证命令不变。
+- **`--force` 不能省。** turbo 缓存跨 worktree 共享，不加会直接回放「缓存绿」。
+
 ## 目录
 
 | 路径 | 说明 |
