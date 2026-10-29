@@ -1,0 +1,34 @@
+=== 被测 SHA: 00c7a7ba44315bbb8c7411e565cf621d56a45e24 ===
+HEAD=00c7a7ba44315bbb8c7411e565cf621d56a45e24
+=== A. build ===
+已成功生成。
+    0 个警告
+    0 个错误
+
+已用时间 00:00:01.95
+BUILD_EXIT=0
+=== B. 基线直跑 ===
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '286798edaf561d95e8af46a87ff13f5357bc8d674f829b75efba6e6277b5db65')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 30, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+BASE_EXIT=0
+=== C. 审计侧变异 M1：删 GetType 守卫 ===
+    0 个错误
+    Pzd.SharedKernel.UnitTests.ValueObjectTests.分量相同但类型不同的值对象不相等 [FAIL]
+   Pzd.SharedKernel.UnitTests  Total: 30, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+M1_EXIT=1
+=== D. 审计侧变异 M2：给 Money.Currency 加 public set ===
+8:    public string Currency { get; set; } = currency;
+22:    public string Currency { get; set; } = currency;
+    0 个错误
+    Pzd.SharedKernel.UnitTests.ValueObjectTests.值对象子类不暴露可写属性 [FAIL]
+   Pzd.SharedKernel.UnitTests  Total: 30, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+M2_EXIT=1
+=== E. 还原后复核 ===
+    0 个错误
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '286798edaf561d95e8af46a87ff13f5357bc8d674f829b75efba6e6277b5db65')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 30, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.117s
+RESTORE_EXIT=0
+GIT_STATUS_LINES=0
+=== 完 ===
