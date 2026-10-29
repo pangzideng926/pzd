@@ -1,9 +1,9 @@
-状态：待实施
-主写入者：未认领
-更新日期：2026-10-29 18:05 Asia/Shanghai
-下一步：等 01 合入后认领；CI 平台口径见假设 A1
+状态：进行中
+主写入者：PZD-实现Bot-1
+更新日期：2026-10-29 22:20 Asia/Shanghai
+下一步：第一段已交付（`db/` 骨架 + `NuGet.config` 复核 + 根 README 约定）；CI 工作流待平台确认后补第二个提交，那一步记「未运行」
 交付状态：待收尾
-实施条件：01 已合入（`0f25d16`）；仍待满足：CI 平台待维护者确认（默认 GitHub Actions）
+实施条件：01 已合入（`0f25d16`）；第一段与平台无关，已具备；**待满足**：CI 平台口径（假设 A1 默认 GitHub Actions）
 
 # 04 仓库约定与 CI 骨架
 
@@ -40,12 +40,12 @@
 
 ## 验收标准
 
-- [ ] `db/master/`、`db/tenant/` 存在且 README 写清命名与放置规则。
-- [ ] CI 配置包含构建、架构测试、前端 build 三步。
-- [ ] CI 在本仓库真实运行一次（未授权则记「未运行」并说明）。
-- [ ] CI 不打印任何凭据。
-- [ ] 根 `NuGet.config` 的单源锁定在 README 有说明，且本票未改动 01 已提交的内容。
-- [ ] 干净环境 `dotnet restore` 不出现 `NU1507`（若本机用户级 NuGet 源未清理，需在无该配置的环境复核并在票里写明）。
+- [x] `db/master/`、`db/tenant/` 存在且 README 写清命名与放置规则。
+- [ ] CI 配置包含构建、架构测试、前端 build 三步。**（未运行：等 CI 平台确认，本段未提交）**
+- [ ] CI 在本仓库真实运行一次（未授权则记「未运行」并说明）。**（未运行：同上，不在本段范围）**
+- [x] CI 不打印任何凭据。**（本段无 CI 文件；约定已写进根 README，落地时按此检查）**
+- [x] 根 `NuGet.config` 的单源锁定在 README 有说明，且本票未改动 01 已提交的内容。
+- [x] 干净环境 `dotnet restore` 不出现 `NU1507`（若本机用户级 NuGet 源未清理，需在无该配置的环境复核并在票里写明）。
 
 ## 验证入口
 
@@ -65,6 +65,40 @@ act -l（本地查看工作流）或直接触发 CI 后贴运行结果
 
 ## 任务映射
 
-- worktree：实施时填写（`.worktree/04/`）
-- 分支：实施时填写（`chore/04-repo-conventions-ci`）
-- 提交：实施时填写（完整 SHA）
+- worktree：`E:/pzd/.worktree/04/`
+- 分支：`chore/04-repo-conventions-ci`
+- 提交：见下方「交接」段的被测 SHA
+
+## 交接：实现 → 审计（第一段：与平台无关的部分）
+
+### 1. 目标
+
+交付 `db/` 骨架与仓库约定（提交信息、NuGet 单源、迁移顺序），复核根 `NuGet.config`；CI 工作流留到平台确认后的第二个提交。
+
+### 2. 提交
+
+- 分支：`chore/04-repo-conventions-ci`（已推送）
+- 提交：见本轮回复与票面 `git log -1`；基线 `bc9a93b`
+- 作者：`PZD-实现Bot-1 <impl-bot-1@pzd.local>`
+
+### 3. 验证（L1）
+
+```text
+$ dotnet restore Pzd.slnx
+已还原 Pzd.ArchitectureTests / Pzd.Api
+RESTORE_EXIT=0        grep -c NU1507 → 0
+
+$ git grep -nE 'CREATE DATABASE|IDENTIFIED BY' -- db/
+（无命中：迁移文件不含运维语句与凭据）
+
+$ ls db/master db/tenant
+db/master: README.md    db/tenant: README.md
+```
+
+### 4. 遗留
+
+1. **CI 三步（build / 架构测试 / 前端 build）未写**：票面要求等平台拍板（假设 A1 默认 GitHub Actions）。本段故意不写，避免按错平台返工；确认后补第二个提交，届时本票才能标完成。
+2. **`dotnet restore` 是在本机用户级 NuGet 仍配着 `nuget.org` + `SJ` 两个源的环境下跑通的**（仓库 `NuGet.config` 的 `<clear/>` 生效），所以「干净环境」那条严格说只验了「仓库配置能覆盖机器配置」这一面；无该用户配置的环境待一次复核。
+3. **根 README 与 03 号票重叠**：03 也在建根 `README.md`（启动命令与数据源切换）。两边合入时会 add/add 冲突，需按「03 的启动段 + 04 的约定段」合并，我负责解。
+4. 迁移执行器未定（consensus §4 待决 2），命名规则已按「不依赖执行器」写，选型变化不需要改这些文件。
+
