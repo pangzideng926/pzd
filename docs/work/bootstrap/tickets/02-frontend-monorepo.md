@@ -1,8 +1,8 @@
-状态：进行中
+状态：已完成
 主写入者：PZD-实现Bot-2
-更新日期：2026-10-29 18:04 Asia/Shanghai
-下一步：等维护者点头合入；`git merge main` 后复跑一次构建
-交付状态：待收尾
+更新日期：2026-10-29 21:25 Asia/Shanghai
+下一步：已并入 main（合并提交 `f13b946`；代码对象 `f652ffab`、最终候选 `12772f2`，维护者授权 PZD-调度Bot 于 2026-10-29 21:20 合入）。合并结果上复跑：`pnpm build --force` 退出 0（`SPA Mode` 生成 `apps/web/build/client/index.html` 1405 字节）、`pnpm test --force` 为 `pass 2 / fail 0`、`Cached: 0`，证据在 `.ai/验证/merge-2026-10-29/`
+交付状态：已交付
 实施条件：已具备
 
 # 02 前端 monorepo 骨架（shadcn react-router 扁平化）

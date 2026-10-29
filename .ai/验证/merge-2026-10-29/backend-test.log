@@ -1,0 +1,13 @@
+== exe
+  Discovering: Pzd.ArchitectureTests
+  Discovered:  Pzd.ArchitectureTests
+  Starting:    Pzd.ArchitectureTests
+  Finished:    Pzd.ArchitectureTests (ID = '46566557194f6d8d8943d597a56dc3e7ed11f961abaf14605cac67c55398a95b')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.097s
+TESTEXIT=0
+== zero-case probe
+  Finished:    Pzd.ArchitectureTests (ID = '46566557194f6d8d8943d597a56dc3e7ed11f961abaf14605cac67c55398a95b')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.ArchitectureTests  Total: 0
+ZEROEXIT=0

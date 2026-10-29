@@ -1,0 +1,37 @@
+== install
++ turbo 2.11.10
++ typescript 6.0.3
+
+Done in 3s using pnpm v12.14.0
+INSTALL_EXIT=0
+== build
+web:build: build/server/assets/inter-greek-wght-normal-CkhJZR-_.woff2         18.99 kB
+web:build: build/server/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2  25.96 kB
+web:build: build/server/assets/outfit-latin-wght-normal-Bc-8i84L.woff2        32.29 kB
+web:build: build/server/assets/inter-latin-wght-normal-Dx4kXJAl.woff2         48.25 kB
+web:build: build/server/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2     85.06 kB
+web:build: build/server/assets/server-build-Dttk8i35.css                      23.80 kB │ gzip: 5.13 kB
+web:build: build/server/index.js                                               6.21 kB │ gzip: 2.17 kB
+web:build: 
+web:build: ✓ built in 67ms
+web:build: SPA Mode: Generated build\client\index.html
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    1.621s 
+
+BUILD_EXIT=0
+== test
+@workspace/api:test: ℹ suites 0
+@workspace/api:test: ℹ pass 2
+@workspace/api:test: ℹ fail 0
+@workspace/api:test: ℹ cancelled 0
+@workspace/api:test: ℹ skipped 0
+@workspace/api:test: ℹ todo 0
+@workspace/api:test: ℹ duration_ms 60.757
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    352ms 
+
+TEST_EXIT=0
