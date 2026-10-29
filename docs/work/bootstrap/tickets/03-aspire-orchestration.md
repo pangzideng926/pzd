@@ -19,7 +19,7 @@
 
 ## 范围与非范围
 
-- 做：`src/Pzd.AppHost`：声明 MySQL、Redis、API（dotnet）、Web（vite dev），连接串注入 Api；开发期 Vite 代理 `/api`、`/hubs` 到后端；README 写那一条命令。
+- 做：`src/Pzd.AppHost`：声明 MySQL、Redis、API（dotnet）、Web（vite dev），连接串注入 Api；**MySQL / Redis 支持「容器优先、外部实例回落」，用 AppHost 参数切换**（本机实测无 Docker / Podman，只有 MySQL80 `8.0.46`）；开发期 Vite 代理 `/api`、`/hubs` 到后端；README 写那一条命令与两种来源的切换方式。
 - 不做：不做生产部署、不做容器镜像发布、不初始化数据库内容。
 
 ## 责任文件范围（认领时在群里先说清）
@@ -33,14 +33,16 @@
 
 ## 步骤
 
-1. 建 AppHost 项目并声明四个资源（镜像版本固定）。
+1. 建 AppHost 项目并声明四个资源（镜像版本固定），MySQL / Redis 带「容器优先、外部实例回落」参数。
 2. 把连接串以环境变量注入 Api，`appsettings` 里不出现密码。
 3. 配 Vite 代理 `/api`、`/hubs`。
 4. 跑一条命令，贴四个资源 Healthy 的输出。
 
 ## 验收标准
 
-- [ ] 单条命令后四个资源全部 Healthy，退出码 0。
+- [ ] 容器可用时：单条命令后四个资源全部 Healthy，退出码 0，贴实际输出。
+- [ ] 容器不可用时（本机现状）：用外部 MySQL `8.0.46` 与外部 Redis 回落跑通，贴实际输出；**缺 Redis 之类无法回落的资源要写明「未运行＋原因」，此时本票不算完整通过，只算部分验证**。
+- [ ] README 写清两种来源怎么切换，且不出现任何凭据。
 - [ ] `appsettings*.json` 中无明文连接串与密码。
 - [ ] 前端 dev 下访问 `/api/health` 由代理转给后端，浏览器无 CORS 报错（健康端点可由 16 号票提供，未就绪时用一个临时 echo 端点证明代理生效并在遗留里写明）。
 
