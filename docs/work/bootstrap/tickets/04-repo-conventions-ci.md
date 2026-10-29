@@ -161,3 +161,15 @@ $ pnpm dlx js-yaml .github/workflows/ci.yml > /dev/null
 4. **turbo 缓存**：`pnpm build --force` 已绕开缓存回放；CI 里没做缓存持久化，将来若加缓存，必须保留 `--force` 或改配置，否则又会吃到「缓存绿」。
 5. **`pnpm install --frozen-lockfile` 在 CI 上未验证**：本地第一段没跑过 pnpm install（本机 `node_modules` 不存在），锁文件与 `package.json` 是否严格一致，要等首次 CI 或一次本地 install 才能确认。
 
+### 5. 首次真实运行的取证清单（谁先跑谁贴）
+
+写这份清单的原因：留「未运行」容易，回填时各贴各的反而更糟。第一个真实跑起来的人按这五项贴，贴齐才算闭环：
+
+- 运行页链接 + 触发它的提交 SHA
+- `backend` job 三步的结论；其中架构测试步要贴断言那一行原文——`解析到的用例数：N；dotnet test 退出码：0`，**N 必须大于 0**
+- `frontend` job 两步的退出码（`pnpm install --frozen-lockfile`、`pnpm build --force`）
+- 若卡在 setup-dotnet（取不到 `10.0.402`）：贴该步原文与 `dotnet-version` 那一行，按遗留 2 处理，不算通过
+- 结果回填到验收标准第 2 条；**只有这时才允许把票改成「完成」**
+
+另记一条本机限制，省得下一个人重复尝试：`web_fetch` 访问 `builds.dotnet.microsoft.com` 与 `web_search` 在这里都不可用（主机名解析到非公网地址、搜索后端不支持），所以**版本可获得性没法提前核对**，只能靠首跑。
+
