@@ -125,6 +125,8 @@ public interface IRepository<TAggregate> where TAggregate : AggregateRoot
 
 **唯一预留的例外**：`Entity.Id` 现在是 `protected set`，赋值方是 Infrastructure 的 `EntityService`。若 06 发现 SqlSugar 无法通过反射写入受保护 setter，由 06 决定是否改成 `internal set` 并把变更回报本票；其余签名不动。`IRepository` 故意没有 `Save`——提交归 UoW（08 号票）。
 
+**`Raise` 的去重语义**：按引用（`ReferenceEquals`）去重——同一个事件实例加两次只留一条，**值相同但不同实例会收集两条**。08 号票做投递幂等时按这条来，别指望这里去重。
+
 ## 证据（L1）
 
 ### R1 红灯（先于实现，编译期缺实现）
@@ -150,6 +152,31 @@ $ ./Pzd.SharedKernel.UnitTests.exe            # 等价于 dotnet test tests/Pzd.
 ```
 
 覆盖 seam：S1（值对象相等/不等/异类型/运算符）、S2（`Result`/`Result<T>` 成功失败 + `Error` 非法码 7 组）、S3（事件顺序/去重/清空/空集合/空参数/状态只经方法变更）、S4（包引用无 SqlSugar 与 ASP.NET Core）。
+
+### R3 补测（李总独立复核后，2026-10-29）
+
+李总用变异验证抓到真缺口：删掉 `ValueObject.Equals` 里的 `other.GetType() != GetType()` 后，当时 24 个用例**仍全绿**——原用例比较的是 `Money` 与 `string`，走 `as ValueObject → null` 分支，从没进「两个不同值对象子类」的路径。
+
+补测（只动测试文件）：
+
+| 缺口 | 补的用例 |
+|---|---|
+| 分量相同但类型不同应不相等 | `MoneyTwin` 类型 + `分量相同但类型不同的值对象不相等` |
+| AC2「不可变」零断言 | `值对象子类不暴露可写属性`（反射断言无 public setter） |
+| `Result<T>.Failure(null)` 未覆盖 | `带值结果的失败也不能用空错误` |
+| `Error` 只测空段、没测纯空白段 | `Identity. .NotFound`、`Identity.User. `、`   ` 三组 |
+
+变异自证（自己压一遍，不只信补测用例能编译）：
+
+```text
+# 变体：删掉 other.GetType() != GetType()
+Total: 30, Errors: 0, Failed: 1
+[FAIL] Pzd.SharedKernel.UnitTests.ValueObjectTests.分量相同但类型不同的值对象不相等
+
+# 还原后
+Total: 30, Errors: 0, Failed: 0
+$ git diff --stat src/        # 空输出，实现无残留改动
+```
 
 ### `dotnet test` 本体（环境性 `0 tests`，按票面四项要求）
 

@@ -19,6 +19,9 @@ public sealed class ErrorTests
     [InlineData("Identity..NotFound")]
     [InlineData(".User.NotFound")]
     [InlineData("Identity.User.")]
+    [InlineData("Identity. .NotFound")]
+    [InlineData("Identity.User. ")]
+    [InlineData("   ")]
     [InlineData("")]
     public void 非法错误码抛ArgumentException且消息含该码(string invalidCode)
     {

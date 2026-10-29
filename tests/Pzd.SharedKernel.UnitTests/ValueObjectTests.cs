@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Pzd.SharedKernel.UnitTests;
 
 /// <summary>05 号票 seam S1：值对象按值相等且不可变。</summary>
@@ -29,6 +31,30 @@ public sealed class ValueObjectTests
 
         Assert.False(money.Equals("100 CNY"));
         Assert.False(money.Equals(null));
+    }
+
+    [Fact]
+    public void 分量相同但类型不同的值对象不相等()
+    {
+        var money = new Money(100m, "CNY");
+        ValueObject twin = new MoneyTwin(100m, "CNY");
+
+        Assert.False(money.Equals(twin));
+        Assert.False(twin.Equals(money));
+        Assert.NotEqual<ValueObject>(money, twin);
+    }
+
+    [Fact]
+    public void 值对象子类不暴露可写属性()
+    {
+        // 不可变靠约定：基类在语言上强制不了，示例与反射断言一起守（AC2）
+        var writable = typeof(Money)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.SetMethod is { IsPublic: true })
+            .Select(property => property.Name)
+            .ToArray();
+
+        Assert.Empty(writable);
     }
 
     [Fact]

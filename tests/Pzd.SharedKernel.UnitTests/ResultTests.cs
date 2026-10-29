@@ -50,4 +50,10 @@ public sealed class ResultTests
     {
         Assert.Throws<ArgumentNullException>(() => Result.Failure(null!));
     }
+
+    [Fact]
+    public void 带值结果的失败也不能用空错误()
+    {
+        Assert.Throws<ArgumentNullException>(() => Result<int>.Failure(null!));
+    }
 }
