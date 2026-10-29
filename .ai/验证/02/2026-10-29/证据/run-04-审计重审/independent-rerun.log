@@ -1,0 +1,47 @@
+=== 被测 SHA: f652ffabd44018d4a70ebb7d96d6bcaa468268f3 ===
+HEAD=f652ffabd44018d4a70ebb7d96d6bcaa468268f3
+node=v24.22.1 pnpm=12.14.0
+=== A. install ===
++ turbo 2.11.10
++ typescript 6.0.3
+
+Done in 3.3s using pnpm v12.14.0
+INSTALL_EXIT=0
+=== B. build --force（SPA 形态） ===
+8:@workspace/api:generate: cache bypass, force executing 578204a0d1bfe303
+9:@workspace/api:generate: $ node scripts/generate.mjs
+10:@workspace/api:generate: api#generate: E:\pzd\.worktree\audit-02b\packages\api\openapi.json -> E:\pzd\.worktree\audit-02b\packages\api\src\generated\client.ts
+12:web:build: $ react-router build
+68:web:build: SPA Mode: Generated build\client\index.html
+70: Tasks:    2 successful, 2 total
+71:Cached:    0 cached, 2 total
+BUILD_EXIT=0
+=== C. SPA 产物核对 ===
+build/client/index.html 存在，1405 字节
+assets
+index.html
+build/server 内容：index.js
+=== D. 生成产物是否还脏（.gitattributes 是否生效） ===
+API_DIRTY_LINES=0
+=== E. test --force ===
+@workspace/api:test: cache bypass, force executing beadc11f86a1a0ee
+@workspace/api:test: ℹ tests 2
+@workspace/api:test: ℹ pass 2
+@workspace/api:test: ℹ fail 0
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+TEST_EXIT=0
+=== F. typecheck --force ===
+@workspace/ui:typecheck: cache bypass, force executing 1d82078a457236dc
+web:typecheck: cache bypass, force executing 26a74c65f8ee2f08
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+TYPECHECK_EXIT=0
+=== G. 依赖里有没有 playwright / 残留 SSR 依赖 ===
+无 playwright（符合声明）
+isbot 引用：
+=== H. dev 服务（SPA 下应只有外壳） ===
+status 200 len 2242 含 Project ready（外壳应为 false）: false
+FETCH_EXIT=0
+Local:   http://127.0.0.1:5173/
+=== 完 ===
