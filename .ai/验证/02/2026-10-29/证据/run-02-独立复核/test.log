@@ -1,0 +1,25 @@
+$ turbo test
+
+   • turbo 2.11.10
+   • Packages in scope: @workspace/api, @workspace/realtime, @workspace/ui, web
+   • Running test in 4 packages
+   • Remote caching disabled, using shared worktree cache
+
+@workspace/api:test: cache hit, replaying logs 9e99cc3a015b5ee0
+@workspace/api:test: $ node --test "test/*.test.mjs"
+@workspace/api:test: ✔ 从 openapi.json 生成 TS 客户端占位文件 (2.1635ms)
+@workspace/api:test: ✔ openapi.json 缺 paths 时报错而不是静默生成空文件 (0.6859ms)
+@workspace/api:test: ℹ tests 2
+@workspace/api:test: ℹ suites 0
+@workspace/api:test: ℹ pass 2
+@workspace/api:test: ℹ fail 0
+@workspace/api:test: ℹ cancelled 0
+@workspace/api:test: ℹ skipped 0
+@workspace/api:test: ℹ todo 0
+@workspace/api:test: ℹ duration_ms 59.1628
+
+ Tasks:    1 successful, 1 total
+Cached:    1 cached, 1 total
+  Time:    21ms >>> FULL TURBO
+
+TEST_EXIT=0

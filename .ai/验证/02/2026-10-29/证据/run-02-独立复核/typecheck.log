@@ -1,0 +1,17 @@
+$ turbo typecheck
+
+   • turbo 2.11.10
+   • Packages in scope: @workspace/api, @workspace/realtime, @workspace/ui, web
+   • Running typecheck in 4 packages
+   • Remote caching disabled, using shared worktree cache
+
+@workspace/ui:typecheck: cache miss, executing 1fe87c7759f793ee
+@workspace/ui:typecheck: $ tsc --noEmit
+web:typecheck: cache miss, executing bb5cf5f1c3e0e015
+web:typecheck: $ react-router typegen && tsc
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    2.544s 
+
+TYPECHECK_EXIT=0

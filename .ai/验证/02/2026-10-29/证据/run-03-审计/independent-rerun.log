@@ -1,0 +1,47 @@
+=== 被测 SHA: b9abbaa8a462c2c2ffccbb47c4dd2336c8fb1be1 ===
+node=v24.22.1 pnpm=12.14.0
+=== A. install ===
+Scope: all 5 workspace projects
+Already up to date
+Done in 6ms using pnpm v12.14.0
+INSTALL_EXIT=0
+=== B. build --force（核顺序） ===
+8:@workspace/api:generate: cache bypass, force executing f1bf3c47d5e7618e
+9:@workspace/api:generate: $ node scripts/generate.mjs
+10:@workspace/api:generate: api#generate: E:\pzd\.worktree\audit-02\packages\api\openapi.json -> E:\pzd\.worktree\audit-02\packages\api\src\generated\client.ts
+12:web:build: $ react-router build
+69: Tasks:    2 successful, 2 total
+70:Cached:    0 cached, 2 total
+BUILD_EXIT=0
+=== C. test --force ===
+@workspace/api:test: cache bypass, force executing 9e99cc3a015b5ee0
+@workspace/api:test: ℹ tests 2
+@workspace/api:test: ℹ pass 2
+@workspace/api:test: ℹ fail 0
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+TEST_EXIT=0
+=== D1. typecheck（默认，可能吃缓存） ===
+   • Remote caching disabled, using shared worktree cache
+@workspace/ui:typecheck: cache hit, replaying logs 1fe87c7759f793ee
+web:typecheck: cache hit, replaying logs bb5cf5f1c3e0e015
+ Tasks:    2 successful, 2 total
+Cached:    2 cached, 2 total
+TYPECHECK_EXIT=0
+=== D2. typecheck --force ===
+@workspace/ui:typecheck: cache bypass, force executing 1fe87c7759f793ee
+web:typecheck: cache bypass, force executing bb5cf5f1c3e0e015
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+TYPECHECK_FORCE_EXIT=0
+=== E. 构建后工作树状态（生成产物是否脏） ===
+ M packages/api/src/generated/client.ts
+STATUS_LINES=1
+=== F. SPA 判定：client 产物是否有 index.html ===
+assets
+NO index.html（SSR 形态，与 architecture §14.1 的 ssr:false 不符）
+ssr 配置实际值：ssr: true
+=== G. dev 首页 ===
+status 200 len 4699 has Project ready: true
+FETCH_EXIT=0
+=== 完 ===
