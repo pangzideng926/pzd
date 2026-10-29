@@ -52,12 +52,12 @@ S4 依赖边界自证：`Pzd.SharedKernel` 的包引用不含 SqlSugar / ASP.NET
 
 ## 验收标准
 
-- [ ] `Pzd.SharedKernel` 的依赖中不含 SqlSugar 与 ASP.NET Core。
-- [ ] 值对象按值相等且不可变，有单测覆盖。
-- [ ] `Result` 成功与失败两个分支各有单测。
-- [ ] 错误码格式非法时**抛 `ArgumentException`**，单测断言异常类型且消息里含那个非法码（决定见上节）。
-- [ ] 证据贴出实际通过的用例数（>0），`0 tests` 不算通过。
-- [ ] 基类公开签名已冻结并在群里公告。
+- [x] `Pzd.SharedKernel` 的依赖中不含 SqlSugar 与 ASP.NET Core（`DependencyBoundaryTests` 断言程序集引用）。
+- [x] 值对象按值相等且不可变，有单测覆盖（相等/不等/异类型/运算符/无 public setter）。
+- [x] `Result` 成功与失败两个分支各有单测（含 `Result<T>` 与空错误守卫）。
+- [x] 错误码格式非法时**抛 `ArgumentException`**，单测断言异常类型且消息里含那个非法码（决定见上节）。
+- [x] 证据贴出实际通过的用例数（>0），`0 tests` 不算通过（现为 `Total: 32, Failed: 0`，直跑 exe）。
+- [x] 基类公开签名已冻结并在群里公告；审计指出 `Error` 公告与实现不一致后，公告已按实际形状修正并重新公告 06/09。
 
 ## 验证入口
 
@@ -97,7 +97,15 @@ public abstract class ValueObject : IEquatable<ValueObject>
     public static bool operator !=(ValueObject? left, ValueObject? right);
 }
 
-public sealed record Error(string Code, string Message);   // 构造时校验「模块.实体.原因」，非法抛 ArgumentException
+public sealed record Error
+{
+    // 参数名固定 code / message；「模块.实体.原因」格式非法时抛 ArgumentException
+    public Error(string code, string message);
+    public string Code { get; }
+    public string Message { get; }
+    // 契约限制（有意为之，06/09 按此实现）：没有 Deconstruct、不支持 with、不能用 new Error(Code: ..., Message: ...) 命名参数写法。
+    // 原因：校验必须跑在构造里；若改成 record 主构造 + init 属性，error with { Code = "坏码" } 会绕过校验。
+}
 
 public class Result
 {
@@ -178,6 +186,31 @@ Total: 30, Errors: 0, Failed: 0
 $ git diff --stat src/        # 空输出，实现无残留改动
 ```
 
+### R4 审计返工（老登 run-03 结论，2026-10-29）
+
+四条必修全部处理：
+
+| 项 | 处理 |
+|---|---|
+| high：`Error` 公告与实现不一致 | **改公告**为实际形状：显式构造 + get-only 属性，明确无 `Deconstruct`、不支持 `with`、参数名 `code`/`message`；理由写进签名块（校验不能被 `with` 绕过）。实现未动。 |
+| medium：`DomainEvents` 可强转回 `List` 绕过封装 | 改为 `_domainEvents.AsReadOnly()`，签名不变；新增用例 `领域事件集合不能被调用方强转后增删` |
+| medium：`ValueObject` 注释「顺序无关」与 `SequenceEqual` 相反 | 注释改为「按顺序逐项比较，两侧顺序必须一致」 |
+| medium：票面缺交接四要素 | 验收勾选、任务映射、遗留、下一步本段一并补齐 |
+
+三条建议项也顺手处理：`状态只能通过方法变更` 改名 `改单号方法生效` 并新增 `聚合属性不对外暴露setter`（反射断言 `Number` 无 public setter）；`[InlineData("")]` 的恒真断言拆成独立的 `空错误码抛ArgumentException`；csproj 注释改引 §3.2/§5.2。
+
+自压一次新改动的变异：
+
+```text
+# 变体 A：DomainEvents 改回 => _domainEvents;
+Total: 32, Errors: 0, Failed: 1
+[FAIL] Pzd.SharedKernel.UnitTests.AggregateRootTests.领域事件集合不能被调用方强转后增删
+
+# 还原后
+Total: 32, Errors: 0, Failed: 0
+$ git diff --stat src/        # 除注释与 AsReadOnly 外无其他改动
+```
+
 ### `dotnet test` 本体（环境性 `0 tests`，按票面四项要求）
 
 ① 错误原文与退出码：
@@ -193,12 +226,19 @@ System.UnauthorizedAccessException: Access to the path is denied.
 ③ **`dotnet test` 本体未运行**：沙箱拒绝 MTP 命名管道，需在无管道限制的环境补跑一次。
 ④ 剩余风险：`dotnet test --filter` 这条验证入口在本机无效，只能用 exe 等价替代；真正的门禁由 04 号票的 CI 承担。
 
+## 遗留
+
+- `dotnet test` 本体在本机未运行（MTP 命名管道被沙箱拒绝，`总计: 0`、退出码 `-532462766`）；已用直跑 exe 等价替代，需在无管道限制环境或 04 的 CI 补跑一次。
+- 「不可变」断言只守 `Money` 这个示例类型，别的值对象子类偷偷加 setter 抓不到——这层归 13 号票的分层守卫。
+- S4 只做包引用的正向自证，没有独立反例；真正的分层守卫与反例在 13 号票，S4 不替代它。
+- `Error` 无 `Deconstruct`、不支持 `with`：有意为之，校验必须跑在构造里；06/09 按签名块里的限制实现。
+
 ## 恢复方式
 
 删除新增项目；无数据影响。
 
 ## 任务映射
 
-- worktree：实施时填写（`.worktree/05/`）
-- 分支：实施时填写（`feat/05-shared-kernel`）
-- 提交：实施时填写（完整 SHA）
+- worktree：`.worktree/05/`
+- 分支：`feat/05-shared-kernel`
+- 提交：返工提交见本分支顶端（`00c7a7b` 之后的审计返工提交）

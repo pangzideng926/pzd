@@ -6,7 +6,7 @@ namespace Pzd.SharedKernel;
 /// </summary>
 public abstract class ValueObject : IEquatable<ValueObject>
 {
-    /// <summary>参与相等与哈希的分量，顺序无关但两侧必须一致。</summary>
+    /// <summary>参与相等与哈希的分量，按顺序逐项比较，两侧顺序必须一致。</summary>
     protected abstract IEnumerable<object?> GetEqualityComponents();
 
     public bool Equals(ValueObject? other)

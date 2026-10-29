@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Pzd.SharedKernel.UnitTests;
 
 /// <summary>05 号票 seam S3：聚合根收集领域事件的顺序、去重与清空。</summary>
@@ -56,12 +58,35 @@ public sealed class AggregateRootTests
     }
 
     [Fact]
-    public void 状态只能通过方法变更()
+    public void 改单号方法生效()
     {
         var order = new Order("SO-001");
 
         order.ChangeNumber("SO-002");
 
         Assert.Equal("SO-002", order.Number);
+    }
+
+    [Fact]
+    public void 聚合属性不对外暴露setter()
+    {
+        // 「状态只通过方法变更」的另一半：属性本身不能有 public setter
+        var writable = typeof(Order)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.SetMethod is { IsPublic: true })
+            .Select(property => property.Name)
+            .ToArray();
+
+        Assert.Empty(writable);
+    }
+
+    [Fact]
+    public void 领域事件集合不能被调用方强转后增删()
+    {
+        var order = new Order("SO-001");
+        order.Raise(new OrderNumberChanged(order.Id, "SO-001"));
+
+        Assert.False(order.DomainEvents is List<IDomainEvent>, "DomainEvents 直接吐了内部 List");
+        Assert.Throws<InvalidCastException>(() => (List<IDomainEvent>)order.DomainEvents);
     }
 }

@@ -8,8 +8,8 @@ public abstract class AggregateRoot : Entity
 {
     private readonly List<IDomainEvent> _domainEvents = [];
 
-    /// <summary>本聚合待分发的领域事件，按加入顺序排列。</summary>
-    public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents;
+    /// <summary>本聚合待分发的领域事件，按加入顺序排列；只读视图，调用方无法强转回 List 增删。</summary>
+    public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
 
     /// <summary>收集一个领域事件；同一实例重复收集不会产生第二条。</summary>
     public void Raise(IDomainEvent domainEvent)

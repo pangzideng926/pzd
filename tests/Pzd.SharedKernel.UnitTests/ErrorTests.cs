@@ -22,11 +22,17 @@ public sealed class ErrorTests
     [InlineData("Identity. .NotFound")]
     [InlineData("Identity.User. ")]
     [InlineData("   ")]
-    [InlineData("")]
     public void 非法错误码抛ArgumentException且消息含该码(string invalidCode)
     {
         var exception = Assert.Throws<ArgumentException>(() => new Error(invalidCode, "随便"));
 
         Assert.Contains(invalidCode, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void 空错误码抛ArgumentException()
+    {
+        // 空串不能用 Assert.Contains 断言消息（对空串恒真），单独一条
+        Assert.Throws<ArgumentException>(() => new Error("", "随便"));
     }
 }
