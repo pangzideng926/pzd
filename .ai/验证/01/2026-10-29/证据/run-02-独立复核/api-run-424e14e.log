@@ -1,0 +1,11 @@
+从 src\Pzd.Api\Properties\launchSettings.json 使用启动设置...
+info: Pzd.Api[0]
+      Pzd.Api 0.1.1-alpha.0.258（build 424e14e30f9068bf106ebfd30ef0ad28e362fd23）已启动
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5112
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: E:\pzd\.worktree\lec-01b\src\Pzd.Api
