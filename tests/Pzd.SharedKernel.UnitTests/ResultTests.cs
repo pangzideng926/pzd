@@ -56,4 +56,14 @@ public sealed class ResultTests
     {
         Assert.Throws<ArgumentNullException>(() => Result<int>.Failure(null!));
     }
+
+    [Fact]
+    public void 引用类型的成功值允许为null()
+    {
+        // 骨架层不引非空强约定：成功值允许 null，需要非空的调用方自己校验（票面已定）
+        var result = Result<string>.Success(null!);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value);
+    }
 }

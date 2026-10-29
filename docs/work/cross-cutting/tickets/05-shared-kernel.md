@@ -119,7 +119,7 @@ public class Result
 public sealed class Result<T> : Result
 {
     public T Value { get; }                                  // 失败分支取值抛 InvalidOperationException
-    public static Result<T> Success(T value);
+    public static Result<T> Success(T value);                // 引用类型的成功值允许为 null，骨架层不做非空强约定，调用方自行校验
     public static new Result<T> Failure(Error error);
 }
 
@@ -197,7 +197,9 @@ $ git diff --stat src/        # 空输出，实现无残留改动
 | medium：`ValueObject` 注释「顺序无关」与 `SequenceEqual` 相反 | 注释改为「按顺序逐项比较，两侧顺序必须一致」 |
 | medium：票面缺交接四要素 | 验收勾选、任务映射、遗留、下一步本段一并补齐 |
 
-**为什么 `Error` 不改 record 主构造**（实证，2026-10-29）：一次性工程里对比三种写法——主构造 + 同名 `init` 属性带校验时，`v1 with { Code = "坏码" }` 输出 `Code = 坏码`，**校验被跳过**；纯主构造更无从拦。当前「显式构造 + get-only 属性」下 `with` 直接编译不过（CS0200）。所以要同时保住构造校验与值相等，只能保留显式构造、把公告改成实际形状。
+**为什么 `Error` 不用 record 主构造**（实证，2026-10-29，三种写法各跑一遍）：record 主构造的参数校验只在构造那一次生效；`with` 走复制构造、不重跑属性初始化器，所以**校验写在属性初始化器里会被 `with` 绕过**（实测 `with { Code = "坏码" }` 得到 `坏码`）。要让 `with` 也受约束，校验必须放进 `init` 访问器（写法更绕，属性也不再是纯只读，且构造与 `with` 两条路径的校验位置不同，容易漏）。综合成本，本票选显式构造 + get-only：校验写一次，`with` 直接编译不过（CS0200）。
+
+判据是**校验写在哪**，不是 class 还是 record——不要据此得出「record 天生不安全」的结论。
 
 三条建议项也顺手处理：`状态只能通过方法变更` 改名 `改单号方法生效` 并新增 `聚合属性不对外暴露setter`（反射断言 `Number` 无 public setter）；`[InlineData("")]` 的恒真断言拆成独立的 `空错误码抛ArgumentException`；csproj 注释改引 §3.2/§5.2。
 
