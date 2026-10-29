@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- 宿主项目骨架：公共编译设置继承自 Directory.Build.props -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Pzd.Api</RootNamespace>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 架构测试骨架：本里程碑只要求能编译，分层规则在 13 号票落地 -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- xUnit v3 的测试项目必须是可执行程序 -->
+    <OutputType>Exe</OutputType>
+    <!-- .NET 10 SDK 不再支持 VSTest 目标，xUnit v3 需显式启用 Microsoft.Testing.Platform 的 dotnet test -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pzd.Api\Pzd.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
