@@ -1,0 +1,15 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.ArchitectureTests
+  Discovered:  Pzd.ArchitectureTests
+  Starting:    Pzd.ArchitectureTests
+    Pzd.ArchitectureTests.ApiVersionTests.Api程序集版本由MinVer从git_tag推导 [FAIL]
+      Assert.NotEqual() Failure: Strings are equal
+      Expected: Not "1.0.0"
+      Actual:       "1.0.0"
+      Stack Trace:
+        tests\Pzd.ArchitectureTests\ApiVersionTests.cs(27,0): at Pzd.ArchitectureTests.ApiVersionTests.Api程序集版本由MinVer从git_tag推导()
+           at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+           at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Finished:    Pzd.ArchitectureTests (ID = 'd606e49420c5a8c815899fabfe44f646b9ff9c7f3cdfd947214bbf085430880c')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.111s
