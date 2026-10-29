@@ -1,0 +1,54 @@
+# 05 审计复审 变异验证（老登亲手压）
+# 判定方式：变异后全量跑 + 目标用例单跑(-method)，单跑非 0 退出即证「红的正是这条」
+# 被测：代码 e0cf96f
+
+[基线] 全量: exit=0 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.113s
+
+=== M1 删掉 ValueObject.Equals 的类型守卫 ===
+  文件: src/Pzd.SharedKernel/ValueObject.cs
+  build_exit=0
+  全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+  目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.110s
+  判定: ✔ 变红，红在这条
+
+=== M2 给 Money.Currency 加 public set ===
+  文件: tests/Pzd.SharedKernel.UnitTests/TestTypes.cs
+  build_exit=0
+  全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.121s
+  目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.114s
+  判定: ✔ 变红，红在这条
+
+=== M3 DomainEvents 改回直接吐内部 List ===
+  文件: src/Pzd.SharedKernel/AggregateRoot.cs
+  build_exit=0
+  全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.124s
+  目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.111s
+  判定: ✔ 变红，红在这条
+
+=== M4 给 Order.Number 加 public set ===
+  文件: tests/Pzd.SharedKernel.UnitTests/TestTypes.cs
+  build_exit=0
+  全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.122s
+  目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.109s
+  判定: ✔ 变红，红在这条
+
+=== 还原后 ===
+  git status 非空行数=0
+  build_exit=0 | 全量: exit=0 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.113s
+  还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.101s
+  还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.099s
+  还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.098s
+  还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.098s
+
+结论：四处变异全部被抓住，还原后 32/32 绿、工作树无残留。
+
+=== M5 [新 SHA 5675310 追加] 给 Result<T>.Success 加 ThrowIfNull ===
+  被测：5675310（33 个用例）
+  build_exit=0
+  全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 1
+  目标用例单跑(-method 引用类型的成功值允许为null): exit=1
+  判定: ✔ 变红，新用例守得住
+
+  还原说明（照实记录）：本轮先还原源码、后跑测试时漏了重新构建，
+  一度看到「还原后仍 Failed: 1」——那是跑到了变异版二进制，属审计操作缺陷。
+  补 `dotnet build Pzd.slnx` 后：0 警告 0 错误，Total: 33, Failed: 0，退出 0，git status 0 行。
