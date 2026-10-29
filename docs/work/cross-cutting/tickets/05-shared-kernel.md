@@ -1,7 +1,7 @@
-状态：待实施
-主写入者：未认领
-更新日期：2026-10-29 18:05 Asia/Shanghai
-下一步：前置已满足（01 `0f25d16` 已合入 main），可直接认领
+状态：进行中
+主写入者：PZD-实现Bot-3
+更新日期：2026-10-29 22:10 Asia/Shanghai
+下一步：按 seam S1–S4 测试先行实现基类与 Result；合入前冻结公开签名并公告（06 等这份签名）
 交付状态：待收尾
 实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）
 
@@ -70,6 +70,101 @@ dotnet test tests/Pzd.SharedKernel.UnitTests
 **假绿防线**：用 `--filter` 时，测试类名必须与 filter 的字面一致；证据里必须贴出实际通过的用例数（>0）。跑出 `0 tests` 的退出码 0 一律按失败处理，不算通过。
 
 **环境性 `0 tests`**（不算假绿，但也不等于通过）：若原因是环境限制——例如沙箱拒绝命名管道，.NET MTP 连不回宿主，报 `UnauthorizedAccessException ... NamedPipeClientStream` 并显示 `总计: 0`——证据里必须同时给出四项：①错误原文与真实退出码；②替代执行方式的实际结果（如直接运行测试 exe）；③明确写「`dotnet test` 本体未运行，需在无管道限制的环境补跑一次」；④剩余风险写进遗留。缺一项就按「未运行」处理，不得写成通过。
+
+## 冻结的公开签名（2026-10-29，此后只增不改）
+
+06 号票按这份签名并行开工：
+
+```csharp
+public abstract class Entity
+{
+    public long Id { get; protected set; }
+}
+
+public abstract class AggregateRoot : Entity
+{
+    public IReadOnlyList<IDomainEvent> DomainEvents { get; }
+    public void Raise(IDomainEvent domainEvent);
+    public void ClearDomainEvents();
+}
+
+public interface IDomainEvent { }
+
+public abstract class ValueObject : IEquatable<ValueObject>
+{
+    protected abstract IEnumerable<object?> GetEqualityComponents();
+    public static bool operator ==(ValueObject? left, ValueObject? right);
+    public static bool operator !=(ValueObject? left, ValueObject? right);
+}
+
+public sealed record Error(string Code, string Message);   // 构造时校验「模块.实体.原因」，非法抛 ArgumentException
+
+public class Result
+{
+    public Error? Error { get; }
+    public bool IsSuccess { get; }
+    public bool IsFailure { get; }
+    public static Result Success();
+    public static Result Failure(Error error);
+}
+
+public sealed class Result<T> : Result
+{
+    public T Value { get; }                                  // 失败分支取值抛 InvalidOperationException
+    public static Result<T> Success(T value);
+    public static new Result<T> Failure(Error error);
+}
+
+public interface IRepository<TAggregate> where TAggregate : AggregateRoot
+{
+    Task<TAggregate?> FindAsync(long id, CancellationToken cancellationToken = default);
+    void Add(TAggregate aggregate);
+    void Remove(TAggregate aggregate);
+}
+```
+
+**唯一预留的例外**：`Entity.Id` 现在是 `protected set`，赋值方是 Infrastructure 的 `EntityService`。若 06 发现 SqlSugar 无法通过反射写入受保护 setter，由 06 决定是否改成 `internal set` 并把变更回报本票；其余签名不动。`IRepository` 故意没有 `Save`——提交归 UoW（08 号票）。
+
+## 证据（L1）
+
+### R1 红灯（先于实现，编译期缺实现）
+
+```text
+$ dotnet build tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
+TestTypes.cs(4,64): error CS0246: 未能找到类型或命名空间名"ValueObject"
+TestTypes.cs(18,31): error CS0246: 未能找到类型或命名空间名"AggregateRoot"
+TestTypes.cs(28,74): error CS0246: 未能找到类型或命名空间名"IDomainEvent"
+    3 个错误
+```
+
+### R2 绿灯
+
+```text
+$ dotnet build tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj
+已成功生成。 0 个错误
+
+$ ./Pzd.SharedKernel.UnitTests.exe            # 等价于 dotnet test tests/Pzd.SharedKernel.UnitTests
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 24, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+[exe exit=0]
+```
+
+覆盖 seam：S1（值对象相等/不等/异类型/运算符）、S2（`Result`/`Result<T>` 成功失败 + `Error` 非法码 7 组）、S3（事件顺序/去重/清空/空集合/空参数/状态只经方法变更）、S4（包引用无 SqlSugar 与 ASP.NET Core）。
+
+### `dotnet test` 本体（环境性 `0 tests`，按票面四项要求）
+
+① 错误原文与退出码：
+
+```text
+$ dotnet test tests/Pzd.SharedKernel.UnitTests --filter ValueObjectTests
+System.UnauthorizedAccessException: Access to the path is denied.
+   at System.IO.Pipes.NamedPipeClientStream.TryConnect(...)
+测试运行摘要: 失败!   总计: 0
+```
+
+② 替代执行方式：直接运行测试 exe，`Total: 24, Failed: 0`，退出码 0（见 R2）。
+③ **`dotnet test` 本体未运行**：沙箱拒绝 MTP 命名管道，需在无管道限制的环境补跑一次。
+④ 剩余风险：`dotnet test --filter` 这条验证入口在本机无效，只能用 exe 等价替代；真正的门禁由 04 号票的 CI 承担。
 
 ## 恢复方式
 
