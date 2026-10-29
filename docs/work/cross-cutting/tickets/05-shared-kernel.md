@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-3
 更新日期：2026-10-29 22:10 Asia/Shanghai
-下一步：按 seam S1–S4 测试先行实现基类与 Result；合入前冻结公开签名并公告（06 等这份签名）
+下一步：审计 4 项必修已返工（`e0cf96f`），等老登按新 SHA 复审
 交付状态：待收尾
 实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）
 
@@ -241,4 +241,4 @@ System.UnauthorizedAccessException: Access to the path is denied.
 
 - worktree：`.worktree/05/`
 - 分支：`feat/05-shared-kernel`
-- 提交：返工提交见本分支顶端（`00c7a7b` 之后的审计返工提交）
+- 提交：`e0cf96f`（审计返工，单测 32 全绿）；此前实现 `c43c3ea`、补测 `00c7a7b`
