@@ -2,7 +2,7 @@
 
   <!--
     共享内核（05 号票）：全模块唯一的基类与 Result 来源。
-    零框架依赖：不引 SqlSugar、不引 ASP.NET Core、不引 DI 容器（架构书 §3.2 分层与依赖、§5.2 领域层约定）。
+    零框架依赖：不引 SqlSugar、不引 ASP.NET Core（架构书 §3.2 依赖规则、§5.2 保持领域纯净的约定）。
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>

@@ -103,8 +103,11 @@ public sealed record Error
     public Error(string code, string message);
     public string Code { get; }
     public string Message { get; }
-    // 契约限制（有意为之，06/09 按此实现）：没有 Deconstruct、不支持 with、不能用 new Error(Code: ..., Message: ...) 命名参数写法。
-    // 原因：校验必须跑在构造里；若改成 record 主构造 + init 属性，error with { Code = "坏码" } 会绕过校验。
+    // 契约限制（有意为之，06/09 按此实现）：没有 Deconstruct；不能用 with 改属性值（get-only，with { Code = … } 是 CS0200）；
+    // 参数名固定 code/message，不能用 Code/Message 命名参数。
+    // 为什么不改成 record 主构造：主构造的参数校验只在构造那一次生效，with 走复制构造、不重跑属性初始化器，
+    // 校验写在属性初始化器里会被 with 绕过；要让 with 也受约束得把校验放进 init 访问器（属性不再纯只读、两条路径校验位置不同易漏）。
+    // 判据是校验写在哪，不是 class 还是 record。
 }
 
 public class Result
@@ -155,7 +158,8 @@ $ dotnet build tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.cspro
 
 $ ./Pzd.SharedKernel.UnitTests.exe            # 等价于 dotnet test tests/Pzd.SharedKernel.UnitTests
 === TEST EXECUTION SUMMARY ===
-   Pzd.SharedKernel.UnitTests  Total: 24, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.115s
+   # 本段是 R2 当时的 24；补测后为 33（见 R3/R4）
 [exe exit=0]
 ```
 
@@ -226,7 +230,7 @@ System.UnauthorizedAccessException: Access to the path is denied.
 测试运行摘要: 失败!   总计: 0
 ```
 
-② 替代执行方式：直接运行测试 exe，`Total: 24, Failed: 0`，退出码 0（见 R2）。
+② 替代执行方式：直接运行测试 exe，`Total: 33, Failed: 0`，退出码 0（见 R2）。
 ③ **`dotnet test` 本体未运行**：沙箱拒绝 MTP 命名管道，需在无管道限制的环境补跑一次。
 ④ 剩余风险：`dotnet test --filter` 这条验证入口在本机无效，只能用 exe 等价替代；真正的门禁由 04 号票的 CI 承担。
 
@@ -235,7 +239,7 @@ System.UnauthorizedAccessException: Access to the path is denied.
 - `dotnet test` 本体在本机未运行（MTP 命名管道被沙箱拒绝，`总计: 0`、退出码 `-532462766`）；已用直跑 exe 等价替代，需在无管道限制环境或 04 的 CI 补跑一次。
 - 「不可变」断言只守 `Money` 这个示例类型，别的值对象子类偷偷加 setter 抓不到——这层归 13 号票的分层守卫。
 - S4 只做包引用的正向自证，没有独立反例；真正的分层守卫与反例在 13 号票，S4 不替代它。
-- `Error` 无 `Deconstruct`、不支持 `with`：有意为之，校验必须跑在构造里；06/09 按签名块里的限制实现。
+- `Error` 无 `Deconstruct`、不能用 `with` 改属性值：有意为之，校验必须跑在构造里；完整理由与三种写法的实测见 [决策笔记](../../../../.agents/notes/implemented/architecture/2026-10-29-error-record-contract.md)。
 
 ## 恢复方式
 
@@ -245,4 +249,4 @@ System.UnauthorizedAccessException: Access to the path is denied.
 
 - worktree：`.worktree/05/`
 - 分支：`feat/05-shared-kernel`
-- 提交：`e0cf96f`（审计返工，单测 32 全绿）；此前实现 `c43c3ea`、补测 `00c7a7b`
+- 提交：`e0cf96fdd01fdb43dce6a3cd547d5b1540bf4b8e`（审计返工）；此前实现 `c43c3ea07e53a8df6217597b80b02f57fd4c1383`、补测 `00c7a7ba44315bbb8c7411e565cf621d56a45e24`、措辞修正 `567531000c3e5f3e5eb667f6d1da923fda3f5913`、签名块闭环见本分支顶端

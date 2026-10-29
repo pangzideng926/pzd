@@ -88,5 +88,9 @@ public sealed class AggregateRootTests
 
         Assert.False(order.DomainEvents is List<IDomainEvent>, "DomainEvents 直接吐了内部 List");
         Assert.Throws<InvalidCastException>(() => (List<IDomainEvent>)order.DomainEvents);
+
+        // 即使按 IList 访问，写操作也必须被拒绝
+        var asList = (IList<IDomainEvent>)order.DomainEvents;
+        Assert.Throws<NotSupportedException>(() => asList.Add(new OrderNumberChanged(order.Id, "SO-999")));
     }
 }
