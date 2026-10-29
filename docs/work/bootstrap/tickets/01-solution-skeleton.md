@@ -65,7 +65,7 @@ dotnet test tests/Pzd.ArchitectureTests
 
 - worktree：`E:/pzd/.worktree/01/`
 - 分支：`chore/01-solution-skeleton`
-- 提交：`42b0e1b2b92826a8e062c940f80ad2a48539b1ce`
+- 提交：`42b0e1b2b92826a8e062c940f80ad2a48539b1ce`（骨架）＋ `161af51414fdad0ee72e7ba4c6c4d2bb1d40d5eb`（认领与票面补写）；分支 HEAD 以远端 `origin/chore/01-solution-skeleton` 为准
 
 ## 交接：实现 → 审计
 
@@ -125,3 +125,4 @@ Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0
 3. **测试框架选了 xUnit v3 + MTP**（§16.1 要求），不是模板默认的 xUnit v2。
 4. **认领已进任务分支（2026-10-29 17:58 补齐）**：张一一 以调度 Bot 身份把 `docs/work/` 与验证证据推到 main（`b3983ca`）后，本分支合并 main（`f146952`），票面「进行中／PZD-实现Bot-1」与本节证据随本提交进入任务分支。此前 `docs/work/` 未入库，新 worktree 里没有本票，无法只提交本票而不夹带他人未提交内容。
 5. 待维护者决定：是否同意合入本分支（Bot分工 §5 要求 PR + 维护者明确同意）。
+6. **一处署名瑕疵（如实记录）**：合并 main 的提交 `f146952` 用了本机默认 git 身份 `登登登`，不是 `PZD-实现Bot-1`——当时只给内容和 `-m`、没带 `-c user.name/user.email`。该提交只带入他人在 main 上的 `docs/work/` 与验证证据，无代码内容。分支已推送，按 Bot分工「已推送的分支不许 rebase 或强推」未做改写；审计侧如需干净历史，请在合入时按合并策略处理。
