@@ -88,6 +88,8 @@ fixture 因此实现两种来源，判定写在 `MySqlServerFixture.InitializeAs
 - 本机只有 `8.0.46`，`mysql:8.4` 分支未在本机运行过；按 AC 要求，有容器的环境需复核一次，复核前版本一致性不算已验证。
 - 外部真库是共享实例：用例库名固定 `pzd_test_` + GUID，句柄释放即 `DROP DATABASE`，失败路径同样清理；但仍需专用测试账号，不用业务账号。
 
+**本机其它依赖**（不属于本票 fixture 范围，供 03 等票参考）：Redis 由 **Memurai `8.2.10`** 提供，服务 `Memurai` 为 Running、`127.0.0.1:6379` 实测可连。36 的 fixture 只负责 MySQL 载体，不代理 Redis；需要 Redis 的票自行接入。
+
 ## 证据（进行中）
 
 ### R1 红灯：本机两种来源都不可用（预期失败，不是缺陷）
