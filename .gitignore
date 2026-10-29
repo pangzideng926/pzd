@@ -6,6 +6,8 @@ local.env
 !.env.example
 *.local.json
 .dp-keys/
+# 集成测试连真库用的本地连接串（36 号票）
+.local/
 
 # pzd_Workflow 约定的目录：任务 worktree、一次性产物、恢复备份、归档、回收站
 .worktree/

@@ -1,9 +1,9 @@
-状态：待实施
-主写入者：未认领
-更新日期：2026-10-29 18:05 Asia/Shanghai
-下一步：前置已满足（01 `0f25d16` 已合入），可直接认领；这是本批第 36 张票，按依赖先于 06 执行
+状态：进行中
+主写入者：PZD-实现Bot-3
+更新日期：2026-10-29 21:50 Asia/Shanghai
+下一步：实现 fixture 与 SmokeTests；本机无 Docker，按 spec A1 预案走本机 MySQL80 真服务
 交付状态：待收尾
-实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）
+实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）；本机容器不可用，见「环境与替代方案」
 
 # 36 集成测试库 fixture（真 MySQL）
 
@@ -65,6 +65,65 @@ dotnet test tests/Pzd.IntegrationTests --filter SmokeTests
 **假绿防线**：用 `--filter` 时，测试类名必须与 filter 的字面一致；证据里必须贴出实际通过的用例数（>0）。跑出 `0 tests` 的退出码 0 一律按失败处理，不算通过。
 
 **环境性 `0 tests`**（不算假绿，但也不等于通过）：若原因是环境限制——例如沙箱拒绝命名管道，.NET MTP 连不回宿主，报 `UnauthorizedAccessException ... NamedPipeClientStream` 并显示 `总计: 0`——证据里必须同时给出四项：①错误原文与真实退出码；②替代执行方式的实际结果（如直接运行测试 exe）；③明确写「`dotnet test` 本体未运行，需在无管道限制的环境补跑一次」；④剩余风险写进遗留。缺一项就按「未运行」处理，不得写成通过。
+
+## 环境与替代方案（spec A1 落地）
+
+本机实测（2026-10-29 21:40）：**无 Docker、无 Podman、无 colima**（都不在 PATH，Testcontainers 连 `npipe://./pipe/docker_engine` 超时）；
+有 **MySQL80 `8.0.46`** 服务跑在 `127.0.0.1:3306`（服务 Running、端口可连），但 `root` 无密码登录被拒。
+
+fixture 因此实现两种来源，判定写在 `MySqlServerFixture.InitializeAsync`：
+
+1. 容器可用 → 按票面固定 tag `mysql:8.4` 起库；
+2. 调用方给出外部连接串 → 回落外部真库（本机为 `8.0.46`）。
+
+外部连接串只从两处读，都不入库：
+
+- 环境变量 `PZD_TEST_MYSQL_CONNECTION`
+- 仓库根 `.local/mysql-test-connection.txt`（`/.local/` 已加进 `.gitignore`）
+
+格式：`Server=127.0.0.1;Port=3306;User ID=<可建库账号>;Password=<口令>;`
+
+**剩余风险**
+
+- 本机只有 `8.0.46`，`mysql:8.4` 分支未在本机运行过；按 AC 要求，有容器的环境需复核一次，复核前版本一致性不算已验证。
+- 外部真库是共享实例：用例库名固定 `pzd_test_` + GUID，句柄释放即 `DROP DATABASE`，失败路径同样清理；但仍需专用测试账号，不用业务账号。
+
+## 证据（进行中）
+
+### R1 红灯：本机两种来源都不可用（预期失败，不是缺陷）
+
+编译：
+
+```text
+$ dotnet build tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj
+Pzd.IntegrationTests -> ...\bin\Debug\net10.0\Pzd.IntegrationTests.dll
+已成功生成。 0 个警告 0 个错误
+```
+
+直接运行测试 exe（等价于 `--filter SmokeTests`，规避 MTP 管道限制）：
+
+```text
+$ ./Pzd.IntegrationTests.exe -class "Pzd.IntegrationTests.SmokeTests"
+DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 3, Skipped: 0, Not Run: 0
+[exe exit=1]
+```
+
+`dotnet test` 本体（按票面「环境性 0 tests」四项要求记录）：
+
+```text
+$ dotnet test tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj --filter SmokeTests
+System.UnauthorizedAccessException: Access to the path is denied.
+   at System.IO.Pipes.NamedPipeClientStream.TryConnect(...)
+测试运行摘要: 失败!   总计: 0
+```
+
+**`dotnet test` 本体未运行**：沙箱拒绝 MTP 命名管道（`总计: 0` 按未运行算），需在无管道限制的环境补跑一次。
+
+### R2 绿灯
+
+**未运行**：缺一个能建库的 MySQL 账号，待维护者提供连接串后重跑并回填真实输出与通过数。
 
 ## 恢复方式
 
