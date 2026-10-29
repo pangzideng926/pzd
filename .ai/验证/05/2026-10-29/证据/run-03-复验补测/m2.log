@@ -1,0 +1,15 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.SharedKernel.UnitTests
+  Discovered:  Pzd.SharedKernel.UnitTests
+  Starting:    Pzd.SharedKernel.UnitTests
+    Pzd.SharedKernel.UnitTests.ValueObjectTests.值对象子类不暴露可写属性 [FAIL]
+      Assert.Empty() Failure: Collection was not empty
+      Collection: ["Currency"]
+      Stack Trace:
+        tests\Pzd.SharedKernel.UnitTests\ValueObjectTests.cs(57,0): at Pzd.SharedKernel.UnitTests.ValueObjectTests.值对象子类不暴露可写属性()
+           at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+           at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '51d798afea04b3f5f57beb88d37cb07d0ad843da3ad114b49b025782c629af53')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 30, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+M2_EXIT=1

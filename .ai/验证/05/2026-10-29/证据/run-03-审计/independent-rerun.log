@@ -1,0 +1,48 @@
+=== 被测 SHA: c43c3ea07e53a8df6217597b80b02f57fd4c1383 ===
+HEAD=c43c3ea07e53a8df6217597b80b02f57fd4c1383
+=== A. build 整个解决方案 ===
+
+已成功生成。
+    0 个警告
+    0 个错误
+
+已用时间 00:00:02.33
+BUILD_EXIT=0
+=== B. 直跑单测产物（基线） ===
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '9503ec36f59cd67eab7481eee9677ac1f9e27894d9a2279c2feae4e5460bcc06')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 24, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+BASE_EXIT=0
+=== C. 审计侧自做变异：删掉 GetType 类型检查，看测试是否仍全绿 ===
+14:        if (other is null)
+    0 个错误
+
+已用时间 00:00:01.03
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '9503ec36f59cd67eab7481eee9677ac1f9e27894d9a2279c2feae4e5460bcc06')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 24, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+MUTANT_EXIT=0（若为 0 且 Total=24 → 该分支确实无人守）
+=== D. 还原并复核 ===
+    0 个错误
+
+已用时间 00:00:01.44
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '9503ec36f59cd67eab7481eee9677ac1f9e27894d9a2279c2feae4e5460bcc06')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 24, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.106s
+RESTORE_EXIT=0
+=== E. dotnet test 本体 ===
+     at System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)
+     at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+测试运行摘要: 失败!
+  总计: 0
+  失败: 0
+已完成测试运行，但显示非成功退出代码: -532462766 (请参阅: https://aka.ms/testingplatform/exitcodes)
+DOTNET_TEST_EXIT=127
+=== F. 共享内核的程序集引用（S4 自证口径） ===
+  所有项目均是最新的，无法还原。
+项目“Pzd.SharedKernel”具有以下包引用
+   [net10.0]: 
+   顶级包           已请求     已解决  
+   > MinVer      8.0.0   8.0.0
+
+=== 完 ===

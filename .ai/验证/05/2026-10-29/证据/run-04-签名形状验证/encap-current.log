@@ -1,0 +1,13 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.SharedKernel.UnitTests
+  Discovered:  Pzd.SharedKernel.UnitTests
+  Starting:    Pzd.SharedKernel.UnitTests
+    Pzd.SharedKernel.UnitTests.EncapProbe.领域事件集合不能从外部强转成可变列表 [FAIL]
+      DomainEvents 直接吐了内部 List
+      Stack Trace:
+        tests\Pzd.SharedKernel.UnitTests\__encap.cs(11,0): at Pzd.SharedKernel.UnitTests.EncapProbe.领域事件集合不能从外部强转成可变列表()
+           at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)
+           at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '30518fd127593018c1ffe3f32032a5f5871e033ed609469e4831357ac44874e8')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 31, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.110s
