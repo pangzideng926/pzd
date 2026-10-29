@@ -1,0 +1,2 @@
+# 生成产物固定 LF，避免 Windows 下 checkout 成 CRLF、重跑 generate 后工作树变脏
+packages/api/src/generated/** text eol=lf
