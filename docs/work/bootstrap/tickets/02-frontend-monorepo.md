@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-2
 更新日期：2026-10-29 18:04 Asia/Shanghai
-下一步：交付测试 Bot 复跑验收；等 26–31 号票消费骨架
+下一步：等维护者点头合入；`git merge main` 后复跑一次构建
 交付状态：待收尾
 实施条件：已具备
 
@@ -147,7 +147,7 @@ dev 首页真实渲染（SPA 下服务端只给外壳，用 Chromium 实测 DOM�
 
 ```
 $ pnpm exec react-router dev        # 监听 127.0.0.1:5173
-$ node check.mjs                    # Playwright chromium，装在临时目录，不是仓库依赖
+$ node check.mjs                    # Playwright chromium，装在临时目录，不是仓库依赖（一次性人工核对，非可复现证据）
 status 200
 含 Project ready!: true
 含 You may now add components: true
@@ -165,13 +165,14 @@ $ node packages/api/scripts/generate.mjs && git status --porcelain packages/api
 
 **4. 遗留**
 
-- **决策笔记与代码不在同一个提交**（笔记在 `b9abbaa`、代码在 `ce36a28`）：历史已推送，按规矩不强推改写，按审计意见「记录在案」处理；本票返工起代码与文档各自独立提交。
+- **决策笔记与代码不在同一个提交**（首轮笔记 `b9abbaa`、代码 `ce36a28`；返工轮 SPA 笔记 `23cb24e`、代码 `f652ffa`）：这两轮分支都已推送，按规矩不改写历史；**自 03 号票起笔记与代码必须同提交**（`Bot分工 §6`、`决策笔记 §5.8`）。
 - **`pnpm test` 只覆盖 `packages/api` 的 2 个用例**，`apps/web` 没有 test 脚本。浏览器级证据是本票临时装的 Playwright 跑的一次性校验，不是仓库依赖；正式 E2E 归 35 号票。
 - **`.gitattributes` 只对 `packages/api/src/generated/**` 固定 LF**，没做仓库级 `* text=auto eol=lf`：仓库级归一化会重写 `旺总` 的 .NET 分支全部文件的换行，属于 04 号票「仓库约定」的范围，本票不动。
 - **SPA 构建对本机 IPv6 回环敏感**：`ssr:false` 后构建会预渲染 `/`，默认连 `::1`，在禁用 IPv6 回环的环境里报 `Prerender: Request failed for /: connect EACCES ::1`。已在 `apps/web/vite.config.ts` 固定 `server.host: "127.0.0.1"`（A/B 验证：不加报错、加了 `SPA Mode: Generated build\client\index.html`）。
+  - 代价：写死回环地址后，局域网 / PDA 联调时别的机器连不上；需要对外暴露时用 `pnpm exec react-router dev --host 0.0.0.0` 覆盖，别改配置里的默认值。Aspire 里的启动方式见 03 号票。
 - `build/server/index.js` 仍有 6.21 kB：这是 React Router SPA 预渲染自带的产物，不是 SSR 服务；部署只拷 `build/client`（§14.5），不影响同源部署。
 - 包名沿用 `@workspace/*`、`apps/web` 版本号仍硬编码 `0.0.1`（§15.1 要由 MinVer 推导）：前者要改建议单开票，后者归后续版本票。
-- 未用依赖与错位依赖留给 28/29 号票整理：`@remixicon/react`、`@turbo/gen` 零引用；TanStack Query 尚未安装；`zod` 装在 `ui` 而不是 `api`。
+- 未用依赖与错位依赖留给 28/29 号票整理：`@remixicon/react`、`@turbo/gen` 零引用；`isbot` 在 SPA 模式下也没有引用方（模板 SSR 残留）；TanStack Query 尚未安装；`zod` 装在 `ui` 而不是 `api`。
 - `Vite /api`、`/hubs` 代理与根 `README.md` 归 03 号票；`apps/web` 的业务页面与路由守卫归 26 号票。
 
 ## 恢复方式
@@ -183,3 +184,4 @@ $ node packages/api/scripts/generate.mjs && git status --porcelain packages/api
 - worktree：`.worktree/02/`
 - 分支：`chore/02-frontend-monorepo`
 - 提交：`f652ffabd44018d4a70ebb7d96d6bcaa468268f3`（审计返工，被测 SHA）；首轮实现 `ce36a281e41dafcf8b610bebbf5357d2d0b89352`；首轮审计基线 `b9abbaa8a462c2c2ffccbb47c4dd2336c8fb1be1`
+- 合并 main：`ee00d28` → 合并提交 `a575036`（作者 `PZD-实现Bot-2`，未落到维护者身份）；合并后复跑 `pnpm build --force` 退出 0、`SPA Mode: Generated build\client\index.html`（1405 字节）、`pnpm test --force` `pass 2 / fail 0`、`Cached: 0`
