@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
-更新日期：2026-10-29 18:20 Asia/Shanghai
-下一步：run-03 三项必改已修完并推新 SHA，等老登按新 SHA 重审
+更新日期：2026-10-29 18:52 Asia/Shanghai
+下一步：审计已通过 `e40a7cf`，等维护者点头合入 main；`dotnet test` 本体待维护者普通终端补跑一次
 交付状态：待收尾
 实施条件：已具备
 
@@ -67,9 +67,23 @@ dotnet test tests/Pzd.ArchitectureTests
 
 - worktree：`E:/pzd/.worktree/01/`
 - 分支：`chore/01-solution-skeleton`
-- 提交：被测 SHA `ed4e65692fb4b4caa84baa61f140ccdec4ac5a44`（合并 main 后的构建候选）；本次票面修复提交在它之后、只含票面与决策笔记，无代码改动
+- 提交：被测 SHA `e40a7cf42c7193b612fd642e9833dcac061fad71`（审计通过的最终候选，见 [run-05 审计重审结论](../../../../.ai/验证/01/2026-10-29/证据/run-05-审计重审/结论.md)）；此前 `ed4e656` 是同一份代码的前一候选，`git diff --stat ed4e656 e40a7cf -- src tests` 为空
 
-## 交接：实现 → 审计（第 2 版，回应 run-03「需修改」）
+## 交接：实现 → 审计（第 3 版：审计通过）
+
+**审计结论：通过**（老登 @ `e40a7cf42c7193b612fd642e9833dcac061fad71`，独立干净 worktree 重跑；原始输出与判定见 [run-05 结论](../../../../.ai/验证/01/2026-10-29/证据/run-05-审计重审/结论.md)）。run-03 提出的三项必改已全部落实；按审计要求把被测 SHA 从 `ed4e656` 更新为 `e40a7cf`，使「必要检查适用于最终候选」闭环，此项不重开审计。
+
+**合并 main 后复跑**（`ee00d28` 入库证据与群规之后，合并提交 `86e5b66c5fbcb86b5cc3adf1ddaf611acfbc4766`）：
+
+```text
+$ git diff --stat e40a7cf HEAD -- src tests
+（空：代码/测试相对审计候选零改动）
+
+$ dotnet build Pzd.slnx      → 已成功生成。0 个警告 0 个错误，EXIT_CODE=0
+$ Pzd.ArchitectureTests.exe  → Total: 1, Errors: 0, Failed: 0，EXE_EXIT=0
+```
+
+## 交接明细（第 2 版，回应 run-03「需修改」）
 
 ### 1. 目标
 
