@@ -1,0 +1,15 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pzd API",
+    "version": "0.0.0-placeholder"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "description": "占位：真实 openapi.json 由 16 号票从后端导出"
+      }
+    }
+  }
+}
