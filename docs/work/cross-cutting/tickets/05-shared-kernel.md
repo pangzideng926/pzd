@@ -83,7 +83,8 @@ public abstract class Entity
 
 public abstract class AggregateRoot : Entity
 {
-    public IReadOnlyList<IDomainEvent> DomainEvents { get; }
+    protected AggregateRoot();                               // 子类构造会调用；只读视图在这一步就建好
+    public IReadOnlyList<IDomainEvent> DomainEvents { get; }  // 缓存的只读视图：反复访问返回同一实例，不新建包装
     public void Raise(IDomainEvent domainEvent);
     public void ClearDomainEvents();
 }
