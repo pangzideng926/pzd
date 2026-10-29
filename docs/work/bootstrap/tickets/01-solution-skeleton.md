@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
-更新日期：2026-10-29 17:38 Asia/Shanghai
-下一步：等维护者同意合入 chore/01-solution-skeleton@42b0e1b；票面认领未能进任务分支（docs/work 在 main 上仍未提交）
+更新日期：2026-10-29 17:58 Asia/Shanghai
+下一步：等维护者决定是否合入本分支；代码与认领已在任务分支提交，李总在无管道限制环境复核 dotnet test
 交付状态：待收尾
 实施条件：已具备
 
@@ -20,11 +20,12 @@
 ## 范围与非范围
 
 - 做：`Pzd.slnx`（解决方案文件夹分组）、`global.json` 锁 SDK、`Directory.Build.props`（Nullable、TreatWarningsAsErrors、MinVer）、`Directory.Packages.props` 中央包管理、`src/Pzd.Api` 与 `tests/Pzd.ArchitectureTests` 两个空壳项目。
+- 超出原范围但已纳入本票（张一一 2026-10-29 决定）：根 `NuGet.config` 锁单一包源——缺它 `dotnet build` 直接因 `NU1507` 失败，属「一条命令能构建」的底座本身，不挪 04。另有 `global.json` 的 `test.runner = Microsoft.Testing.Platform`，该键写在票内本就新建的文件里，不算新增文件。
 - 不做：不建业务模块，不建 SharedKernel，不写任何业务代码，不引数据库包。
 
 ## 责任文件范围（认领时在群里先说清）
 
-新建 `Pzd.slnx`、`global.json`、`Directory.Build.props`、`Directory.Packages.props`、`src/Pzd.Api/**`、`tests/Pzd.ArchitectureTests/**`。不碰 `apps/`、`packages/`、`db/`。
+新建 `Pzd.slnx`、`global.json`、`NuGet.config`、`Directory.Build.props`、`Directory.Packages.props`、`src/Pzd.Api/**`、`tests/Pzd.ArchitectureTests/**`。不碰 `apps/`、`packages/`、`db/`。
 
 ## 关键接口与依赖
 
@@ -119,10 +120,8 @@ Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0
 
 ### 4. 遗留
 
-1. **超出票面文件范围新增了两个根文件**，需维护者或老何确认是否收编进 01 或改归 04：
-   - `NuGet.config`：本机用户级配置有第二个包源（`SJ`），中央包管理下触发 `NU1507` 且被 `TreatWarningsAsErrors` 抬成错误，构建直接失败。仓库内锁单一 `nuget.org` 源才能复现一致的构建结果。
-   - `global.json` 里加了 `"test": { "runner": "Microsoft.Testing.Platform" }`：.NET 10 SDK 的 `dotnet test` 默认走 VSTest，xUnit v3（MTP）必须显式 opt-in，否则报 `Testing with VSTest target is no longer supported`。该键写在本票本来就要新建的 `global.json` 里，不算新增文件。
+1. **超出票面文件范围新增的根文件已定性**：`NuGet.config` 按张一一 2026-10-29 的决定收进本票（原因见「范围与非范围」）；`global.json` 的 `test.runner` 键写在本票自有文件内。后续若 04 号票要统一仓库约定，从这里接手即可。
 2. **architecture 与实现的一处偏差**：`tests/Pzd.ArchitectureTests` 里有 1 条用例（`ApiVersionTests`），不是 spec §5 说的「空壳 0 用例」。原因有两个：MTP 在 0 用例时以非零码退出（`0 tests` 一律按失败，见上面的假绿防线）；且用一条真断言证明 MinVer 生效比人眼看日志可靠。13 号票接管真实架构规则后，这条可保留或迁走。
 3. **测试框架选了 xUnit v3 + MTP**（§16.1 要求），不是模板默认的 xUnit v2。
-4. **认领未进任务分支**：`docs/work/` 在 main 上整体未提交，新 worktree 里没有本票，改「主写入者/状态」并提交就等于替老何提交 7 个未跟踪目录，违反「不擅自提交别人未提交改动」。故本票头的认领与本节证据目前只在主工作树未提交状态，等 docs/work 入库后补提交。
+4. **认领已进任务分支（2026-10-29 17:58 补齐）**：张一一 以调度 Bot 身份把 `docs/work/` 与验证证据推到 main（`b3983ca`）后，本分支合并 main（`f146952`），票面「进行中／PZD-实现Bot-1」与本节证据随本提交进入任务分支。此前 `docs/work/` 未入库，新 worktree 里没有本票，无法只提交本票而不夹带他人未提交内容。
 5. 待维护者决定：是否同意合入本分支（Bot分工 §5 要求 PR + 维护者明确同意）。
