@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Pzd.Api/Pzd.Api.csproj" />
+    <Project Path="src/Pzd.AppHost/Pzd.AppHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj" />

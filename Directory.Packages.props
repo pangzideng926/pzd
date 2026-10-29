@@ -8,6 +8,13 @@
   <ItemGroup>
     <PackageVersion Include="MinVer" Version="8.0.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <!-- Aspire 编排（03 号票）：SDK 与各 Hosting 包保持同一小版本 -->
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.6.4" />
+    <PackageVersion Include="Aspire.Hosting.MySql" Version="13.6.4" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="13.6.4" />
+    <PackageVersion Include="Aspire.Hosting.JavaScript" Version="13.6.4" />
+    <!-- Aspire.Hosting.MySql 13.6.4 传递依赖 MySqlConnector 2.3.1 有已知漏洞（NU1902），显式提升到已修复版本 -->
+    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
   </ItemGroup>
 
 </Project>

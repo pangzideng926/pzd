@@ -1,9 +1,9 @@
-状态：待实施
-主写入者：未认领
-更新日期：2026-10-29 18:05 Asia/Shanghai
-下一步：前置已满足（01 `0f25d16`、02 `f13b946` 已合入 main），可直接认领
+状态：进行中
+主写入者：PZD-实现Bot-1
+更新日期：2026-10-29 21:58 Asia/Shanghai
+下一步：代码已落地且编译通过；实跑被两道环境门挡住（本机无 Docker、本沙箱 EventLog 无写权限），需维护者普通终端跑一次或给外部 MySQL 连接串
 交付状态：待收尾
-实施条件：已具备（01 `0f25d16`、02 `f13b946` 于 2026-10-29 合入 main）
+实施条件：已具备（01 `0f25d16`、02 `f13b946` 于 2026-10-29 合入 main）；**待满足**：可运行 Aspire AppHost 的环境，或外部 MySQL 连接串（两者任一即可实跑，详见「实施进展」）
 
 # 03 Aspire 编排：一条命令拉起 MySQL / Redis / API / Web
 
@@ -65,6 +65,46 @@ curl -i http://localhost:<web>/api/health
 
 ## 任务映射
 
-- worktree：实施时填写（`.worktree/03/`）
-- 分支：实施时填写（`chore/03-aspire-orchestration`）
-- 提交：实施时填写（完整 SHA）
+- worktree：`E:/pzd/.worktree/03/`
+- 分支：`feat/03-aspire-orchestration`
+- 提交：见本段下方「实施进展」的被测 SHA
+
+## 实施进展（2026-10-29 21:58，PZD-实现Bot-1）
+
+**已落地**
+
+- `src/Pzd.AppHost`（Aspire 13.6.4）：`mysql`（`mysql:8.4` 容器 + `pzd-master` 库）、`redis`（`redis:7.4` 容器）、`api`（`src/Pzd.Api` 项目）、`web`（Vite 开发服务器，pnpm）四个资源；连接串只经 AppHost 注入，`appsettings` 里没有密码。
+- 「容器优先、外部实例回落」用配置切换：`External:MySql` / `External:Redis` 给了值就用外部实例（`AddConnectionString`），不给就起容器；只有走容器时才 `WaitFor` 数据源。
+- `apps/web/vite.config.ts`：`/api`、`/hubs` 代理到 Aspire 注入的 `services__api__http__0`（未在 Aspire 下启动时回落 `http://127.0.0.1:5080`），端口读 `PORT`。
+- 编译证据：`dotnet build Pzd.slnx` → `已成功生成。0 个警告 0 个错误`，退出码 0。
+
+**两道环境门（导致本轮拿不到「四个资源 Healthy」）**
+
+1. 本机无 Docker / Podman → 容器路径起不来，只能走回落路径，而回落需要外部 MySQL 连接串。
+2. 本沙箱下 AppHost 直接崩在日志初始化，与 03 代码无关：
+
+```text
+$ timeout 60 dotnet run --project src/Pzd.AppHost --no-build
+Unhandled exception. System.AggregateException: ... (Cannot open log for source '.NET Runtime'. You may not have write access.)
+System.ComponentModel.Win32Exception (5): 拒绝访问
+❌ 发生意外错误: The AppHost process exited unexpectedly with exit code -532462766
+```
+
+即 Windows EventLog 源需要管理员写权限，受限执行环境里拿不到；这是执行环境限制，和 01 那张票的「命名管道被拒」同类。
+
+**给维护者的最小动作**（任选一，普通终端执行）
+
+```bash
+cd E:/pzd/.worktree/03 && dotnet run --project src/Pzd.AppHost
+# 或先给回落连接串再跑
+# External__MySql="Server=127.0.0.1;Port=3306;Database=pzd_master;User ID=...;Password=..." dotnet run --project src/Pzd.AppHost
+```
+
+期望：仪表板里 `mysql`/`redis`/`api`/`web` 四个资源 Healthy，Web 端点打开后 `/api/health` 可经代理回后端。
+
+**其他留痕**
+
+- 传递依赖 `MySqlConnector 2.3.1` 有已知漏洞（`NU1902`，被警告即错误抬成失败），已在 `Directory.Packages.props` 显式提升到 `2.6.2`。
+- `AddProject` 用路径重载而非生成的 `Pzd_Api` 类型，避免 AppHost 与 Api 的源生成耦合。
+- 实测本机 `dotnet new install Aspire.ProjectTemplates`（13.6.4）已装到本机模板库，属环境改动，非仓库改动。
+
