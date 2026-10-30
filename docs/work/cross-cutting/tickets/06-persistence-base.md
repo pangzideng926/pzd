@@ -1,7 +1,7 @@
-状态：已完成（06 七审通过并合入 main `7a412fe`；七轮遗留的两件——`MissKind` 去数字编码、`RestoreAsync` 改库判定并新增 `NotInTrash`——在分支 `fix/06-misskind-order`，待维护者合入）
+状态：已完成（06 七审通过并合入 main `7a412fe`；七轮遗留的两件——`MissKind` 去数字编码、`RestoreAsync` 改库判定并新增 `NotInTrash`——已合入 main `1c8abbb`，八审 `run-13` 判通过）
 主写入者：PZD-实现Bot-2
-更新日期：2026-10-30 12:20 Asia/Shanghai
-下一步：`fix/06-misskind-order` 合入后由李总复跑 12 条目标态探针、老登看 diff；07 开工前维护者补跑 `dotnet test` 本体
+更新日期：2026-10-30 12:40 Asia/Shanghai
+下一步：07 开工前先补 `Restore`/`SoftDelete` 跨租户红用例（八审 M-E，验收门槛见遗留与 07 票 `c16ec06`），再碰租户解析；维护者补跑 `dotnet test` 本体
 交付状态：已交付
 实施条件：已具备（05 签名冻结并合入 `8116b32`；36 fixture 合入 `869e745`，外部真库账号 `pzd_dev` 可用）
 
@@ -315,7 +315,7 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
 **6e. 返工第七轮（七审 low + 恢复改库判定）**
 
-七审结论是**通过**，只留一条不卡闸门的 low（`MissKind` 编码与声明顺序相反）。合进 main（`7a412fe`）之后，老登与李总又顺着「该由库判定状态」这条线挖到同一个病根的第二处：`RestoreAsync` 靠**实体自报** `IsDeleted` 判断能不能恢复，而 DTO 从 HTTP 体转回来的实体这一列恒为 `false`——一次正常的恢复请求会被抛成 500。张一一裁定（09 票 `698e4da`），与本条 low 一起在 `fix/06-misskind-order` 收掉。
+七审结论是**通过**，只留一条不卡闸门的 low（`MissKind` 编码与声明顺序相反）。合进 main（`7a412fe`）之后，老登与李总又顺着「该由库判定状态」这条线挖到同一个病根的第二处：`RestoreAsync` 靠**实体自报** `IsDeleted` 判断能不能恢复，而 DTO 从 HTTP 体转回来的实体这一列恒为 `false`——一次正常的恢复请求会被抛成 500。张一一裁定（09 票 `698e4da`），与本条 low 一起收掉，已合入 main `1c8abbb`。
 
 | 条目 | 改法 | 用例 |
 |---|---|---|
@@ -340,9 +340,14 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
 账目：`PersistenceTests` 36/36、集成 44、单元 33、架构 1，四个退出码全 0；残库 `pzd_test%` 为 0。改动文件只有 `PersistenceErrors.cs`、`PersistenceWriter.cs`、`PersistenceTests.cs` 与本票面。
 
+**给后来人的一句提醒**：李总 `run-11` 那套 12 条探针里，`行5_…现状抛异常` 与 `行6_…返回VersionConflict` 现在**本来就该红**——它们钉的是改造前的现状，已被 `目标态_DTO形态恢复…` 与 `目标态_恢复活跃记录应返回NotInTrash…` 两条取代。看到它们红不要按回归失败去查；要复跑就先按新口径改断言（改法见八审 `run-13`）。
+
+**八审（`run-13`）结论**：通过。五处变异四处精确红（守卫加回去 → 红 2；`NotInTrash`→`InTrash` → 红 1；三态字符串对调 → 红 5；`NoRow` 吞成 `Active` → 红 3），独立复跑 36/44/33/1 全 0；另揪出一条 **medium：跨租户恢复没有任何用例守**（详见遗留）。
+
 **7. 遗留**
 
-- ~~**`MissKind` 的编码顺序与声明顺序相反（07 开工前必修，七审 low）**~~ **已办（`fix/06-misskind-order`）**：原状是枚举声明 `NoRow, Recycled, Active`（0/1/2）、而 SQL 把「已删」编成 2、「活跃」编成 1，靠显式 `switch` 才正确，谁改成 `(MissKind)code` 就静默反转。修法没有停在「两字符对齐」——那种改法**纯等价重构、任何公开 API 用例都测不出来**（老登六审那类空网的翻版），所以直接把数字编码这层消灭：SQL 返回自描述字符串，`Enum.TryParse` 接。07 的租户解析碰这条路径时不必再记任何编码约定。
+- **跨租户恢复没有任何用例守（八审 M-E，medium，07 必补）**：只把 `Restore` 路径上的 `AND TenantId=@tenantId` 删掉，`PersistenceTests` **36 条全绿、零失败**——行为本身是对的（恢复别家已删记录 → `NotFound`/404，别家那行一字未动），但**只活在代码正确性里，用例集里没有一条能红**。这是既有缺口、不是 6e 引入的，但删掉 `Restore` 的实体守卫扩大了可达面。门槛已写进 07 票 `c16ec06`：补的用例必须**在删掉租户条件时会红**，否则不算覆盖；`SoftDeleteAsync` 同样要求。这条缺口只有「故意改坏代码看有没有用例变红」才挖得到，常规探针是绿的。
+- ~~**`MissKind` 的编码顺序与声明顺序相反（07 开工前必修，七审 low）**~~ **已办（合入 `1c8abbb`）**：原状是枚举声明 `NoRow, Recycled, Active`（0/1/2）、而 SQL 把「已删」编成 2、「活跃」编成 1，靠显式 `switch` 才正确，谁改成 `(MissKind)code` 就静默反转。修法没有停在「两字符对齐」——那种改法**纯等价重构、任何公开 API 用例都测不出来**（老登六审那类空网的翻版），所以直接把数字编码这层消灭：SQL 返回自描述字符串，`Enum.TryParse` 接。07 的租户解析碰这条路径时不必再记任何编码约定。
 - **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 36, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 36` 才算闭环；看到 `总计: 0` 一律按未运行处理。
 - **`SetColumns` 形态已被运行期拒绝，但静态守卫仍必需**：`db.Updateable<T>().SetColumns(...)` 现在会被 `UpdateByObject` 的无条件拦截拒绝（用例 `SetColumns形态的旁路也被拒绝`），最初「漏写 `DeletedToken` → 同名重建 1062」的那条代价路径已经走不到了。注意这不是「可以不带守卫」的理由——AOP 钩不到的 `db.Deleteable<T>().Where(...)` 仍在，13 号票的静态守卫照旧必需。
 - **存量 `Version = 0` 的行在运行期不可修复**（三审要求留痕）：本票之前几个版本里，`db.Updateable(entity)` 会把实体上的默认 `Version` 原样写回，产生 `Version=0` 的行。这类行现在**任何入口都修不了**——AOP 拒绝 `Updateable`，`PersistenceWriter` 拿 0 去比永远返回 `VersionConflict`（09 会映射成 409），排查时看起来像并发冲突。排查与修复只能用运维裸 SQL：
