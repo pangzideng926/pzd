@@ -42,18 +42,48 @@
 
 ## 验收标准
 
-- [ ] 新增实体自动带 `CreatedAt/CreatedBy/UpdatedAt/UpdatedBy`。
-- [ ] 软删除记录默认查询不可见，绕过过滤需显式调用。
-- [ ] **软删除后能用同一业务键（如 `UserName`）重建成功，有可执行断言证明**；唯一索引方案已在票内留痕，且没有删除唯一索引。
-- [ ] 并发更新冲突可被识别为 409 的来源错误（端点映射由 09 号票完成）。
-- [ ] MySQL 1062 唯一键冲突可被识别为 409 的来源错误。
-- [ ] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
-- [ ] 证据贴出 `PersistenceTests` 的实际通过数（>0）。
+- [x] 新增实体自动带 `CreatedAt/CreatedBy/UpdatedAt/UpdatedBy`。
+- [x] 软删除记录默认查询不可见，绕过过滤需显式调用（`ClearFilter()`）。
+- [x] 软删除后能用同一业务键（`UserName`）重建成功，有可执行断言证明；唯一索引方案见下节，没有删除唯一索引。
+- [x] 并发更新冲突可被识别为 409 的来源错误（`Persistence.Record.VersionConflict`）。
+- [x] MySQL 1062 唯一键冲突可被识别为 409 的来源错误（`Persistence.Record.DuplicateKey`）。
+- [x] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
+- [x] 证据贴出 `PersistenceTests` 的实际通过数：**6 个用例，0 失败**。
+
+## 定型的软删除唯一索引方案（供 17、19、20、23、32 号票复用）
+
+**列**：`DeletedToken BIGINT NOT NULL DEFAULT 0`（不是可空列）。
+
+**取值**：活记录恒为 `0`；软删除时写入该行自身主键 `Id`。
+
+**索引**：`UNIQUE KEY (TenantId, <业务键>, DeletedToken)`，例如
+`UNIQUE KEY ux_identity_user_tenant_name (TenantId, UserName, DeletedToken)`。
+
+```sql
+CREATE TABLE test_user (
+  Id BIGINT NOT NULL PRIMARY KEY,
+  TenantId BIGINT NOT NULL,
+  UserName VARCHAR(64) NOT NULL,
+  Version INT NOT NULL,
+  IsDeleted TINYINT(1) NOT NULL DEFAULT 0,
+  DeletedToken BIGINT NOT NULL DEFAULT 0,
+  CreatedAt DATETIME(6) NOT NULL, CreatedBy BIGINT NOT NULL,
+  UpdatedAt DATETIME(6) NOT NULL, UpdatedBy BIGINT NOT NULL,
+  UNIQUE KEY ux_test_user_tenant_name (TenantId, UserName, DeletedToken)
+);
+```
+
+**为什么不按票面建议用可空列 + NULL**：MySQL 的唯一索引允许多个 NULL，未删除写 NULL 时两条活跃同名记录都能插入，唯一约束等于没有；`0` 是能参加比较的哨兵值，活跃记录最多一条、已删记录彼此用主键区分。
+
+**建表时必须一起带的约定**：主键 `BIGINT`（雪花，对外序列化成字符串）、`Version INT NOT NULL`、审计四列、时间列用 `DATETIME(6)`（微秒精度，对齐 .NET 侧截断）。
 
 ## 验证入口
 
 ```bash
+dotnet build Pzd.slnx
 dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests
+# 本机执行环境跑不了 dotnet test 本体时，用替代方式（见下文「环境」）：
+# tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
 ```
 
 证据按 L1 记到本票：完整命令、真实退出码、关键输出行、被测 SHA。未运行就写「未运行」，不写成通过。
@@ -62,12 +92,64 @@ dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests
 
 **环境性 `0 tests`**（不算假绿，但也不等于通过）：若原因是环境限制——例如沙箱拒绝命名管道，.NET MTP 连不回宿主，报 `UnauthorizedAccessException ... NamedPipeClientStream` 并显示 `总计: 0`——证据里必须同时给出四项：①错误原文与真实退出码；②替代执行方式的实际结果（如直接运行测试 exe）；③明确写「`dotnet test` 本体未运行，需在无管道限制的环境补跑一次」；④剩余风险写进遗留。缺一项就按「未运行」处理，不得写成通过。
 
+## 交接（实现 → 测试）
+
+**1. 目标**：证明持久化约定真的生效——审计字段自动填、软删除默认不可见且同名可重建、并发与 1062 都能识别成 409 来源错误、时间读写不多不少。
+
+**2. 提交**
+
+- 分支：`feat/06-persistence-base`
+- 认领提交：`555a817596d214d19e6ad7099f1a906a3ca89be7`
+- 本次实现（被测 SHA）：见本分支 HEAD（代码与决策笔记在同一个提交，`Bot分工 §6`）
+
+**3. 验证**（命令、真实退出码、关键输出行，原样粘贴）
+
+构建：
+
+```
+$ dotnet build Pzd.slnx
+    0 个警告
+    0 个错误
+已用时间 00:00:01.43
+```
+
+`PersistenceTests`（本机 `dotnet test` 本体受执行环境限制，用直跑测试产物的替代方式，`-class` 与类名字面一致）：
+
+```
+$ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.851s
+```
+
+用例与断言一一对应：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
+
+整套回归（确认没动坏 36 的载体与 05 的单元测试）：
+
+```
+$ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe
+   Pzd.IntegrationTests  Total: 14, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.869s
+$ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.111s
+$ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.106s
+```
+
+**4. 遗留**
+
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 6, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 6` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+- **并发不走 SqlSugar 自带开关**：实测 `IsEnableUpdateVersionValidation`（列配置与链式方法都试过）在 `Updateable(entity)` 路径上生成的 SQL 没有版本列，第二次并发更新照样成功；因此并发写入口是 `PersistenceWriter.UpdateAsync`。SQL 证据与推理写在决策笔记里。
+- **超出票面范围的 3 个文件**：`Directory.Packages.props`（加 `SqlSugarCore 5.1.4.221` 与顶掉漏洞版本的 `System.Security.Cryptography.Pkcs 10.0.14`）、`tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（加指向 `Pzd.Infrastructure` 的 `ProjectReference`，并改掉 36「绝不引用任何 Pzd.* 项目」的注释）、`Pzd.slnx`（挂新工程）。三者都是本票绕不开的，已在群里报备。
+- **SqlSugar 的传递依赖带漏洞**：`System.Security.Cryptography.Pkcs 8.0.1` 触发 `NU1902/NU1903`，在「警告即错误」下直接构建失败，已在 Infrastructure 里直接引用 10.0.14 顶掉，代码不使用该包。
+- **表名约定不做复数化**：`TestUser → test_user`。17 号票写 master 建表 SQL 时必须沿用 snake_case，冲突就改约定并在 `PersistenceConventions` 一处调整。
+- **`SoftDeleteTypes` 要手工登记**：模块注册时漏登记等于软删除过滤不生效；08 号票接 UoW 时应把登记收进模块注册入口，别散落在各处。
+- **未做的部分**：`Id` 对外序列化成字符串由 API 序列化层负责（不在本票）；`Version` 冲突转 ProblemDetails 由 09 号票；租户库切换由 07 号票；本票只按单库单连接验证。
+
 ## 恢复方式
 
-删除新增项目与配置；测试库为容器，直接重建。
+删除 `src/Pzd.Infrastructure/`、`tests/Pzd.IntegrationTests/PersistenceTests.cs`，并从 `Pzd.slnx`、`Directory.Packages.props`、测试工程 csproj 回退三处改动即可；测试库为临时库，用例结束自动删除。
 
 ## 任务映射
 
-- worktree：实施时填写（`.worktree/06/`）
-- 分支：实施时填写（`feat/06-persistence-base`）
-- 提交：实施时填写（完整 SHA）
+- worktree：`.worktree/06/`
+- 分支：`feat/06-persistence-base`
+- 提交：认领 `555a817596d214d19e6ad7099f1a906a3ca89be7`；实现与决策笔记同一提交，完整 SHA 由本分支 HEAD 给出（`git log -1 --format=%H`）

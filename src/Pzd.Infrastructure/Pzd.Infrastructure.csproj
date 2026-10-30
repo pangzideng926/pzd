@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    持久化约定集中层（06 号票，architecture.md §5.2）：
+    映射、审计字段、软删除过滤、乐观并发、UTC 约定都在这里，业务模块只引用本工程、不直接写 SqlSugar 配置。
+    Domain 层禁止引用本工程（§3.2），所以本工程不定义任何需要 Domain 实现的标记接口。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Pzd.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SqlSugarCore" />
+    <!-- 直接引用只为顶掉 SqlSugar 传递进来的 8.0.1 漏洞版本（NU1902/NU1903），代码里不使用该包 -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pzd.SharedKernel\Pzd.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>
