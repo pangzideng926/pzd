@@ -1,0 +1,12 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[M2] Kind=NotFound Http=404 Code=Persistence.Record.NotFound
+[M1] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash 库里UserName=回收站 Version=2
+[M4] Kind=VersionConflict Http=409 Code=Persistence.Record.VersionConflict 内存Version=1(调用前1) 内存UpdatedAt未变=True
+[M1b] caught=InvalidOperationException 消息含RestoreAsync=True
+[M3] Kind=NotFound Http=404 Code=Persistence.Record.NotFound 别家 TenantId=2 UserName=别家 Version=1
+  Finished:    Pzd.IntegrationTests (ID = '91c681aa779c83197e33d27870b78a82e3bd1d0840616ed0064164da0cd35c5f')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 5, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.374s
