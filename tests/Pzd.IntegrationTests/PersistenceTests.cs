@@ -815,6 +815,128 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         Assert.Equal(0L, stored.DeletedBy);
     }
 
+    /// <summary>
+    /// 06 七审 low：<c>affected == 0</c> 之后要分清的三种事实各自归位——本租户下没这行、
+    /// 这行在回收站、这行活跃但版本对不上。一条用例依次走三条路径，并把三个 <c>code</c> 两两不等钉住：
+    /// 任何两档挤进同一个返回值都会红。
+    /// 它不再依赖「SQL 数字编码 ↔ 枚举声明顺序」这种纯内部约定——那正是这条 low 的根因。
+    /// </summary>
+    [Fact]
+    public async Task 三种未命中情形各自返回对应的失败种类()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        // 一、本租户下根本没这行。
+        var ghost = new TestUser { TenantId = 1, UserName = "三态-不存在", Version = 1 };
+        ghost.ForceId(424242);
+        var missing = await PersistenceWriter.UpdateAsync(db, ghost, CreateOptions(), ct);
+        Assert.NotNull(missing);
+        Assert.Equal(PersistenceFailureKind.NotFound, missing.Kind);
+        Assert.Equal(404, missing.HttpStatusCode);
+        Assert.Equal("Persistence.Record.NotFound", missing.Error.Code);
+
+        // 二、有这行，但它在回收站里。
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "三态-已删" }, CreateOptions(), ct);
+        var toDelete = (await db.Queryable<TestUser>().ToListAsync(ct)).Single(row => row.UserName == "三态-已删");
+        Assert.Null(await PersistenceWriter.SoftDeleteAsync(db, toDelete, CreateOptions(), ct));
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct))
+            .Single(row => row.UserName == "三态-已删");
+        var detached = new TestUser { TenantId = 1, UserName = "三态-已删-改名", Version = purged.Version };
+        detached.ForceId(purged.Id);
+        var inTrash = await PersistenceWriter.UpdateAsync(db, detached, CreateOptions(), ct);
+        Assert.NotNull(inTrash);
+        Assert.Equal(PersistenceFailureKind.RecordInTrash, inTrash.Kind);
+        Assert.Equal(409, inTrash.HttpStatusCode);
+        Assert.Equal("Persistence.Record.InTrash", inTrash.Error.Code);
+
+        // 三、有这行、活跃，但版本已经不是它读到的那个。
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "三态-活跃" }, CreateOptions(), ct);
+        var stale = (await db.Queryable<TestUser>().ToListAsync(ct)).Single(row => row.UserName == "三态-活跃");
+        var fresh = (await db.Queryable<TestUser>().ToListAsync(ct)).Single(row => row.UserName == "三态-活跃");
+        fresh.UserName = "三态-活跃-先改";
+        Assert.Null(await PersistenceWriter.UpdateAsync(db, fresh, CreateOptions(), ct));
+
+        stale.UserName = "三态-活跃-后改";
+        var conflict = await PersistenceWriter.UpdateAsync(db, stale, CreateOptions(), ct);
+        Assert.NotNull(conflict);
+        Assert.Equal(PersistenceFailureKind.VersionConflict, conflict.Kind);
+        Assert.Equal(409, conflict.HttpStatusCode);
+        Assert.Equal("Persistence.Record.VersionConflict", conflict.Error.Code);
+
+        // 三种事实三个 code，两两不等。
+        var codes = new[] { missing.Error.Code, inTrash.Error.Code, conflict.Error.Code };
+        Assert.Equal(3, codes.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    /// <summary>
+    /// 06 七审后（张一一 `698e4da`）：恢复能不能做由**库**判定，不由实体自报的 <c>IsDeleted</c> 判定。
+    /// 07/08 从 HTTP 请求体转回来的实体是干净快照（<c>IsDeleted=false</c>），
+    /// 原来那条「实体自称已删才让恢复」的守卫会把这种正常 DTO 形态直接抛成 500。
+    /// </summary>
+    [Fact]
+    public async Task DTO形态恢复已删记录应成功()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "恢复-DTO" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Null(await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct));
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+
+        // 典型 DTO 形态：主键、版本、业务字段，IsDeleted 是默认的 false。
+        var fromBody = new TestUser { TenantId = 1, UserName = purged.UserName, Version = purged.Version };
+        fromBody.ForceId(purged.Id);
+
+        Assert.Null(await PersistenceWriter.RestoreAsync(db, fromBody, CreateOptions(), ct));
+
+        var restored = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+        Assert.False(restored.IsDeleted);
+        Assert.Equal(0, restored.DeletedToken);
+        Assert.Null(restored.DeletedAt);
+        Assert.Equal(0L, restored.DeletedBy);
+        Assert.Equal(purged.Version + 1, restored.Version);
+    }
+
+    /// <summary>
+    /// 06 七审后（张一一 `698e4da`）：恢复一条本来就在活跃状态的记录，是**业务态**不是用错 API。
+    /// 原来抛 <c>InvalidOperationException</c>，端点层只接返回值就会冒成 500；
+    /// 现在返回第五种 <c>Persistence.Record.NotInTrash</c>（409），文案直接说清「不在回收站」。
+    /// </summary>
+    [Fact]
+    public async Task 恢复活跃记录返回不在回收站()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "恢复-活跃" }, CreateOptions(), ct);
+        var active = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        var fromBody = new TestUser { TenantId = 1, UserName = active.UserName, Version = active.Version };
+        fromBody.ForceId(active.Id);
+
+        var failure = await PersistenceWriter.RestoreAsync(db, fromBody, CreateOptions(), ct);
+
+        Assert.NotNull(failure);
+        Assert.Equal(PersistenceFailureKind.NotInTrash, failure.Kind);
+        Assert.Equal(409, failure.HttpStatusCode);
+        Assert.Equal("Persistence.Record.NotInTrash", failure.Error.Code);
+        Assert.Contains("回收站", failure.Error.Message, StringComparison.Ordinal);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.False(stored.IsDeleted);
+        Assert.Equal(active.Version, stored.Version);
+    }
+
     /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>
     [Theory]
     [InlineData(typeof(TestUser), "test_user")]

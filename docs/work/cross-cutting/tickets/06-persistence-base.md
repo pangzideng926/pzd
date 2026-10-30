@@ -1,8 +1,8 @@
-状态：进行中
+状态：已完成（06 七审通过并合入 main `7a412fe`；七轮遗留的两件——`MissKind` 去数字编码、`RestoreAsync` 改库判定并新增 `NotInTrash`——在分支 `fix/06-misskind-order`，待维护者合入）
 主写入者：PZD-实现Bot-2
-更新日期：2026-10-30 09:40 Asia/Shanghai
-下一步：实现持久化约定并写 PersistenceTests；完成后交李总复跑
-交付状态：待收尾
+更新日期：2026-10-30 12:20 Asia/Shanghai
+下一步：`fix/06-misskind-order` 合入后由李总复跑 12 条目标态探针、老登看 diff；07 开工前维护者补跑 `dotnet test` 本体
+交付状态：已交付
 实施条件：已具备（05 签名冻结并合入 `8116b32`；36 fixture 合入 `869e745`，外部真库账号 `pzd_dev` 可用）
 
 # 06 持久化约定：映射 / 审计字段 / 软删除与唯一索引 / 并发 / UTC
@@ -48,7 +48,7 @@
 - [x] 并发更新冲突可被识别为 409 的来源错误（`Persistence.Record.VersionConflict`）。
 - [x] MySQL 1062 唯一键冲突可被识别为 409 的来源错误（`Persistence.Record.DuplicateKey`）。
 - [x] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
-- [x] 证据贴出 `PersistenceTests` 的实际通过数：**33 个用例，0 失败**（6 条基础约定 + 9 条首轮返工 + 3 条命名约定 Theory + 7 条重审返工 + 2 条旁路加固 + 2 条四审返工 + 2 条五审返工 + 2 条六审返工）。
+- [x] 证据贴出 `PersistenceTests` 的实际通过数：**36 个用例，0 失败**（6 条基础约定 + 9 条首轮返工 + 3 条命名约定 Theory + 7 条重审返工 + 2 条旁路加固 + 2 条四审返工 + 2 条五审返工 + 2 条六审返工 + 3 条七轮返工）。
 
 ## 对外契约（下游模块必须遵守）
 
@@ -293,16 +293,17 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 | high 三种情形不可区分（Q1/Q3/Q4/Q5/Q7） | `PersistenceFailureKind` 加 `NotFound`、`RecordInTrash`；`IsRecycledAsync` 换成 `ResolveMissAsync`，一条 SQL 用 `CASE` 一次返回三态（0 无行 / 2 已删 / 1 活跃）；业务态**一律返回值**，`InvalidOperationException` 只留给「用错 API」 | `更新不存在或非本租户的记录返回未找到`、`重复软删除返回回收站错误`、`脱离实体更新已删除记录返回回收站错误` |
 | medium `touchDeleteColumns` 死参数 | 删掉开关；`Update` 的 stamp 换成 `ActiveUpdateStamp`（活跃态常量），实体回写后与库一致 | `UpdateAsync把内存实体的删除列规范化为活跃态` |
 
-**四种情形的表达口径**（09 号票 `697bcaa` 已按此对齐，且标明前置——06 先分开，09 不得自行猜测）：
+**五种情形的表达口径**（09 号票 `698e4da` 已按此对齐，且标明前置——06 先分开，09 不得自行猜测）：
 
 | 情形 | 返回 | `code` | 状态码 |
 |---|---|---|---|
 | 版本已被别人改掉 | `PersistenceFailure` | `Persistence.Record.VersionConflict` | 409 |
 | 记录不存在，或不属于当前租户 | `PersistenceFailure` | `Persistence.Record.NotFound` | 404 |
 | 记录在回收站 | `PersistenceFailure` | `Persistence.Record.InTrash` | 409 |
+| 恢复的目标不在回收站（那行是活跃的） | `PersistenceFailure` | `Persistence.Record.NotInTrash` | 409 |
 | 唯一键冲突（恢复时业务键被占） | `PersistenceFailure` | `Persistence.Record.DuplicateKey` | 409 |
 
-`InTrash` 用 409 不用 410：410 的语义是永久消失，而这条记录能恢复。**业务态一个都不抛异常**——`InvalidOperationException` 只保留给「调用方用错入口」：手写 `Updateable`、插入删除态实体、用 `Update` 传删除态实体、缺租户上下文。
+`InTrash` 用 409 不用 410：410 的语义是永久消失，而这条记录能恢复。三种 409（`VersionConflict` / `InTrash` / `NotInTrash`）的 `code` 与文案必须两两不同——压成一个，前端会提示「请刷新重试」，而重载永远读不到那条记录。**业务态一个都不抛异常**——`InvalidOperationException` 只保留给「调用方用错入口」：手写 `Updateable`、插入删除态实体、用 `Update`/`SoftDelete` 传删除态实体、缺租户上下文。
 
 **变异验证（三处）**：
 
@@ -312,10 +313,37 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 | `affected == 0` 时只对 `Update` 分型（`SoftDelete` 回落冲突） | `Failed: 1`，`重复软删除返回回收站错误` |
 | `Update` 不规范化（stamp 退回按实体原值算） | `Failed: 1`，`UpdateAsync把内存实体的删除列规范化为活跃态` |
 
+**6e. 返工第七轮（七审 low + 恢复改库判定）**
+
+七审结论是**通过**，只留一条不卡闸门的 low（`MissKind` 编码与声明顺序相反）。合进 main（`7a412fe`）之后，老登与李总又顺着「该由库判定状态」这条线挖到同一个病根的第二处：`RestoreAsync` 靠**实体自报** `IsDeleted` 判断能不能恢复，而 DTO 从 HTTP 体转回来的实体这一列恒为 `false`——一次正常的恢复请求会被抛成 500。张一一裁定（09 票 `698e4da`），与本条 low 一起在 `fix/06-misskind-order` 收掉。
+
+| 条目 | 改法 | 用例 |
+|---|---|---|
+| 七审 low：`MissKind` 数字编码 0/1/2 与声明顺序相反 | 不再用数字编码：`ResolveMissAsync` 的 SQL 直接返回 `'NoRow'`/`'Recycled'`/`'Active'`，`Enum.TryParse` 接，解析不出直接抛（只在 SQL 与枚举名不一致时才可能，属程序 bug）。「谁改成 `(MissKind)code` 就静默反转」这种失败模式从代码里消失 | `三种未命中情形各自返回对应的失败种类`（三个 `code` 两两不等，只走公开行为） |
+| 恢复靠实体自报判断（DTO 形态冒 500） | `RestoreAsync` 删掉实体自报守卫，能否恢复由 SQL 的 `AND IsDeleted=1` 判定 | `DTO形态恢复已删记录应成功` |
+| 恢复的目标不在回收站时借用了 `VersionConflict` | `PersistenceFailureKind` 加 `NotInTrash`；`affected == 0` 且三态查到 `Active` 且 `kind == Restore` → `PersistenceErrors.NotInTrash()`（409 + `Persistence.Record.NotInTrash`，文案「这条记录不在回收站，无需恢复。」） | `恢复活跃记录返回不在回收站` |
+
+红先：两条恢复用例写好即红（`Total: 36, Failed: 2`，两条都撞在那条自报守卫上），改到绿。`三种未命中情形` 那条对本次重构本身不红——等价重构下走公开 API 的用例必然绿，它的红由变异证明（见下）。这条判断是老登提前点出来的「空网」陷阱：纯对齐编码的改法测不出来，所以这里干脆把编码这层消灭掉。
+
+**变异验证（六处，全部精确红，没有一处是构建失败）**：
+
+| 变异 | 结果 |
+|---|---|
+| 三态字符串把 `Recycled`/`Active` 对调 | `Failed: 4`（含 `三种未命中情形各自返回对应的失败种类`） |
+| `NoRow` 吞成 `Active` | `Failed: 3`（含同一条） |
+| `Enum.TryParse` 退回旧的「非 Recycled 全当 Active」 | `Failed: 3`（含同一条） |
+| 恢复活跃记录不分型（回落 `VersionConflict`） | `Failed: 3`（含 `恢复活跃记录返回不在回收站`） |
+| 恢复路径的 `WHERE` 把 `IsDeleted=1` 改成 `=0` | `Failed: 4`（两条恢复用例都红） |
+| `NotInTrash` 直接返回 `RecordInTrash()` | `Failed: 1`（精确红 `恢复活跃记录返回不在回收站`） |
+
+记两笔脚本缺陷：`WHERE` 那处变异先用 `perl` 替换，两次都让 `$"` 被当成 perl 特殊变量、生成畸形代码（`CS1010`/`CS1002`，构建失败），按群规「构建失败不算红」改用 `python` 精确定位重做，才拿到真红。
+
+账目：`PersistenceTests` 36/36、集成 44、单元 33、架构 1，四个退出码全 0；残库 `pzd_test%` 为 0。改动文件只有 `PersistenceErrors.cs`、`PersistenceWriter.cs`、`PersistenceTests.cs` 与本票面。
+
 **7. 遗留**
 
-- **`MissKind` 的编码顺序与声明顺序相反（07 开工前必修，七审 low）**：枚举声明是 `NoRow, Recycled, Active`（0/1/2），而 `ResolveMissAsync` 的 SQL 把「已删」编成 2、「活跃」编成 1——正好反着。现在靠显式 `switch` 翻译，行为正确、没有 bug；但谁哪天图省事写成 `(MissKind)code`，语义当场反转，而且**不会有编译错误**。修法两字符级别：把 SQL 改成 `WHEN … THEN 1`（已删）/ `ELSE 2`（活跃），或让枚举声明与 SQL 编码同序。07 的租户解析要碰这条路径，必须在那之前修掉。
-- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 33, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 33` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+- ~~**`MissKind` 的编码顺序与声明顺序相反（07 开工前必修，七审 low）**~~ **已办（`fix/06-misskind-order`）**：原状是枚举声明 `NoRow, Recycled, Active`（0/1/2）、而 SQL 把「已删」编成 2、「活跃」编成 1，靠显式 `switch` 才正确，谁改成 `(MissKind)code` 就静默反转。修法没有停在「两字符对齐」——那种改法**纯等价重构、任何公开 API 用例都测不出来**（老登六审那类空网的翻版），所以直接把数字编码这层消灭：SQL 返回自描述字符串，`Enum.TryParse` 接。07 的租户解析碰这条路径时不必再记任何编码约定。
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 36, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 36` 才算闭环；看到 `总计: 0` 一律按未运行处理。
 - **`SetColumns` 形态已被运行期拒绝，但静态守卫仍必需**：`db.Updateable<T>().SetColumns(...)` 现在会被 `UpdateByObject` 的无条件拦截拒绝（用例 `SetColumns形态的旁路也被拒绝`），最初「漏写 `DeletedToken` → 同名重建 1062」的那条代价路径已经走不到了。注意这不是「可以不带守卫」的理由——AOP 钩不到的 `db.Deleteable<T>().Where(...)` 仍在，13 号票的静态守卫照旧必需。
 - **存量 `Version = 0` 的行在运行期不可修复**（三审要求留痕）：本票之前几个版本里，`db.Updateable(entity)` 会把实体上的默认 `Version` 原样写回，产生 `Version=0` 的行。这类行现在**任何入口都修不了**——AOP 拒绝 `Updateable`，`PersistenceWriter` 拿 0 去比永远返回 `VersionConflict`（09 会映射成 409），排查时看起来像并发冲突。排查与修复只能用运维裸 SQL：
 

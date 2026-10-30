@@ -16,6 +16,9 @@ public enum PersistenceFailureKind
     /// <summary>记录在回收站里（<c>IsDeleted=1</c>）：能恢复，所以不是 404 也不是并发冲突。</summary>
     RecordInTrash,
 
+    /// <summary>恢复的目标不在回收站（库里那行是活跃的）：能恢复的才是 <see cref="RecordInTrash"/>，这条反过来。</summary>
+    NotInTrash,
+
     /// <summary>唯一键冲突：MySQL 1062。</summary>
     DuplicateKey,
 
@@ -58,6 +61,16 @@ public static class PersistenceErrors
         PersistenceFailureKind.RecordInTrash,
         409,
         new Error("Persistence.Record.InTrash", "这条记录已被删除，如需修改请先恢复（RestoreAsync）。"));
+
+    /// <summary>
+    /// 恢复的目标不在回收站（库里那行是活跃的）。这是**数据状态**，走返回值：
+    /// 端点层若把它当异常，一次正常的「重复恢复」请求会冒成 500。
+    /// 与 <see cref="RecordInTrash"/> 正好相反，两个 <c>code</c> 不能合并（06 七审后 / 张一一 `698e4da`）。
+    /// </summary>
+    public static PersistenceFailure NotInTrash() => new(
+        PersistenceFailureKind.NotInTrash,
+        409,
+        new Error("Persistence.Record.NotInTrash", "这条记录不在回收站，无需恢复。"));
 
     public static PersistenceFailure Classify(Exception exception)
     {
