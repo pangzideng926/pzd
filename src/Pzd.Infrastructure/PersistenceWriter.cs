@@ -49,7 +49,11 @@ public static class PersistenceWriter
         Restore,
     }
 
-    /// <summary><c>affected == 0</c> 之后查出来的事实：本租户下没这行、有但已删、有且活跃（版本对不上）。</summary>
+    /// <summary>
+    /// <c>affected == 0</c> 之后查出来的事实：本租户下没这行、有但已删、有且活跃（版本对不上）。
+    /// 名字就是 <see cref="ResolveMissAsync"/> 那条 SQL 的返回值（<c>'NoRow'</c>/<c>'Recycled'</c>/<c>'Active'</c>），
+    /// 声明顺序不承载任何语义，重排不会改变行为（06 七审 low）。
+    /// </summary>
     private enum MissKind
     {
         NoRow,
@@ -119,6 +123,11 @@ public static class PersistenceWriter
     /// 回收站恢复（06 重审 medium 2）：把 <c>DeletedToken</c> 归 0、清空 <c>DeletedAt/DeletedBy</c>。
     /// 业务键已被活跃记录占用时由唯一索引拦下，返回 <c>Persistence.Record.DuplicateKey</c>，
     /// 不会出现两条活跃同名记录。
+    /// <para>
+    /// 能不能恢复由**库**判定（<c>WHERE IsDeleted=1</c>），不看调用方实体上自报的标记：
+    /// 07/08 从 HTTP 体转回来的实体 <c>IsDeleted</c> 恒为默认 <c>false</c>，靠它判断会把正常请求抛成 500。
+    /// 目标本来就不在回收站时返回 <c>Persistence.Record.NotInTrash</c>（06 七审后 / 张一一 `698e4da`）。
+    /// </para>
     /// </summary>
     public static Task<PersistenceFailure?> RestoreAsync<T>(
         SqlSugarClient db,
@@ -130,13 +139,6 @@ public static class PersistenceWriter
         ArgumentNullException.ThrowIfNull(db);
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentNullException.ThrowIfNull(options);
-
-        var info = db.EntityMaintenance.GetEntityInfo<T>();
-        if (!ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted))
-        {
-            throw new InvalidOperationException(
-                $"类型「{typeof(T).Name}」的这条记录没有处于软删除状态，无法恢复。");
-        }
 
         return WriteAsync(db, entity, options, WriteKind.Restore, cancellationToken);
     }
@@ -284,6 +286,13 @@ public static class PersistenceWriter
                 return PersistenceErrors.RecordInTrash();
             }
 
+            // 反过来：恢复的目标在库里是活跃的，说明它压根不在回收站。
+            // 这是业务态、不是并发冲突，更不是用错 API（06 七审后 / 张一一 `698e4da`）。
+            if (miss == MissKind.Active && kind == WriteKind.Restore)
+            {
+                return PersistenceErrors.NotInTrash();
+            }
+
             return PersistenceErrors.VersionConflict();
         }
 
@@ -321,8 +330,10 @@ public static class PersistenceWriter
 
     /// <summary>
     /// <c>affected == 0</c> 时把「为什么一行没改」查清楚：本租户下这行不存在、存在但已删、还是存在且活跃
-    /// （那就是版本对不上）。一次查询就返回三态（编码成 0/2/1），避免两次查询在并发下看到不同状态。
+    /// （那就是版本对不上）。一次查询就返回三态，避免两次查询在并发下看到不同状态。
     /// 用裸 SQL 而不是 <c>Queryable</c>，免得软删除过滤器把要查的那行挡掉。
+    /// 返回自描述的字符串、不是数字编码（06 七审 low）：数字编码一旦和枚举声明顺序不一致，
+    /// <c>(MissKind)code</c> 这种写法会在没有编译错误的情况下把两态悄悄换位。
     /// </summary>
     private static async Task<MissKind> ResolveMissAsync<T>(
         SqlSugarClient db,
@@ -338,7 +349,7 @@ public static class PersistenceWriter
         var deletedSum = isDeletedColumn is null
             ? "0"
             : $"COALESCE(SUM(`{isDeletedColumn.DbColumnName}`), 0)";
-        var sql = $"SELECT CASE WHEN COUNT(*)=0 THEN 0 WHEN {deletedSum}>0 THEN 2 ELSE 1 END"
+        var sql = $"SELECT CASE WHEN COUNT(*)=0 THEN 'NoRow' WHEN {deletedSum}>0 THEN 'Recycled' ELSE 'Active' END"
             + $" FROM `{info.DbTableName}` WHERE `{primary.DbColumnName}`=@missId";
         var parameters = new List<SugarParameter> { new("@missId", primary.PropertyInfo.GetValue(entity)) };
 
@@ -348,13 +359,10 @@ public static class PersistenceWriter
             parameters.Add(new SugarParameter("@missTenantId", currentTenantId));
         }
 
-        var code = await db.Ado.GetIntAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
-        return code switch
-        {
-            0 => MissKind.NoRow,
-            2 => MissKind.Recycled,
-            _ => MissKind.Active,
-        };
+        var text = await db.Ado.GetStringAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        return Enum.TryParse<MissKind>(text, ignoreCase: false, out var kind)
+            ? kind
+            : throw new InvalidOperationException($"三态查询返回了未知值「{text}」，三种事实必须由这条 SQL 自己说清。");
     }
 
     private static long ReadLong<T>(EntityInfo info, T entity, string propertyName)
