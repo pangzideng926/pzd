@@ -153,6 +153,18 @@ public static class PersistenceWriter
         };
         var clearDeleted = kind == WriteKind.Restore;
 
+        // 回收站里的记录只能经 RestoreAsync 复活。走 UpdateAsync 把 IsDeleted 改回 false 的话，
+        // DeletedToken 会带着主键一起写回，那条就成了「活跃但占着已删 token」的记录，
+        // 唯一索引当场失效、同名活跃记录可以有两条（06 三返复验 P6）。
+        if (kind == WriteKind.Update
+            && !markDeleted
+            && ReadLong(info, entity, PersistenceOptions.Columns.DeletedToken) != 0)
+        {
+            throw new InvalidOperationException(
+                $"类型「{typeof(T).Name}」的这条记录仍在回收站里（{PersistenceOptions.Columns.DeletedToken} 不为 0），"
+                + "不能通过 UpdateAsync 改回活跃；请调用 PersistenceWriter.RestoreAsync。");
+        }
+
         // 先算，不落实体：冲突时调用方手里的对象要保持加载时的样子。
         var stamp = PersistenceAudit.ComputeUpdateStamp(entity, options.CurrentUserId(), markDeleted, clearDeleted);
 
@@ -234,8 +246,19 @@ public static class PersistenceWriter
 
     private static bool ReadBool<T>(EntityInfo info, T entity, string propertyName)
         where T : class
-    {
-        var column = info.Columns.SingleOrDefault(current => current.PropertyName == propertyName);
-        return column?.PropertyInfo.GetValue(entity) is true;
-    }
+        => ReadLong(info, entity, propertyName) switch
+        {
+            _ => info.Columns.SingleOrDefault(current => current.PropertyName == propertyName)
+                ?.PropertyInfo.GetValue(entity) is true,
+        };
+
+    private static long ReadLong<T>(EntityInfo info, T entity, string propertyName)
+        where T : class
+        => info.Columns.SingleOrDefault(current => current.PropertyName == propertyName)
+            ?.PropertyInfo.GetValue(entity) switch
+        {
+            long value => value,
+            int value => value,
+            _ => 0L,
+        };
 }

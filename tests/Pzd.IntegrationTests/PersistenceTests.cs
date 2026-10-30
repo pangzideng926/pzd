@@ -561,6 +561,57 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         Assert.Equal(1, stored.TenantId);
     }
 
+    [Fact]
+    public async Task 带正确版本的Updateable同样被拒绝()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "带版本旁路" }, CreateOptions(), ct);
+
+        // 「加载 → 改 → 保存」这种最正常的用法，Version 本来就是对的（=1）。
+        // 只按 Version<=0 拦的话这条正好穿过去，把整行搬到租户 2 —— 所以 AOP 无条件拒绝 Updateable。
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        loaded.TenantId = 2;
+        loaded.UserName = "被搬";
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            async () => await db.Updateable(loaded).ExecuteCommandAsync(ct));
+
+        Assert.Contains("PersistenceWriter", exception.Message, StringComparison.Ordinal);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal(1, stored.TenantId);
+        Assert.Equal("带版本旁路", stored.UserName);
+        Assert.Equal(1, stored.Version);
+        Assert.Equal(CurrentUser, stored.CreatedBy);
+    }
+
+    [Fact]
+    public async Task UpdateAsync不能把回收站记录改回活跃()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "复活" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Null(await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct));
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+        purged.IsDeleted = false;
+
+        // 走 UpdateAsync 复活会把 DeletedToken 一起写回，唯一索引当场失效 —— 必须要求走 RestoreAsync。
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => PersistenceWriter.UpdateAsync(db, purged, CreateOptions(), ct));
+
+        Assert.Contains("RestoreAsync", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
     /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>
     [Theory]
     [InlineData(typeof(TestUser), "test_user")]

@@ -49,15 +49,18 @@ Status: implemented
 上一版把「是否软删除」拆成两个布尔（`deleting` 与 `markDeleted`），算值用前者、拼 SET 用后者，
 `UpdateAsync` 走软删除时 `DeletedAt/DeletedBy` 就被静默丢了（06 重审 high 2）。一个语义只能有一个布尔。
 
-**11. 恢复（`RestoreAsync`）必须把 `DeletedToken` 归 0。**
+**11. 恢复（`RestoreAsync`）必须把 `DeletedToken` 归 0，且复活只能走这一条路。**
+`UpdateAsync` 检测到「`DeletedToken != 0` 但 `IsDeleted=false`」时直接抛异常：这种形态是「活跃却占着已删 token」，
+唯一索引对它失效，同名活跃记录可以有两条（三返复验 P6）。
 恢复时若把 `IsDeleted` 置回 false 而留着 `DeletedToken=Id`，唯一索引会认为已删记录仍占着「另一个 token」，
 于是同名活跃记录可以有两条（06 重审 high 3 实测 `活跃同名记录=2`）。归 0 之后，业务键若已被新记录占用，
 唯一索引自己会撞 1062，翻译成 409 `DuplicateKey`——「不能恢复」是有返回值的，不靠调用方自己查。
 
 **12. 旁路给两层网：运行期兜底 + 静态守卫。**
 运行期：`db.Deleteable(entity)` 被 `DeleteByObject` 拦（合法物理清理在 `PersistenceOptions.HardDeleteTypes` 登记）；
-`db.Updateable(...)` 因为带不上版本条件、`Version` 为 0，被 AOP 直接拒绝——实测不拒绝的话它会把 `Version` 写成 0，
-那一行之后任何走写入口的更新都永远对不上，比一次写坏更难查。
+`db.Updateable(...)` 被 `UpdateByObject` **无条件**拒绝。这里走过两版：先按「`Version<=0` 才拒绝」，
+但「加载→改→保存」的实体版本本来就对，正好穿过去把整行搬到别的租户（三返复验 P5a），
+所以放弃「版本对了就放行」的折中——写入口走 `Ado.ExecuteCommandAsync`，根本不经过 AOP，无条件拦没有误伤。
 静态：13 号票按命名空间断言 `src/` 里除 `src/Pzd.Infrastructure/**` 外不出现这三个方法。
 票面另写了「对外契约」一节，因为静态守卫只覆盖 `src/`，新目录靠契约兜。
 
@@ -84,7 +87,7 @@ Status: implemented
 cd .worktree/06
 dotnet build Pzd.slnx                                   # 0 警告 0 错误
 ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
-# Total: 25, Failed: 0
+# Total: 27, Failed: 0
 ```
 
 用例分两层：第一层钉约定本身（审计填充、软删除不可见、同名重建、并发 409、1062、UTC 原值）；

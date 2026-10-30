@@ -48,7 +48,7 @@
 - [x] 并发更新冲突可被识别为 409 的来源错误（`Persistence.Record.VersionConflict`）。
 - [x] MySQL 1062 唯一键冲突可被识别为 409 的来源错误（`Persistence.Record.DuplicateKey`）。
 - [x] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
-- [x] 证据贴出 `PersistenceTests` 的实际通过数：**25 个用例，0 失败**（其中 6 条基础约定 + 10 条首轮返工 + 6 条重审返工 + 2 条配置与命名 + 1 条旁路加固）。
+- [x] 证据贴出 `PersistenceTests` 的实际通过数：**27 个用例，0 失败**（6 条基础约定 + 9 条首轮返工 + 3 条命名约定 Theory + 7 条重审返工 + 2 条旁路加固）。
 
 ## 对外契约（下游模块必须遵守）
 
@@ -60,9 +60,11 @@
 | `PersistenceWriter.InsertAsync` / `UpdateAsync` / `SoftDeleteAsync` / `RestoreAsync` | `db.Updateable(...)`（含 `.SetColumns(...)`）—— 用 `UpdateAsync` |
 | `db.Ado.ExecuteCommandAsync`（仅限 Infrastructure 内部与 `db/` 版本化 SQL） | `db.Deleteable(...)` —— 用 `SoftDeleteAsync`；物理清理需在 `PersistenceOptions.HardDeleteTypes` 登记 |
 
+**落地闸门**：13 号票的静态守卫合入之前，任何模块**不得**编写写路径代码（`Insertable`/`Updateable`/`Deleteable`）。原因是 `db.Deleteable<T>().Where(...)` 这类不带实体的形态 AOP 钩不到，实测仍能一路物理删（`物理行数=0`）；眼下「运行期 + 静态」两层网里，静态那层还没织好，只剩运行期一层。07/08 若在此之前开工，写路径必须先等 13。
+
 理由：AOP 只能拦 `DeleteByObject` 这类带实体的形态；`db.Deleteable<T>().Where(...)` 一路物理删，`db.Updateable(entity)` 会把 `Version` 写成 0、抹掉创建审计、把整行搬到别的租户（06 重审 high 1–5 实测）。靠约定守不住，所以两层网：**本契约 + 13 号票的静态守卫**（`src/` 里除 `src/Pzd.Infrastructure/**` 外出现 `Updateable`/`Deleteable`/`Insertable` 即红）。
 
-运行期兜底：`db.Updateable(entity)` 会因 `Version<=0` 被 AOP 拒绝，`db.Deleteable(entity)` 会因未登记白名单被拒绝——但这只是第二层，不是许可。
+运行期兜底：`db.Updateable(...)` 被 AOP **无条件**拒绝（写入口走 `Ado.ExecuteCommand`，不经过 AOP，所以不需要「版本对了就放行」的折中）；`db.Deleteable(entity)` 因未登记白名单被拒绝。`db.Deleteable<T>().Where(...)` 这类不带实体的形态 AOP 钩不到，**只有 13 号票的静态守卫能拦**——这是已知缺口，不是许可。
 
 ## 定型的软删除唯一索引方案（供 17、19、20、23、32 号票复用）
 
@@ -138,7 +140,7 @@ $ dotnet build Pzd.slnx
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
 === TEST EXECUTION SUMMARY ===
-   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.482s
+   Pzd.IntegrationTests  Total: 27, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.589s
 ```
 
 第一层钉约定本身：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
@@ -149,7 +151,7 @@ $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class
 
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe
-   Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.403s
+   Pzd.IntegrationTests  Total: 35, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.705s
 $ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
    Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.110s
 $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
@@ -211,10 +213,38 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
 记一笔脚本缺陷：白名单那条变异我第一次写成 `if (false)`，触发 CS0162 不可达代码、在「警告即错误」下构建失败；按群规「构建失败判失败、不算红」重做成恒返回 true，才拿到真红。
 
-**6. 遗留**
+**6. 返工第三轮（三返复验：P5a + P6）**
 
-- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 25, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 25` 才算闭环；看到 `总计: 0` 一律按未运行处理。
-- **`SetColumns` 形态仍是漏网的手写 SQL**：`db.Updateable<T>().SetColumns(it => new T { IsDeleted = true })` 不被拦截、也不会写 `DeletedToken`，代价已写成用例（同名重建 1062）。要堵死得靠 13 号票的静态守卫（禁止业务代码出现 `Deleteable`/`SetColumns` 写软删除列），集成测试拦不住。
+李总在我自报「25/25 全绿」之后又压了 8 条探针，剩 2 条真缺口。红先：两条新用例写好即红，改到绿后 `Total: 27, Failed: 0`。
+
+| 问题 | 改法 | 用例 |
+|---|---|---|
+| P5a `Version>0` 的 `db.Updateable` 仍能把整行搬到别的租户 | 上一版只拦 `Version<=0`，而「加载→改→保存」的实体版本本来就是对的，正好穿过去。改成对 `UpdateByObject` **无条件拒绝**；写入口走 `Ado.ExecuteCommandAsync`，不经过 AOP，所以没有误伤 | `带正确版本的Updateable同样被拒绝` |
+| P6 `UpdateAsync` 能把回收站记录改回活跃 | Update 种类下若 `DeletedToken != 0` 直接拒绝，要求走 `RestoreAsync`；否则 token 会带着主键写回，唯一索引失效、同名活跃记录可有两条 | `UpdateAsync不能把回收站记录改回活跃` |
+
+**`InsertAsync` 的类型约束**：签名是 `where T : class, new()`（SqlSugar 的 `Insertable<T>` 要求公共无参构造）。聚合根若只有带参构造，07/08 接进来前要先补一个，否则编译不过。
+
+**变异验证（两处）**：
+
+| 变异 | 结果 |
+|---|---|
+| AOP 退回「只拦 `Version<=0`」 | `Failed: 3`，含 `带正确版本的Updateable同样被拒绝` |
+| 去掉回收站误用校验 | `Failed: 1`，`UpdateAsync不能把回收站记录改回活跃` |
+
+**7. 遗留**
+
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 27, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 27` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+- **`SetColumns` 形态已被运行期拒绝，但静态守卫仍必需**：`db.Updateable<T>().SetColumns(...)` 现在会被 `UpdateByObject` 的无条件拦截拒绝（用例 `SetColumns形态的旁路也被拒绝`），最初「漏写 `DeletedToken` → 同名重建 1062」的那条代价路径已经走不到了。注意这不是「可以不带守卫」的理由——AOP 钩不到的 `db.Deleteable<T>().Where(...)` 仍在，13 号票的静态守卫照旧必需。
+- **存量 `Version = 0` 的行在运行期不可修复**（三审要求留痕）：本票之前几个版本里，`db.Updateable(entity)` 会把实体上的默认 `Version` 原样写回，产生 `Version=0` 的行。这类行现在**任何入口都修不了**——AOP 拒绝 `Updateable`，`PersistenceWriter` 拿 0 去比永远返回 `VersionConflict`（09 会映射成 409），排查时看起来像并发冲突。排查与修复只能用运维裸 SQL：
+
+  ```sql
+  -- 排查（每个带 Version 的表都查一遍）
+  SELECT Id, TenantId, Version, UpdatedAt FROM <table> WHERE Version <= 0;
+  -- 修复：把 Version 置回可用的当前值（通常是 1，或按业务历史值 +1）
+  UPDATE <table> SET Version = 1 WHERE Id = <id>;
+  ```
+
+  这轮之后新数据写不出这种行，但历史库（如果有）必须按上面捞一遍。
 - **`CurrentTenantId` 必须由 07 供给**：有 `TenantId` 列的类型在拿不到租户上下文时写不进去（这是设计选择，不是缺陷）。07 接租户解析时要把 `PersistenceOptions.CurrentTenantId` 填上，否则所有写路径会在运行期抛 `InvalidOperationException`。
 - **`DeletedAt/DeletedBy` 是冻结前补的**：按张一一裁定与架构 §5.3 对齐，`DeletedToken` 只承担唯一索引机制，回收站排序与「谁删的」用 `DeletedAt/DeletedBy`。17 号票写 master 建表 SQL 时这四列都要有。
 - **并发不走 SqlSugar 自带开关**：实测 `IsEnableUpdateVersionValidation`（列配置与链式方法都试过）在 `Updateable(entity)` 路径上生成的 SQL 没有版本列，第二次并发更新照样成功；因此并发写入口是 `PersistenceWriter.UpdateAsync`。SQL 证据与推理写在决策笔记里。

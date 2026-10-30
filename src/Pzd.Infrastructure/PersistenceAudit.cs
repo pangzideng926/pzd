@@ -49,8 +49,13 @@ internal static class PersistenceAudit
                     OnInsert(entity, options, nextId);
                     break;
                 case DataFilterType.UpdateByObject:
-                    OnUpdate(entity, options.CurrentUserId());
-                    break;
+                    // 写入口是 db.Ado.ExecuteCommandAsync，**不经过这里**；能走到这儿的只有
+                    // db.Updateable(...) 这条旁路。只要 Version 为正就放行的话，「加载→改→保存」
+                    // 这种最正常的用法正好能穿过去：整行搬到别的租户、抹掉创建审计（06 三返复验 P5a）。
+                    // 所以无条件拒绝，不做「版本对了就放行」的折中。
+                    throw new InvalidOperationException(
+                        $"类型「{entity.EntityName}」的更新必须走 PersistenceWriter.UpdateAsync / SoftDeleteAsync / RestoreAsync："
+                        + "直接 db.Updateable 不带版本条件与租户谓词，会把整行搬到别的租户、抹掉创建审计，并让 Version 失去意义。");
                 case DataFilterType.DeleteByObject:
                     // 架构 §5.3 承诺软删除 + 回收站可恢复，物理删掉就永远恢复不了，也没有任何提示。
                     // 这里把「顺手写 db.Deleteable(entity)」变成一眼能看懂的失败（06 审计 high 3）。
@@ -146,56 +151,6 @@ internal static class PersistenceAudit
         }
 
         return false;
-    }
-
-    private static void OnUpdate(DataFilterModel entity, long currentUserId)
-    {
-        var deleted = ReadBool(entity.EntityValue!, PersistenceOptions.Columns.IsDeleted);
-
-        switch (entity.PropertyName)
-        {
-            case PersistenceOptions.Columns.Version:
-                // db.Updateable(entity) 会把实体上的 Version 原样写回：分离实体或只改了业务字段的对象
-                // 会把 Version 直接写成 0，那行之后任何走写入口的更新都永远对不上（06 重审 high 4 的 B2）。
-                // 写入口自己拼 SQL、不经过这里，所以这条只挡旁路，不挡正路。
-                if (ReadLong(entity.EntityValue!, PersistenceOptions.Columns.Version) <= 0)
-                {
-                    throw new InvalidOperationException(
-                        $"类型「{entity.EntityName}」的更新必须走 PersistenceWriter.UpdateAsync / SoftDeleteAsync / RestoreAsync："
-                        + "直接 db.Updateable 不带版本条件，会把 Version 写成 0 并绕过租户谓词与创建审计。");
-                }
-
-                break;
-            case PersistenceOptions.Columns.UpdatedAt:
-                entity.SetValue(UtcNowForDatabase());
-                break;
-            case PersistenceOptions.Columns.UpdatedBy:
-                entity.SetValue(currentUserId);
-                break;
-            case PersistenceOptions.Columns.DeletedToken:
-                // 软删除时把主键写进 DeletedToken：唯一索引 (TenantId, 业务键, DeletedToken) 才能
-                // 既挡住活跃记录重名、又放行同名重建。未删除记录这条恒为 0（见 OnInsert）。
-                if (deleted)
-                {
-                    entity.SetValue(ReadLong(entity.EntityValue!, PersistenceOptions.Columns.Id));
-                }
-
-                break;
-            case PersistenceOptions.Columns.DeletedAt:
-                if (deleted)
-                {
-                    entity.SetValue(UtcNowForDatabase());
-                }
-
-                break;
-            case PersistenceOptions.Columns.DeletedBy:
-                if (deleted)
-                {
-                    entity.SetValue(currentUserId);
-                }
-
-                break;
-        }
     }
 
     /// <summary>
