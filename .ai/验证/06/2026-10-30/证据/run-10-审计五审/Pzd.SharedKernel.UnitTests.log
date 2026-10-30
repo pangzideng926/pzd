@@ -1,0 +1,7 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.SharedKernel.UnitTests
+  Discovered:  Pzd.SharedKernel.UnitTests
+  Starting:    Pzd.SharedKernel.UnitTests
+  Finished:    Pzd.SharedKernel.UnitTests (ID = '6d8c1868c1117931391c7180143d4e79ab7d59b0a11cdcc2913f0b0d83b3c298')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.107s

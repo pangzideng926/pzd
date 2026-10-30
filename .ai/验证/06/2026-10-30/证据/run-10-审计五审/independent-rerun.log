@@ -1,0 +1,17 @@
+=== 审计 worktree .worktree/audit-06f HEAD=4c45fba22744c0d196fbbc80016c64f42ce3a1d8 ===
+=== 时间 2026-10-30 11:23:47 ===
+
+--- 构建 ---
+BUILD_EXIT=0 0 警告 0 错误
+--- PersistenceTests ---
+   Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.495s
+--- 集成全量 ---
+   Pzd.IntegrationTests  Total: 37, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.534s
+--- 单元 ---
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.107s
+--- 架构 ---
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.099s
+--- 探针(8) ---
+   Pzd.IntegrationTests  Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.081s
+--- 残库 pzd_test_% ---
+0

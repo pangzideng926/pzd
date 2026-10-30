@@ -1,0 +1,27 @@
+== 基线 ==
+[M0-baseline] BUILD_EXIT=0
+[M0-baseline] TEST_EXIT=0  Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.566s
+[M0-baseline] 红用例（按字节取，名字可能是 GBK）：
+== M-A：去掉插入侧 IsDeleted=true 拒绝 ==
+PATCH_OK
+[MA-insert-allows-deleted] BUILD_EXIT=0
+[MA-insert-allows-deleted] TEST_EXIT=1  Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.493s
+[MA-insert-allows-deleted] 红用例（按字节取，名字可能是 GBK）：
+    Pzd.IntegrationTests.PersistenceTests.插入入口拒绝删除态实体 [FAIL]
+    译文: 
+== M-B：Update 重新写删除四列 ==
+PATCH_OK
+[MB-update-writes-delete-cols] BUILD_EXIT=0
+[MB-update-writes-delete-cols] TEST_EXIT=1  Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.507s
+[MB-update-writes-delete-cols] 红用例（按字节取，名字可能是 GBK）：
+    Pzd.IntegrationTests.PersistenceTests.UpdateAsync不改动任何删除审计列 [FAIL]
+    译文: 
+== M-C：Update 不拒删除态实体 ==
+PATCH_OK
+[MC-update-allows-deleted] BUILD_EXIT=0
+[MC-update-allows-deleted] TEST_EXIT=1  Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.525s
+[MC-update-allows-deleted] 红用例（按字节取，名字可能是 GBK）：
+    Pzd.IntegrationTests.PersistenceTests.UpdateAsync带IsDeleted时被拒绝 [FAIL]
+    译文: 
+== 复原核对 ==
+?? tests/Pzd.IntegrationTests/AuditRound5Probes.cs

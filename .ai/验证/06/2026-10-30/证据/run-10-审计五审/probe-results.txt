@@ -1,0 +1,25 @@
+﻿P5 软删除后：IsDeleted=1 Token等于Id=1 DeletedBy=7 DeletedAt为NULL=0
+P5 恢复后：failure=null；IsDeleted=0 DeletedToken=0 DeletedBy=0 DeletedAt为NULL=1
+P4 更新后：failure=null；库里 DeletedAt为NULL=1 DeletedBy=0 IsDeleted=0 DeletedToken=0 Version=2
+P4 更新后：内存实体 DeletedAt=2020-01-02T03:04:05.0000000Z、DeletedBy=5、IsDeleted=False、DeletedToken=0、Version=2
+P2 用法一（IsDeleted=true）：抛 InvalidOperationException
+P2 用法二（改成 IsDeleted=false）：failure=null（成功）；库里 IsDeleted=1 DeletedToken=0 DeletedAt残留=1 UserName=存量删除-改名 Version=2
+P3 删除态实体 UpdateAsync：抛 InvalidOperationException；库里 IsDeleted=1 UserName=删了再改 Version=2 DeletedToken=当前行
+P1 InsertAsync(IsDeleted=true)：抛 InvalidOperationException，物理行数=0
+P1 随后同名活跃插入：failure=null（成功）；活跃记录数=1
+P6 Updateable(已加载实体)：抛 InvalidOperationException
+P6 Deleteable<T>().Where：未抛异常，影响行=1，物理行数=0
+P7 活跃记录 UpdateAsync：failure=null；UserName=正路-改 Version=2 IsDeleted=0 UpdatedBy=7；内存 Version=2
+P5 软删除后：IsDeleted=1 Token等于Id=1 DeletedBy=7 DeletedAt为NULL=0
+P5 恢复后：failure=null；IsDeleted=0 DeletedToken=0 DeletedBy=0 DeletedAt为NULL=1
+P4 更新后：failure=null；库里 DeletedAt为NULL=1 DeletedBy=0 IsDeleted=0 DeletedToken=0 Version=2
+P4 更新后：内存实体 DeletedAt=2020-01-02T03:04:05.0000000Z、DeletedBy=5、IsDeleted=False、DeletedToken=0、Version=2
+P2 用法一（IsDeleted=true）：抛 InvalidOperationException
+P2 用法二（改成 IsDeleted=false）：failure=null（成功）；库里 IsDeleted=1 DeletedToken=0 DeletedAt残留=1 UserName=存量删除-改名 Version=2
+P3 删除态实体 UpdateAsync：抛 InvalidOperationException；库里 IsDeleted=1 UserName=删了再改 Version=2 DeletedToken=当前行
+P8 脱离实体更新已删除记录：failure=null（成功，调用方以为改成了）；库里 IsDeleted=1 DeletedToken=2116007178610544640 UserName=已删-脱离-改名 Version=3；活跃记录数=0
+P1 InsertAsync(IsDeleted=true)：抛 InvalidOperationException，物理行数=0
+P1 随后同名活跃插入：failure=null（成功）；活跃记录数=1
+P6 Updateable(已加载实体)：抛 InvalidOperationException
+P6 Deleteable<T>().Where：未抛异常，影响行=1，物理行数=0
+P7 活跃记录 UpdateAsync：failure=null；UserName=正路-改 Version=2 IsDeleted=0 UpdatedBy=7；内存 Version=2
