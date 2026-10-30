@@ -6,8 +6,9 @@ namespace Pzd.IntegrationTests;
 /// 36 号票的 S2 seam：fixture 能起一个真 MySQL 库，走通建表 → 插入 → 查询。
 /// 只验证载体本身（驱动、连接串、字符集、每用例独立库），不写业务表语义——
 /// 业务断言由 06 及后续票在这个 fixture 上追加。
+/// fixture 是程序集级的，注册在 <c>AssemblyFixtures.cs</c>，所以这里不写 IClassFixture。
 /// </summary>
-public sealed class SmokeTests(MySqlServerFixture fixture) : IClassFixture<MySqlServerFixture>
+public sealed class SmokeTests(MySqlServerFixture fixture)
 {
     [Fact]
     public async Task 独立库建表插入后能查回中文原文()

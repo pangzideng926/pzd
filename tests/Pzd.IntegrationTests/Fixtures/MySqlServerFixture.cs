@@ -27,7 +27,11 @@ public sealed class MySqlServerFixture : IAsyncLifetime
     /// <summary>外部连接串的本地回落文件，放在仓库根被 gitignore 的 <c>.local/</c> 下。</summary>
     public const string LocalConnectionStringFileName = "mysql-test-connection.txt";
 
+    /// <summary>测试库名前缀：建库时用它，删库前必须校验它。</summary>
+    public const string TestDatabaseNamePrefix = "pzd_test_";
+
     private MySqlContainer? _container;
+    private Exception? _containerFailure;
     private string _serverConnectionString = string.Empty;
 
     public MySqlSource Source { get; private set; }
@@ -36,33 +40,82 @@ public sealed class MySqlServerFixture : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var external = ReadConfiguredConnectionString();
-        if (external is not null)
+        var container = await TryStartContainerAsync();
+        var external = container is null ? ReadConfiguredConnectionString() : null;
+
+        Source = ChooseSource(container is not null, external, _containerFailure);
+
+        if (container is not null)
         {
-            Source = MySqlSource.External;
-            _serverConnectionString = new MySqlConnectionStringBuilder(external) { Database = string.Empty }.ConnectionString;
+            _container = container;
+            _serverConnectionString = container.GetConnectionString();
         }
         else
         {
-            Source = MySqlSource.Container;
-            _container = new MySqlBuilder(ImageTag).Build();
-            try
-            {
-                await _container.StartAsync();
-            }
-            catch (Exception exception)
-            {
-                throw new InvalidOperationException(
-                    $"容器不可用（镜像 {ImageTag}）。请安装并启动 Docker，或设置环境变量 "
-                    + $"{ExternalConnectionStringVariable}（或写入仓库根 .local/{LocalConnectionStringFileName}）"
-                    + "指向一个能建库的真 MySQL。",
-                    exception);
-            }
-
-            _serverConnectionString = _container.GetConnectionString();
+            // 把 Database 清空是必须的，不是冗余：服务器级操作要建库/删库，
+            // 外部串若带着 Database=pzd_master 而那个库不存在，连接会直接 1049。
+            _serverConnectionString = new MySqlConnectionStringBuilder(external!) { Database = string.Empty }.ConnectionString;
         }
 
         ServerVersion = await QueryOnServerAsync("SELECT VERSION()") ?? "unknown";
+    }
+
+    /// <summary>
+    /// 来源优先级（AC-04、spec A1）：容器优先，容器不可用才回落外部真库。
+    /// 抽成纯函数是因为本机没有 Docker，容器分支跑不起来；判定本身必须能被用例钉住，
+    /// 否则「容器路径永远不执行」要等到某台有 Docker 的机器才会暴露。
+    /// </summary>
+    internal static MySqlSource ChooseSource(
+        bool containerAvailable,
+        string? externalConnectionString,
+        Exception? containerFailure = null)
+    {
+        if (containerAvailable)
+        {
+            return MySqlSource.Container;
+        }
+
+        if (!string.IsNullOrWhiteSpace(externalConnectionString))
+        {
+            return MySqlSource.External;
+        }
+
+        var reason = containerFailure is null ? "未捕获到具体原因" : containerFailure.Message.Trim();
+        throw new InvalidOperationException(
+            $"容器不可用（镜像 {ImageTag}）：{reason}。请安装并启动 Docker，"
+            + $"或设置环境变量 {ExternalConnectionStringVariable}（或写入仓库根 .local/{LocalConnectionStringFileName}）"
+            + "指向一个能建库的真 MySQL。",
+            containerFailure);
+    }
+
+    private async ValueTask<MySqlContainer?> TryStartContainerAsync()
+    {
+        MySqlContainer? container = null;
+        try
+        {
+            // Build() 内部就会探测 Docker 端点，容器不可用时在这一行就抛 DockerUnavailableException，
+            // 所以它必须留在 try 里：放到 try 外，下面的中文指引永远不会生效。
+            container = new MySqlBuilder(ImageTag).Build();
+            await container.StartAsync();
+            return container;
+        }
+        catch (Exception exception)
+        {
+            _containerFailure = exception;
+            if (container is not null)
+            {
+                try
+                {
+                    await container.DisposeAsync();
+                }
+                catch (Exception)
+                {
+                    // 起了一半的容器清理失败不该盖住真正的原因（Docker 不可用），忽略即可。
+                }
+            }
+
+            return null;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -76,7 +129,7 @@ public sealed class MySqlServerFixture : IAsyncLifetime
     /// <summary>建一个属于单个用例的独立库，返回它的句柄；句柄释放时整库删除。</summary>
     public async ValueTask<TestDatabase> CreateDatabaseAsync(CancellationToken cancellationToken = default)
     {
-        var name = "pzd_test_" + Guid.NewGuid().ToString("N");
+        var name = TestDatabaseNamePrefix + Guid.NewGuid().ToString("N");
         await ExecuteOnServerAsync(
             $"CREATE DATABASE `{name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
             cancellationToken);
@@ -85,8 +138,28 @@ public sealed class MySqlServerFixture : IAsyncLifetime
         return new TestDatabase(name, builder.ConnectionString, this);
     }
 
+    /// <summary>
+    /// 删库护栏：只允许删 fixture 自己生成的测试库。
+    /// 账号带全局 <c>DROP</c>（MySQL 没法把权限授给还不存在的库，只能靠建随机库名绕），
+    /// 所以「删的必须是测试库」这条防线只能落在代码里——06–32 全复用这套 fixture，
+    /// 一次传错库名就能静默删掉平台库。
+    /// </summary>
+    internal static void EnsureTestDatabaseName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)
+            || !name.StartsWith(TestDatabaseNamePrefix, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"拒绝操作非测试库：库名必须以「{TestDatabaseNamePrefix}」开头，实际传的是「{name}」。",
+                nameof(name));
+        }
+    }
+
     internal async ValueTask DropDatabaseAsync(string name, CancellationToken cancellationToken)
-        => await ExecuteOnServerAsync($"DROP DATABASE IF EXISTS `{name}`", cancellationToken);
+    {
+        EnsureTestDatabaseName(name);
+        await ExecuteOnServerAsync($"DROP DATABASE IF EXISTS `{name}`", cancellationToken);
+    }
 
     private async ValueTask ExecuteOnServerAsync(string sql, CancellationToken cancellationToken)
     {
