@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
 更新日期：2026-10-30 08:56 Asia/Shanghai
-下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL 账号可连）；库名口径已按架构 §6.1 定为 `pzd_master`，并加了「缺 `Database=` 启动即失败」的校验。**待做两件**：①维护者建 `pzd_dev` 账号后按它复核一次回落路径（当前是拿测试账号 `pzd_test` 代跑的）；②在有权限终端跑 `dotnet run --project src/Pzd.AppHost` 拿四资源 Healthy（EventLog 墙）
+下一步：数据源侧已复核完整（`pzd_dev` 账号与权限边界、库名口径 `pzd_master`、启动期校验双向、Redis 四项真语义）；只剩在有权限终端跑一次 `dotnet run --project src/Pzd.AppHost` 拿四个资源 Healthy——EventLog 墙与数据源无关
 交付状态：待收尾
 实施条件：已具备 01、02（`0f25d16`／`f13b946`）与外部 MySQL 账号（`pzd_test@localhost`，2026-10-30 到位）；**待满足**：一处能跑 AppHost 的执行环境（EventLog 可写，或用 Docker）——这道门与连接串无关，已用连接串复跑确认
 
@@ -163,7 +163,7 @@ information_schema  mysql  performance_schema  pzd_master  sys
 ```
 
 - 本机库名是 **`pzd_master`（下划线）**，里面有 15 张 `qrtz_*` 表，`CREATE_TIME` 全是 `2026-10-27 17:46:45`——是清空前那版实现留下的 Quartz 表，**属既有数据，不是本票建的**
-- **账号分工（老何 2026-10-30 定，两个账号不许合一）**：上面复核用的 `pzd_test` 是**测试账号**，只该用在集成测试（36 号票要建删 `pzd_test_%` 临时库），不给任何 `ON *.*`；应用运行与回落路径改用 `pzd_dev`（`pzd_master`.* + `pzd_t_%`.*，含 DDL）。`pzd_dev` 建号前，本票的回落复核只能拿 `pzd_test` 代跑；**建号后必须按 `pzd_dev` 再复核一次**（这一条挂在下一步里，未完成）
+- **账号分工（老何 2026-10-30 定，两个账号不许合一）**：`pzd_test` 是**测试账号**，只用在集成测试（36 号票建删 `pzd_test_%` 临时库），不给任何 `ON *.*`；应用运行与回落路径用 `pzd_dev`（`pzd_master`.* + `pzd_t_%`.*，含 DDL）。**已按 `pzd_dev` 复核，证据见下文「pzd_dev 复核」**
 - **`pzd-master`（连字符）不存在**：``USE `pzd-master` `` → `ERROR 1049 (42000): Unknown database 'pzd-master'`
 - 而回落路径注入的连接串键由资源名决定，资源名是 `pzd-master`（Aspire 禁止下划线，会报 `ASPIRE006`）
 - 所以**回落连接串必须自带 `Database=pzd_master`**。维护者这次给的串是 `Server=127.0.0.1;Port=3306;User ID=pzd_test;Password=…`，**不含 `Database=`**
@@ -198,6 +198,34 @@ System.InvalidOperationException: Cannot open log for source '.NET Runtime'. You
 控制台代码页会把中文消息显示成乱码，消息正文以 `AppHost.cs` 源码为准——判据是两个场景**抛出的异常不同**：缺库名抛本票新增的校验、带库名落到 EventLog，说明校验既拦得住、也不误伤正确写法。`dotnet build Pzd.slnx` 0 警告 0 错误。
 
 决策笔记：`.agents/notes/implemented/architecture/2026-10-30-datasource-fallback-database-guard.md`（为什么不在代码里替使用者补 `Database=`、为什么不用健康检查替代）。
+
+### pzd_dev 复核（2026-10-30 09:10，按「两个账号分开」口径）
+
+维护者建好 `pzd_dev` 并收回 `pzd_test` 的全局权限后，改用 `pzd_dev` 的连接串复核，不再拿测试账号代跑：
+
+```text
+$ mysql -u pzd_dev -e "SHOW GRANTS FOR CURRENT_USER()"
+GRANT USAGE ON *.* TO `pzd_dev`@`localhost`                          ← 没有全局权限
+GRANT ALL PRIVILEGES ON `pzd_master`.* TO `pzd_dev`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd_t_%`.* TO `pzd_dev`@`localhost`
+
+$ mysql -u pzd_dev -e "USE pzd_master; SELECT DATABASE(), 表数…"
+pzd_master    15
+
+$ mysql -u pzd_dev -e "CREATE TABLE mysql.__probe(id INT)"           ← 负向：跨库必须被拒
+ERROR 1142 (42000): CREATE command denied to user 'pzd_dev'@'localhost' for table '__probe'
+
+$ mysql -u pzd_test -e "SHOW GRANTS FOR CURRENT_USER()"              ← 已收紧
+GRANT USAGE ON *.* TO `pzd_test`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd_test_%`.* TO `pzd_test`@`localhost`
+
+$ External__MySql="Server=…;Database=pzd_master;User ID=pzd_dev;…" dotnet run --project src/Pzd.AppHost
+（通过 Database= 校验，落到既有的 EventLog 墙）
+```
+
+数据源侧到此复核完整：账号、权限边界（正向能进 `pzd_master`、负向跨库被 `1142` 拒）、库名口径、启动期校验双向，四项都验了。剩下唯一未验的仍是「四个资源 Healthy」，卡在 EventLog，与本票改动无关。
+
+同时把分支合并到 main（`12b543f`）：冲突只在 `Pzd.slnx`，两边各加一个项目，都保留。合并后 `dotnet build Pzd.slnx` 0 警告 0 错误，`Pzd.SharedKernel.UnitTests` 直跑 `Total: 33, Failed: 0`。
 
 ### 授权比脚本声明的宽（安全提示，只报事实）
 
