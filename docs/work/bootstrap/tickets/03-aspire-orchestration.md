@@ -114,12 +114,34 @@ cd E:/pzd/.worktree/03 && dotnet run --project src/Pzd.AppHost
 
 ### 「未运行」四要素（按票面环境条款记）
 
-1. **错误原文与真实退出码**：`Unhandled exception. System.AggregateException: ... (Cannot open log for source '.NET Runtime'. You may not have write access.)` → `System.ComponentModel.Win32Exception (5): 拒绝访问` → `The AppHost process exited unexpectedly with exit code -532462766`，`RUN_EXIT=2`
+1. **错误原文与真实退出码**：经 `dotnet run` 的 CLI 包装时看到 `Unhandled exception. System.AggregateException: ... (Cannot open log for source '.NET Runtime'. You may not have write access.)` → `System.ComponentModel.Win32Exception (5): 拒绝访问` → `The AppHost process exited unexpectedly with exit code -532462766`，`RUN_EXIT=2`。**这条是二次故障**——直跑 exe 后真正的根因露出来了，见下节「环境阻断的真正根因」
 2. **替代执行方式的实际结果**：`dotnet build Pzd.slnx` → `已成功生成。0 个警告 0 个错误`，退出码 0（证明代码可编译、接线类型正确，但**不证明资源能起**）
-3. **明确记录**：四个资源 Healthy **未运行**，需在 EventLog 可写、且具备 Docker 或外部 MySQL 连接串的终端补跑一次
-4. **剩余风险**：`WithPnpm`/`AddViteApp` 的 Vite 端口与端点注入、`WithReference(api)` 的服务发现环境变量名（`services__api__http__0`）都只在运行时才暴露，编译通过不代表代理真通；回落路径的数据源已在 2026-10-30 单独复核（Redis 四项真语义全通、MySQL 账号可连，见下文「回落链路复核」），但**库名口径仍有缺口**——AppHost 注入的连接串键取资源名 `pzd-master`，本机实际库是 `pzd_master`，回落连接串必须自带 `Database=`
+3. **明确记录**：四个资源 Healthy **未运行**，需在**允许修改 NTFS ACL 的普通终端**补跑一次（沙箱禁 `SetSecurityInfo`，见下节）；Docker 与外部 MySQL 连接串二者有其一即可
+4. **剩余风险**：`WithPnpm`/`AddViteApp` 的 Vite 端口与端点注入、`WithReference(api)` 的服务发现环境变量名（`services__api__http__0`）都只在运行时才暴露，编译通过不代表代理真通；回落路径的数据源已复核（Redis 四项真语义、MySQL `pzd_dev` 账号与权限边界，见下文「回落链路复核」）；库名口径已定为 `pzd_master` 并有启动期校验兜底
 
 **四个资源真 Healthy 之前不标完成**，本票维持「进行中／待收尾」。
+
+### 环境阻断的真正根因（2026-10-30 13:35–13:38，逐层剥出来的）
+
+先前记的「EventLog 要管理员权限」是**症状，不是根因**。三次实验把它剥清楚了：
+
+| # | 做法 | 结果 |
+|---|---|---|
+| 1 | 直跑 `Pzd.AppHost.exe`，不经 `dotnet run` 的 CLI 包装 | 看到被掩埋的两条原始异常：`UnauthorizedAccessException: Access to the path 'C:\Users\…\Temp\aspire-dcp….ktn' is denied`（`Directory.CreateTempSubdirectory`），以及 `SetSecurityInfo … 未授权` |
+| 2 | `Logging__EventLog__LogLevel__Default=None` + `TMP`/`TEMP` 指向 `E:\pzd\.worktree\03\.local\tmp` | EventLog 报错消失、`%TEMP%` 那层被绕过：**DCP 真的起来了**（`Starting DCP with arguments: start-apiserver …`、`Started monitoring process {"PID": …}`），进程不再立即崩溃（`timeout` 到期才被杀，`RC=124`） |
+| 3 | 让它跑 90 秒后查现场 | `dcp.exe` 进程已不在、没有任何 `LISTENING` 端口；Aspire 仍停在「等 DCP 就绪」，日志不再推进 |
+
+**最终那道墙是 `System.Security.AccessControl.Win32.SetSecurityInfo` 被拒**（`UnauthorizedAccessException: Attempted to perform an unauthorized operation`）。Aspire 起编排要先建 socket 目录再给它设 ACL，两个调用点死在同一处：
+
+- `Aspire.Shared.SocketPermissionHelper.CreateWindowsDirectory`（auxiliary backchannel）
+- `Aspire.Hosting.Dcp.DcpHost.CreateLoggingSocket`（编排日志）
+
+本沙箱禁止修改 NTFS ACL，所以这不是「多设个环境变量」能绕过去的：DCP 通信端点建不起来 → Aspire 永远等不到 DCP 就绪 → 四资源不可能 Healthy。
+
+**给补跑的人两条**：
+
+1. 别先怀疑 EventLog。它在普通终端上本来就可写；真跑不起来时先看 `%TEMP%` 与 ACL，别被那条 `Win32Exception (5)` 带偏。
+2. 想复现我这套诊断：`Logging__EventLog__LogLevel__Default=None`，并把 `TMP`/`TEMP` 指到可写目录，能把被 EventLog 吞掉的原始异常逼出来。
 
 ### 包版本偏离（老何要求：改了什么、还有谁钉旧版、有没有夹带）
 
