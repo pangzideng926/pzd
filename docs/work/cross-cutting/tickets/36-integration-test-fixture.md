@@ -32,6 +32,7 @@
 
 - 前置票：01
 - 对外契约：后续所有集成测试（06–32）复用此 fixture；**隔离语义为「每用例独立库」**，06 的真提交、08 的一次 Command 一次提交与 Outbox 回滚语义都建立在这个前提上，不允许改成事务回滚。MySQL 版本以本票固定的 tag 为准，03 出来后比对。
+- **程序集级 fixture 共享的是实例，不是库**（老何 2026-10-30 定）：一个测试程序集只起一个 MySQL（容器模式下也只起一个容器），但每个用例仍必须自己 `CreateDatabaseAsync` 拿独立库。谁图快让整个程序集共用一个库，隔离就破了——08 的「一次 Command 一次提交」会立刻测不出来。
 
 ## 步骤
 
@@ -86,7 +87,7 @@ fixture 因此实现两种来源，判定集中在 `MySqlServerFixture.ChooseSou
 2. 容器不可用 → 回落外部真库（本机为 `8.0.46`）；
 3. 两者都不可用 → 抛 `InvalidOperationException`，外层是中文指引（说清两条出路），内层才是 Testcontainers 的英文原因。
 
-**测试类 fixture 形态（06–32 一律照此写）**：程序集级 `[assembly: AssemblyFixture(typeof(MySqlServerFixture))]`，注册在 `tests/Pzd.IntegrationTests/AssemblyFixtures.cs`，测试类构造注入即可，**不要用 `IClassFixture`**——它是每个测试类一个实例，容器模式下等于每个类各起一个 MySQL 容器，几十个类会线性放大。
+**测试类 fixture 形态（06–32 一律照此写）**：程序集级 `[assembly: AssemblyFixture(typeof(MySqlServerFixture))]`，注册在 `tests/Pzd.IntegrationTests/AssemblyFixtures.cs`，测试类构造注入即可，**不要用 `IClassFixture`**——它是每个测试类一个实例，容器模式下等于每个类各起一个 MySQL 容器，几十个类会线性放大。已确认：张一一（admin，2026-10-30，理由是比 collection fixture 少一层排序问题）、老何（2026-10-30，并补「共享实例不等于共享库」）。
 
 外部连接串只从两处读，都不入库：
 
@@ -250,5 +251,5 @@ $ ./Pzd.IntegrationTests.exe -class "Pzd.IntegrationTests.SmokeTests" -method ".
    - **容器分支本机未运行**（无 Docker）：`mysql:8.4` 起库、版本一致性都未验证，AC 第 4/5 条因此不勾。
    - **无 Docker 机器每次跑测试多付约 10 秒**容器探测（8 条用例 0.4s → 10.4s）。这是容器优先的代价，要提速得先改 AC-04，不许在代码里反转优先级。
    - `dotnet test` 本体仍受沙箱限制未运行（`Access denied` + 命名管道，`总计: 0`），需无管道限制环境补跑一次。
-   - **fixture 形态建议待老何确认**：本票已按「程序集级 `AssemblyFixture`」写进约定并要求 06–32 照抄，`IClassFixture` 明确排除。若老何要改成 collection fixture，只动 `AssemblyFixtures.cs` 与各测试类的声明，不动 fixture 本体。
+   - **fixture 形态已定**：程序集级 `AssemblyFixture`（张一一、老何 2026-10-30 确认），`IClassFixture` 明确排除；同时钉住「共享实例不等于共享库」，每用例仍独立库。若日后要改为 collection fixture，只动 `AssemblyFixtures.cs` 与各测试类声明，不动 fixture 本体。
    - 本机 `pzd_master` 里仍有 15 张 `qrtz_*` 旧表（不是本票产物），17 号票迁移前需要先定处理方式。
