@@ -43,11 +43,30 @@ Status: implemented
 **9. 审计值先算后写，冲突不污染调用方实体。**
 `ComputeUpdateStamp` 只计算结果、不动实体；SQL 影响 1 行之后才 `ApplyUpdateStamp` 回写。版本冲突时调用方手里的对象仍保持加载时的样子，可以直接重载重试，不会把错的时间戳带进下一次写。
 
+**10. 写侧只留四个入口，业务代码不碰 `Insertable`/`Updateable`/`Deleteable`。**
+`PersistenceWriter` 提供 `InsertAsync` / `UpdateAsync` / `SoftDeleteAsync` / `RestoreAsync`；读侧仍用 `Queryable`。
+这四个方法的操作语义由一个 `WriteKind` 决定，审计值、租户谓词、版本条件都从同一个判断推出来——
+上一版把「是否软删除」拆成两个布尔（`deleting` 与 `markDeleted`），算值用前者、拼 SET 用后者，
+`UpdateAsync` 走软删除时 `DeletedAt/DeletedBy` 就被静默丢了（06 重审 high 2）。一个语义只能有一个布尔。
+
+**11. 恢复（`RestoreAsync`）必须把 `DeletedToken` 归 0。**
+恢复时若把 `IsDeleted` 置回 false 而留着 `DeletedToken=Id`，唯一索引会认为已删记录仍占着「另一个 token」，
+于是同名活跃记录可以有两条（06 重审 high 3 实测 `活跃同名记录=2`）。归 0 之后，业务键若已被新记录占用，
+唯一索引自己会撞 1062，翻译成 409 `DuplicateKey`——「不能恢复」是有返回值的，不靠调用方自己查。
+
+**12. 旁路给两层网：运行期兜底 + 静态守卫。**
+运行期：`db.Deleteable(entity)` 被 `DeleteByObject` 拦（合法物理清理在 `PersistenceOptions.HardDeleteTypes` 登记）；
+`db.Updateable(...)` 因为带不上版本条件、`Version` 为 0，被 AOP 直接拒绝——实测不拒绝的话它会把 `Version` 写成 0，
+那一行之后任何走写入口的更新都永远对不上，比一次写坏更难查。
+静态：13 号票按命名空间断言 `src/` 里除 `src/Pzd.Infrastructure/**` 外不出现这三个方法。
+票面另写了「对外契约」一节，因为静态守卫只覆盖 `src/`，新目录靠契约兜。
+
 ## Alternatives considered
 
 - **在 SharedKernel 加 `ISoftDeletable` 标记接口** — 最强理由：过滤器用泛型 `AddTableFilter<ISoftDeletable>` 一行搞定，类型安全。没选，是因为 05 的签名已冻结，加接口要重开 05 的审计；而且 Domain 实体为了实现持久化接口而改签名，等于把 ORM 关注点渗进领域层。
 - **`DeletedToken` 可空、未删除写 NULL**（票面原建议）— 最强理由：语义直观，NULL 天然表示「没删」。没选，是因为 MySQL 唯一索引允许多个 NULL，两条活跃同名记录都能插入，唯一约束形同虚设；`0` 是能参加比较的哨兵值。
 - **依赖 `IsEnableUpdateVersionValidation` 属性** — 最强理由：框架自带，少写 SQL。没选，是因为实测 SQL 里没有版本列：`UPDATE probe_user SET …,Version=@Version,… WHERE Id=@Id`，链式 `.IsEnableUpdateVersionValidation()` 也一样只发一条按主键的 UPDATE，第二次并发更新照样成功（影响 1 行）。
+- **只写票面契约、不补运行期防御** — 最强理由：约定清楚就够，代码里少一层判断。没选，是因为 `db.Updateable(entity)` 把 `Version` 写成 0 这件事没有报错、没有日志，而后果是那一行永久锁死；运行期拒绝能让错误在第一次写错时就炸出来，成本只有一个分支。
 - **软删除只提供唯一入口、不拦 `Deleteable`** — 最强理由：不改变 ORM 的默认行为，兼容别人已经写的删除代码。没选，是因为架构 §5.3 承诺「软删除 + 回收站可恢复」，物理删掉就永远恢复不了且毫无提示；拦截能让错误在第一次写错时就炸出来，代价只是一行异常文案。
 - **靠 `SnowFlakeSingle` 的静态字段配置 worker** — 最强理由：不用自建实例，一处赋值全局生效。没选，是因为单例懒初始化后字段就固定了（实测赋 5/9 之后 `WorkerId` 仍是 1），多副本场景等于没配。
 - **创建审计也进 SET、由调用方保证传全字段** — 最强理由：写入口逻辑更简单，一条 SQL 覆盖所有列。没选，是因为分离实体会把 `CreatedAt/CreatedBy` 抹成 `1900-01-01`/`0` 且返回成功（06 审计 high 1 实测），审计痕迹静默丢失比功能缺失更难发现。
@@ -65,7 +84,7 @@ Status: implemented
 cd .worktree/06
 dotnet build Pzd.slnx                                   # 0 警告 0 错误
 ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
-# Total: 18, Failed: 0
+# Total: 25, Failed: 0
 ```
 
 用例分两层：第一层钉约定本身（审计填充、软删除不可见、同名重建、并发 409、1062、UTC 原值）；

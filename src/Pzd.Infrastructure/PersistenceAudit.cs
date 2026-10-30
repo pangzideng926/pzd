@@ -25,9 +25,10 @@ internal static class PersistenceAudit
     internal readonly record struct UpdateStamp(
         DateTime UpdatedAt,
         long UpdatedBy,
+        bool MarkDeleted,
         long DeletedToken,
         DateTime? DeletedAt,
-        long? DeletedBy);
+        long DeletedBy);
 
     public static void Attach(SqlSugarClient db, PersistenceOptions options, Func<long> nextId)
     {
@@ -45,7 +46,7 @@ internal static class PersistenceAudit
             switch (entity.OperationType)
             {
                 case DataFilterType.InsertByObject:
-                    OnInsert(entity, options.CurrentUserId(), nextId);
+                    OnInsert(entity, options, nextId);
                     break;
                 case DataFilterType.UpdateByObject:
                     OnUpdate(entity, options.CurrentUserId());
@@ -53,14 +54,21 @@ internal static class PersistenceAudit
                 case DataFilterType.DeleteByObject:
                     // 架构 §5.3 承诺软删除 + 回收站可恢复，物理删掉就永远恢复不了，也没有任何提示。
                     // 这里把「顺手写 db.Deleteable(entity)」变成一眼能看懂的失败（06 审计 high 3）。
+                    // 白名单留给 Outbox 已消费清理、审计日志归档这类合法物理删除（06 重审 low 1）。
+                    if (IsHardDeleteAllowed(entity, options.HardDeleteTypes))
+                    {
+                        break;
+                    }
+
                     throw new InvalidOperationException(
                         $"类型「{entity.EntityName}」拒绝物理删除：本仓库的删除一律是软删除，"
-                        + "请调用 PersistenceWriter.SoftDeleteAsync（它同时维护 DeletedToken / DeletedAt / DeletedBy）。");
+                        + "请调用 PersistenceWriter.SoftDeleteAsync（它同时维护 DeletedToken / DeletedAt / DeletedBy）；"
+                        + "确需物理清理时在 PersistenceOptions.HardDeleteTypes 里登记。");
             }
         };
     }
 
-    private static void OnInsert(DataFilterModel entity, long currentUserId, Func<long> nextId)
+    private static void OnInsert(DataFilterModel entity, PersistenceOptions options, Func<long> nextId)
     {
         var now = InsertStamp.GetValue(entity.EntityValue!, _ => new InsertStampHolder { Value = UtcNowForDatabase() }).Value;
 
@@ -82,12 +90,62 @@ internal static class PersistenceAudit
                 break;
             case PersistenceOptions.Columns.CreatedBy:
             case PersistenceOptions.Columns.UpdatedBy:
-                entity.SetValue(currentUserId);
+                entity.SetValue(options.CurrentUserId());
                 break;
             case PersistenceOptions.Columns.DeletedToken:
                 entity.SetValue(0L);
                 break;
+            case PersistenceOptions.Columns.TenantId:
+                // 插入侧原来完全敞开：错填写进别家租户，漏填就是 TenantId=0 的幽灵行（06 重审 medium 3）。
+                ApplyTenantOnInsert(entity, options);
+                break;
         }
+    }
+
+    private static void ApplyTenantOnInsert(DataFilterModel entity, PersistenceOptions options)
+    {
+        var declared = ReadLong(entity.EntityValue!, PersistenceOptions.Columns.TenantId);
+        var context = options.CurrentTenantId();
+
+        if (context is null)
+        {
+            if (declared == 0)
+            {
+                throw new InvalidOperationException(
+                    $"插入「{entity.EntityName}」时既没有租户上下文（PersistenceOptions.CurrentTenantId 返回 null），"
+                    + "实体也没带租户号：拒绝写出 TenantId=0 的幽灵记录。");
+            }
+
+            return;
+        }
+
+        if (declared == 0)
+        {
+            entity.SetValue(context.Value);
+            return;
+        }
+
+        if (declared != context.Value)
+        {
+            throw new InvalidOperationException(
+                $"插入「{entity.EntityName}」时实体租户是 {declared}，当前租户上下文是 {context.Value}：拒绝跨租户写入。");
+        }
+    }
+
+    private static bool IsHardDeleteAllowed(DataFilterModel entity, IReadOnlyList<Type> hardDeleteTypes)
+    {
+        // EntityValue 在这里不一定是实体本身（SqlSugar 内部可能传集合或包装对象），
+        // 用 EntityName 比对类型名，再加一次运行时类型兜底。
+        var actual = entity.EntityValue?.GetType();
+        foreach (var allowed in hardDeleteTypes)
+        {
+            if (allowed.Name == entity.EntityName || allowed == actual || allowed.Name == actual?.Name)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void OnUpdate(DataFilterModel entity, long currentUserId)
@@ -96,6 +154,18 @@ internal static class PersistenceAudit
 
         switch (entity.PropertyName)
         {
+            case PersistenceOptions.Columns.Version:
+                // db.Updateable(entity) 会把实体上的 Version 原样写回：分离实体或只改了业务字段的对象
+                // 会把 Version 直接写成 0，那行之后任何走写入口的更新都永远对不上（06 重审 high 4 的 B2）。
+                // 写入口自己拼 SQL、不经过这里，所以这条只挡旁路，不挡正路。
+                if (ReadLong(entity.EntityValue!, PersistenceOptions.Columns.Version) <= 0)
+                {
+                    throw new InvalidOperationException(
+                        $"类型「{entity.EntityName}」的更新必须走 PersistenceWriter.UpdateAsync / SoftDeleteAsync / RestoreAsync："
+                        + "直接 db.Updateable 不带版本条件，会把 Version 写成 0 并绕过租户谓词与创建审计。");
+                }
+
+                break;
             case PersistenceOptions.Columns.UpdatedAt:
                 entity.SetValue(UtcNowForDatabase());
                 break;
@@ -129,35 +199,42 @@ internal static class PersistenceAudit
     }
 
     /// <summary>
-    /// 算一次更新的审计值，**不改实体**：写入口要先拿它拼 SQL，等真的影响 1 行之后再落实体，
+    /// 算一次更新要写的审计值，**不改实体**：写入口要先拿它拼 SQL，等真的影响 1 行之后再落实体，
     /// 否则版本冲突时调用方手里的实体已经被改脏（06 审计 medium 3）。
-    /// 与 <see cref="OnUpdate"/> 用同一套规则，避免两条写路径的时间精度或用户来源不一致。
+    /// <para><paramref name="markDeleted"/>：这次是软删除（写 token / at / by）。</para>
+    /// <para><paramref name="clearDeleted"/>：这次是恢复（token 归 0、at 与 by 清空）。</para>
+    /// 两个布尔互斥，由写入口按操作语义给出，避免出现「算值用 A、拼 SET 用 B」那种自相矛盾（06 重审 medium 1）。
     /// </summary>
-    internal static UpdateStamp ComputeUpdateStamp(object entity, long currentUserId, bool deleting)
+    internal static UpdateStamp ComputeUpdateStamp(object entity, long currentUserId, bool markDeleted, bool clearDeleted)
     {
         var now = UtcNowForDatabase();
         var id = ReadLong(entity, PersistenceOptions.Columns.Id);
 
+        if (markDeleted)
+        {
+            return new UpdateStamp(now, currentUserId, MarkDeleted: true, DeletedToken: id, DeletedAt: now, DeletedBy: currentUserId);
+        }
+
+        if (clearDeleted)
+        {
+            return new UpdateStamp(now, currentUserId, MarkDeleted: false, DeletedToken: 0L, DeletedAt: null, DeletedBy: 0L);
+        }
+
         return new UpdateStamp(
-            UpdatedAt: now,
-            UpdatedBy: currentUserId,
-            DeletedToken: deleting ? id : ReadLong(entity, PersistenceOptions.Columns.DeletedToken),
-            DeletedAt: deleting ? now : Read(entity, PersistenceOptions.Columns.DeletedAt) as DateTime?,
-            DeletedBy: deleting ? currentUserId : Read(entity, PersistenceOptions.Columns.DeletedBy) as long?);
+            now,
+            currentUserId,
+            MarkDeleted: false,
+            DeletedToken: ReadLong(entity, PersistenceOptions.Columns.DeletedToken),
+            DeletedAt: Read(entity, PersistenceOptions.Columns.DeletedAt) as DateTime?,
+            DeletedBy: Read(entity, PersistenceOptions.Columns.DeletedBy) as long? ?? 0L);
     }
 
     /// <summary>SQL 影响 1 行之后，把算好的审计值落实到调用方实体上。</summary>
-    internal static void ApplyUpdateStamp(object entity, in UpdateStamp stamp, bool deleting)
+    internal static void ApplyUpdateStamp(object entity, in UpdateStamp stamp)
     {
         Set(entity, PersistenceOptions.Columns.UpdatedAt, stamp.UpdatedAt);
         Set(entity, PersistenceOptions.Columns.UpdatedBy, stamp.UpdatedBy);
-
-        if (!deleting)
-        {
-            return;
-        }
-
-        Set(entity, PersistenceOptions.Columns.IsDeleted, true);
+        Set(entity, PersistenceOptions.Columns.IsDeleted, stamp.MarkDeleted);
         Set(entity, PersistenceOptions.Columns.DeletedToken, stamp.DeletedToken);
         Set(entity, PersistenceOptions.Columns.DeletedAt, stamp.DeletedAt);
         Set(entity, PersistenceOptions.Columns.DeletedBy, stamp.DeletedBy);

@@ -48,7 +48,21 @@
 - [x] 并发更新冲突可被识别为 409 的来源错误（`Persistence.Record.VersionConflict`）。
 - [x] MySQL 1062 唯一键冲突可被识别为 409 的来源错误（`Persistence.Record.DuplicateKey`）。
 - [x] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
-- [x] 证据贴出 `PersistenceTests` 的实际通过数：**6 个用例，0 失败**。
+- [x] 证据贴出 `PersistenceTests` 的实际通过数：**25 个用例，0 失败**（其中 6 条基础约定 + 10 条首轮返工 + 6 条重审返工 + 2 条配置与命名 + 1 条旁路加固）。
+
+## 对外契约（下游模块必须遵守）
+
+业务代码**只允许** `Queryable` 读、`PersistenceWriter` 写：
+
+| 允许 | 禁止 |
+|---|---|
+| `db.Queryable<T>()` 查询（含 `ClearFilter()` 看回收站） | `db.Insertable(...)` —— 用 `PersistenceWriter.InsertAsync` |
+| `PersistenceWriter.InsertAsync` / `UpdateAsync` / `SoftDeleteAsync` / `RestoreAsync` | `db.Updateable(...)`（含 `.SetColumns(...)`）—— 用 `UpdateAsync` |
+| `db.Ado.ExecuteCommandAsync`（仅限 Infrastructure 内部与 `db/` 版本化 SQL） | `db.Deleteable(...)` —— 用 `SoftDeleteAsync`；物理清理需在 `PersistenceOptions.HardDeleteTypes` 登记 |
+
+理由：AOP 只能拦 `DeleteByObject` 这类带实体的形态；`db.Deleteable<T>().Where(...)` 一路物理删，`db.Updateable(entity)` 会把 `Version` 写成 0、抹掉创建审计、把整行搬到别的租户（06 重审 high 1–5 实测）。靠约定守不住，所以两层网：**本契约 + 13 号票的静态守卫**（`src/` 里除 `src/Pzd.Infrastructure/**` 外出现 `Updateable`/`Deleteable`/`Insertable` 即红）。
+
+运行期兜底：`db.Updateable(entity)` 会因 `Version<=0` 被 AOP 拒绝，`db.Deleteable(entity)` 会因未登记白名单被拒绝——但这只是第二层，不是许可。
 
 ## 定型的软删除唯一索引方案（供 17、19、20、23、32 号票复用）
 
@@ -67,15 +81,19 @@ CREATE TABLE test_user (
   Version INT NOT NULL,
   IsDeleted TINYINT(1) NOT NULL DEFAULT 0,
   DeletedToken BIGINT NOT NULL DEFAULT 0,
+  DeletedAt DATETIME(6) NULL,
+  DeletedBy BIGINT NOT NULL DEFAULT 0,
   CreatedAt DATETIME(6) NOT NULL, CreatedBy BIGINT NOT NULL,
   UpdatedAt DATETIME(6) NOT NULL, UpdatedBy BIGINT NOT NULL,
   UNIQUE KEY ux_test_user_tenant_name (TenantId, UserName, DeletedToken)
 );
 ```
 
+> 本节 SQL 与 `tests/Pzd.IntegrationTests/PersistenceTests.cs` 的 `SchemaSql` **必须逐字同形**（除表名与业务键外）。17 号票写 master 建表 SQL 时拿这两个做对照，不一致就先改这里。
+
 **为什么不按票面建议用可空列 + NULL**：MySQL 的唯一索引允许多个 NULL，未删除写 NULL 时两条活跃同名记录都能插入，唯一约束等于没有；`0` 是能参加比较的哨兵值，活跃记录最多一条、已删记录彼此用主键区分。
 
-**建表时必须一起带的约定**：主键 `BIGINT`（雪花，对外序列化成字符串）、`Version INT NOT NULL`、审计四列、时间列用 `DATETIME(6)`（微秒精度，对齐 .NET 侧截断）。
+**建表时必须一起带的约定**：主键 `BIGINT`（雪花，对外序列化成字符串）、`Version INT NOT NULL`、审计四列、时间列用 `DATETIME(6)`（微秒精度，对齐 .NET 侧截断），以及软删除四列——`IsDeleted`、`DeletedToken`（唯一索引机制）、`DeletedAt`（回收站排序）、`DeletedBy`（谁删的）。后两列是审计字段，不是可选项：缺了它们 `SoftDeleteAsync` 会报 `Unknown column`，而看报错的人会误以为是 ORM 映射问题。
 
 ## 验证入口
 
@@ -119,7 +137,7 @@ $ dotnet build Pzd.slnx
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
 === TEST EXECUTION SUMMARY ===
-   Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.050s
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.482s
 ```
 
 第一层钉约定本身：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
@@ -130,7 +148,7 @@ $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class
 
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe
-   Pzd.IntegrationTests  Total: 26, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.869s
+   Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.403s
 $ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
    Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.110s
 $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
@@ -164,9 +182,37 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 | 冲突前就落实体 | `版本冲突时内存实体不被改写` | `Failed: 1`，还原后绿 |
 | 忽略 worker 配置 | `配置的worker与机房号真的被采纳` | `Failed: 1`，还原后绿 |
 
-**5. 遗留**
+**5. 返工第二轮（审计 run-04 重审：5 high + 2 medium + 2 low）**
 
-- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 18, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 18` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+老登把李总那 5 条旁路盲区全部独立复现后升级为 high，结论从「1 high + 4 medium」改成「5 high + 2 medium + 2 low」。红先：`Total: 24, Failed: 6`，再改到绿。
+
+| 审计条目 | 改法 | 用例 |
+|---|---|---|
+| high 1 定型 DDL 缺两列 | 票面定型 SQL 补 `DeletedAt/DeletedBy`，注明「与 `SchemaSql` 逐字同形」 | 无（文档） |
+| high 2（medium 1）`markDeleted`/`deleting` 混用 | 统一成一个语义：`WriteKind`（Update/SoftDelete/Restore）算一个布尔，`ValueFor` 与 `ApplyUpdateStamp` 都用它，不再出现两套判断 | `UpdateAsync带IsDeleted时也写全删除审计` |
+| high 3（medium 2）回收站恢复破唯一索引 | 新增 `PersistenceWriter.RestoreAsync`：`DeletedToken` 归 0、`DeletedAt/DeletedBy` 清空，撞唯一索引时返回 409 `DuplicateKey` | `软删除后能恢复且同名可再用`、`同名记录已占用时恢复被拒绝` |
+| high 4（李总 P4/P5）`Updateable`/`Deleteable` 旁路 | 新增 `InsertAsync` 唯一插入入口；AOP 对 `Version<=0` 的旁路更新直接拒绝（`Version` 被写成 0 会让该行永久锁死） | `绕过写入口的Updateable被拒且版本不会被写成0`、`SetColumns形态的旁路也被拒绝` |
+| high 5（李总 P1/P2/medium 3）插入无租户校验 | `OnInsert` 补租户：实体未填按上下文填充，不一致抛异常，无上下文且未填也抛（不留 `TenantId=0` 幽灵行） | `插入时实体租户与上下文不一致被拒绝`、`插入未填租户时按上下文填充` |
+| medium 4 验收条数过期 | 6 → 25，并写清构成 | 无（文档） |
+| low 1 物理删除无白名单 | `PersistenceOptions.HardDeleteTypes`，为 08 的 Outbox 清理留显式豁免 | `白名单元组允许物理删除` |
+
+老登另加两条也照办：①两条示范性用例（`软删除记录默认查询不可见`、`软删除后能用同一业务键重建`）从 `db.Updateable` 改走 `SoftDeleteAsync`；②票面新增「对外契约」节，写死「业务代码只允许 `Queryable` 读、`PersistenceWriter` 写」。
+
+**变异验证（五处，四处精确红一条，一处红六条）**：
+
+| 变异 | 结果 |
+|---|---|
+| `ValueFor` 退回到「只有 `SoftDeleteAsync` 才写删除审计」 | `Failed: 6`（整组删除相关用例全红，说明这条语义被多条用例守着） |
+| 恢复不清 `DeletedToken` | `Failed: 2`，两条恢复用例 |
+| 去掉插入侧租户校验 | `Failed: 2`，两条插入用例 |
+| 去掉旁路 `Version` 防御 | `Failed: 2`，两条旁路用例 |
+| 物理删除白名单恒放行 | `Failed: 1`，`物理删除被拒绝不让回收站失效` |
+
+记一笔脚本缺陷：白名单那条变异我第一次写成 `if (false)`，触发 CS0162 不可达代码、在「警告即错误」下构建失败；按群规「构建失败判失败、不算红」重做成恒返回 true，才拿到真红。
+
+**6. 遗留**
+
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 25, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 25` 才算闭环；看到 `总计: 0` 一律按未运行处理。
 - **`SetColumns` 形态仍是漏网的手写 SQL**：`db.Updateable<T>().SetColumns(it => new T { IsDeleted = true })` 不被拦截、也不会写 `DeletedToken`，代价已写成用例（同名重建 1062）。要堵死得靠 13 号票的静态守卫（禁止业务代码出现 `Deleteable`/`SetColumns` 写软删除列），集成测试拦不住。
 - **`CurrentTenantId` 必须由 07 供给**：有 `TenantId` 列的类型在拿不到租户上下文时写不进去（这是设计选择，不是缺陷）。07 接租户解析时要把 `PersistenceOptions.CurrentTenantId` 填上，否则所有写路径会在运行期抛 `InvalidOperationException`。
 - **`DeletedAt/DeletedBy` 是冻结前补的**：按张一一裁定与架构 §5.3 对齐，`DeletedToken` 只承担唯一索引机制，回收站排序与「谁删的」用 `DeletedAt/DeletedBy`。17 号票写 master 建表 SQL 时这四列都要有。

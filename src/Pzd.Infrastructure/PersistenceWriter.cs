@@ -5,10 +5,11 @@ namespace Pzd.Infrastructure;
 
 /// <summary>
 /// 持久化层唯一的写入口（architecture.md §5.3）：乐观并发 + 租户谓词 + 审计字段。
-/// 所有 UPDATE 都带 <c>WHERE Id AND Version=旧值 AND TenantId=当前租户</c>；
+/// 所有 UPDATE 都带 <c>WHERE Id AND Version=旧值 AND TenantId=当前租户</c>：
 /// <list type="bullet">
 /// <item>版本不匹配 → <c>Persistence.Record.VersionConflict</c>（09 号票映射 409）</item>
 /// <item>租户上下文缺失 → 抛 <see cref="InvalidOperationException"/>，绝不按 Id 静默更新（06 审计 high 2）</item>
+/// <item>唯一键冲突（例如恢复时业务键已被占用）→ <c>Persistence.Record.DuplicateKey</c></item>
 /// <item>冲突时调用方实体保持原值，可以直接重载重试（06 审计 medium 3）</item>
 /// </list>
 /// 不用 SqlSugar 的 <c>IsEnableUpdateVersionValidation</c>：实测（SqlSugarCore 5.1.4.221）它在
@@ -16,10 +17,7 @@ namespace Pzd.Infrastructure;
 /// </summary>
 public static class PersistenceWriter
 {
-    /// <summary>
-    /// SET 里永不出现的列：主键、版本、租户归属，以及「谁在什么时候创建」这两个不可变事实
-    /// （06 审计 high 1：分离实体更新会把它们抹成默认值）。
-    /// </summary>
+    /// <summary>SET 里永不出现的列：主键、版本、租户归属，以及「谁在什么时候创建」这两个不可变事实。</summary>
     private static readonly string[] ImmutableColumns =
     [
         PersistenceOptions.Columns.CreatedAt,
@@ -27,8 +25,49 @@ public static class PersistenceWriter
         PersistenceOptions.Columns.TenantId,
     ];
 
+    private enum WriteKind
+    {
+        Update,
+        SoftDelete,
+        Restore,
+    }
+
+    /// <summary>
+    /// 插入的唯一入口（06 重审 high 5）：业务代码不直接写 <c>db.Insertable</c>。
+    /// 审计四列、雪花主键、<c>Version=1</c> 与租户校验都由背后的 AOP 强制完成，
+    /// 唯一键冲突翻译成 <c>Persistence.Record.DuplicateKey</c>（409）。
+    /// </summary>
+    public static async Task<PersistenceFailure?> InsertAsync<T>(
+        SqlSugarClient db,
+        T entity,
+        PersistenceOptions options,
+        CancellationToken cancellationToken = default)
+        where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(options);
+
+        try
+        {
+            await db.Insertable(entity).ExecuteCommandAsync(cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            var failure = PersistenceErrors.Classify(exception);
+            if (failure.Kind != PersistenceFailureKind.Unknown)
+            {
+                return failure;
+            }
+
+            throw;
+        }
+    }
+
     /// <summary>
     /// 按版本条件更新一条记录：成功返回 <c>null</c>；版本已被别人改掉返回版本冲突。
+    /// 实体 <c>IsDeleted=true</c> 时同样按软删除处理、四个删除列一起写（06 重审 medium 1）。
     /// </summary>
     public static Task<PersistenceFailure?> UpdateAsync<T>(
         SqlSugarClient db,
@@ -36,7 +75,7 @@ public static class PersistenceWriter
         PersistenceOptions options,
         CancellationToken cancellationToken = default)
         where T : class
-        => WriteAsync(db, entity, options, deleting: false, cancellationToken);
+        => WriteAsync(db, entity, options, WriteKind.Update, cancellationToken);
 
     /// <summary>
     /// 软删除的唯一入口（06 审计 high 3）：一次写好 <c>IsDeleted</c>、<c>DeletedToken</c>、
@@ -48,13 +87,39 @@ public static class PersistenceWriter
         PersistenceOptions options,
         CancellationToken cancellationToken = default)
         where T : class
-        => WriteAsync(db, entity, options, deleting: true, cancellationToken);
+        => WriteAsync(db, entity, options, WriteKind.SoftDelete, cancellationToken);
+
+    /// <summary>
+    /// 回收站恢复（06 重审 medium 2）：把 <c>DeletedToken</c> 归 0、清空 <c>DeletedAt/DeletedBy</c>。
+    /// 业务键已被活跃记录占用时由唯一索引拦下，返回 <c>Persistence.Record.DuplicateKey</c>，
+    /// 不会出现两条活跃同名记录。
+    /// </summary>
+    public static Task<PersistenceFailure?> RestoreAsync<T>(
+        SqlSugarClient db,
+        T entity,
+        PersistenceOptions options,
+        CancellationToken cancellationToken = default)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var info = db.EntityMaintenance.GetEntityInfo<T>();
+        if (!ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted))
+        {
+            throw new InvalidOperationException(
+                $"类型「{typeof(T).Name}」的这条记录没有处于软删除状态，无法恢复。");
+        }
+
+        return WriteAsync(db, entity, options, WriteKind.Restore, cancellationToken);
+    }
 
     private static async Task<PersistenceFailure?> WriteAsync<T>(
         SqlSugarClient db,
         T entity,
         PersistenceOptions options,
-        bool deleting,
+        WriteKind kind,
         CancellationToken cancellationToken)
         where T : class
     {
@@ -78,10 +143,18 @@ public static class PersistenceWriter
                 + "（PersistenceOptions.CurrentTenantId 返回 null）。写入口拒绝在没有租户上下文时按主键更新。");
 
         var currentVersion = Convert.ToInt64(version.PropertyInfo.GetValue(entity), CultureInfo.InvariantCulture);
-        var markDeleted = deleting || ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted);
+
+        // 一个语义只留一个布尔：markDeleted 决定「这次是不是软删除」，clearDeleted 决定「这次是不是恢复」。
+        var markDeleted = kind switch
+        {
+            WriteKind.SoftDelete => true,
+            WriteKind.Update => ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted),
+            _ => false,
+        };
+        var clearDeleted = kind == WriteKind.Restore;
 
         // 先算，不落实体：冲突时调用方手里的对象要保持加载时的样子。
-        var stamp = PersistenceAudit.ComputeUpdateStamp(entity, options.CurrentUserId(), markDeleted);
+        var stamp = PersistenceAudit.ComputeUpdateStamp(entity, options.CurrentUserId(), markDeleted, clearDeleted);
 
         var parameters = new List<SugarParameter>();
         var assignments = new List<string>();
@@ -93,7 +166,7 @@ public static class PersistenceWriter
             }
 
             var name = "@p" + parameters.Count.ToString(CultureInfo.InvariantCulture);
-            parameters.Add(new SugarParameter(name, ValueFor(column, entity, stamp, deleting)));
+            parameters.Add(new SugarParameter(name, ValueFor(column, entity, stamp)));
             assignments.Add($"`{column.DbColumnName}`={name}");
         }
 
@@ -111,8 +184,24 @@ public static class PersistenceWriter
 
         var sql = $"UPDATE `{info.DbTableName}` SET {string.Join(",", assignments)} WHERE {where}";
 
-        // token 直接传给驱动：它真的会取消命令，而不是只放弃等待（06 审计 low 3）。
-        var affected = await db.Ado.ExecuteCommandAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        int affected;
+        try
+        {
+            // token 直接传给驱动：它真的会取消命令，而不是只放弃等待（06 审计 low 3）。
+            affected = await db.Ado.ExecuteCommandAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // 恢复时业务键被活跃记录占着，撞的就是这里：翻译成 409 交给调用方，不往外抛。
+            var failure = PersistenceErrors.Classify(exception);
+            if (failure.Kind != PersistenceFailureKind.Unknown)
+            {
+                return failure;
+            }
+
+            throw;
+        }
+
         if (affected == 0)
         {
             return PersistenceErrors.VersionConflict();
@@ -124,22 +213,22 @@ public static class PersistenceWriter
             version.PropertyInfo.PropertyType,
             CultureInfo.InvariantCulture);
         version.PropertyInfo.SetValue(entity, next);
-        PersistenceAudit.ApplyUpdateStamp(entity, stamp, markDeleted);
+        PersistenceAudit.ApplyUpdateStamp(entity, stamp);
 
         return null;
     }
 
-    /// <summary>审计列用算好的值，其余列用调用方实体上的值。</summary>
-    private static object? ValueFor<T>(EntityColumnInfo column, T entity, PersistenceAudit.UpdateStamp stamp, bool deleting)
+    /// <summary>审计列一律用算好的值（恢复时就是清空后的值），其余列用调用方实体上的值。</summary>
+    private static object? ValueFor<T>(EntityColumnInfo column, T entity, PersistenceAudit.UpdateStamp stamp)
         where T : class
         => column.PropertyName switch
         {
             PersistenceOptions.Columns.UpdatedAt => stamp.UpdatedAt,
             PersistenceOptions.Columns.UpdatedBy => stamp.UpdatedBy,
+            PersistenceOptions.Columns.IsDeleted => stamp.MarkDeleted,
             PersistenceOptions.Columns.DeletedToken => stamp.DeletedToken,
-            PersistenceOptions.Columns.DeletedAt when deleting => stamp.UpdatedAt,
-            PersistenceOptions.Columns.DeletedBy when deleting => stamp.UpdatedBy,
-            PersistenceOptions.Columns.IsDeleted when deleting => true,
+            PersistenceOptions.Columns.DeletedAt => stamp.DeletedAt,
+            PersistenceOptions.Columns.DeletedBy => stamp.DeletedBy,
             _ => column.PropertyInfo.GetValue(entity),
         };
 

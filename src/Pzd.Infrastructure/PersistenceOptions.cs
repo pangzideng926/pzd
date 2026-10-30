@@ -30,6 +30,12 @@ public sealed class PersistenceOptions
     /// <summary>雪花机房序号（0–31），与 <see cref="WorkerId"/> 一起决定 Id 的机器位。</summary>
     public int? DatacenterId { get; init; }
 
+    /// <summary>
+    /// 允许物理删除的类型白名单（06 重审 low 1）：Outbox 已消费清理、审计日志归档这类合法物理删除在这里登记，
+    /// 没登记的类型一律挡在 AOP 的 <c>DeleteByObject</c> 上。默认空，即「不允许物理删除」。
+    /// </summary>
+    public IReadOnlyList<Type> HardDeleteTypes { get; init; } = [];
+
     /// <summary>启动期警告的出口；不设置时静默（测试与命令行不被打扰）。</summary>
     public Action<string>? OnWarning { get; init; }
 
