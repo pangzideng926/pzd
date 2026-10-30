@@ -1,0 +1,35 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[P5a] Version填的是1 caught=无异常 TenantId=2 UserName=乙租户改写 Version=1 CreatedBy=0
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5a_带正确版本号的直连Updateable不应当跨租户更新 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(183,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5a_带正确版本号的直连Updateable不应当跨租户更新()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(185,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5a_带正确版本号的直连Updateable不应当跨租户更新()
+        --- End of stack trace from previous location ---
+[P3] restoreFailure=null DeletedToken=0 DeletedBy=0 DeletedAt残留=0 活跃记录=1
+[P5b] caught=InvalidOperationException TenantId=1 UserName=版本漏填 Version=1
+[P5c] A的更新=Persistence.Record.VersionConflict 库里UserName=绕过改 TenantId=2
+[P2] caught=InvalidOperationException rows=0 CurrentTenantId=1
+[P4] caught=无异常 物理行数=0
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(148,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(149,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        --- End of stack trace from previous location ---
+[P1] caught=InvalidOperationException rows=0 CurrentTenantId=null
+[P6] updateFailure=null DeletedToken=2115998228905332736 同名重建=成功 活跃同名记录=2
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针6_用UpdateAsync当恢复用不应当留下删除痕迹 [FAIL]
+      Assert.Equal() Failure: Values differ
+      Expected: 0
+      Actual:   2115998228905332736
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(296,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针6_用UpdateAsync当恢复用不应当留下删除痕迹()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(298,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针6_用UpdateAsync当恢复用不应当留下删除痕迹()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = '38c9ae37ed25d332277b3a0b9492266e901a0636c978ef8eaa5f172279fb0c06')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 41, Errors: 0, Failed: 3, Skipped: 0, Not Run: 0, Time: 11.456s

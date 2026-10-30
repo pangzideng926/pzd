@@ -1,0 +1,3 @@
+﻿B3 上下文租户=1：填2→库里2；不填→库里0
+B1 Deleteable<T>().Where 未抛异常，影响行=1，物理行数=0
+B2 Updateable(entity) 影响行=1；TenantId=2 UserName=直改-被搬 CreatedBy=0 Version=0；基线 CreatedBy=7 Version=1
