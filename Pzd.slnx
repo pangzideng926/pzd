@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Pzd.ArchitectureTests/Pzd.ArchitectureTests.csproj" />
+    <Project Path="tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj" />
     <Project Path="tests/Pzd.SharedKernel.UnitTests/Pzd.SharedKernel.UnitTests.csproj" />
   </Folder>
 </Solution>

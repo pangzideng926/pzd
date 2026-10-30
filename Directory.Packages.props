@@ -8,6 +8,9 @@
   <ItemGroup>
     <PackageVersion Include="MinVer" Version="8.0.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <!-- 36 号票：集成测试载体的数据库驱动与容器来源 -->
+    <PackageVersion Include="MySqlConnector" Version="2.6.2" />
+    <PackageVersion Include="Testcontainers.MySql" Version="4.16.0" />
   </ItemGroup>
 
 </Project>

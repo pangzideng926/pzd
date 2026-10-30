@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    集成测试载体（36 号票）：只引测试框架与数据库驱动，绝不引用任何 Pzd.* 项目。
+    fixture 的公开契约只有「建一个独立库、给出连接串、用完销毁」，业务断言由 06 及后续票追加。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- xUnit v3 的测试项目必须是可执行程序 -->
+    <OutputType>Exe</OutputType>
+    <!-- .NET 10 SDK 不再支持 VSTest 目标，xUnit v3 需显式启用 Microsoft.Testing.Platform 的 dotnet test -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="MySqlConnector" />
+    <PackageReference Include="Testcontainers.MySql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
