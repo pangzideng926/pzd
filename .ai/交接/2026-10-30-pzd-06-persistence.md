@@ -14,7 +14,9 @@
 | 合并后复跑（张一一，在 main 上重跑非照抄） | build 0 警告 0 错误；`PersistenceTests` 33/33；集成 41 / 单元 33 / 架构 1 全 0 失败；残库 `pzd_test%` 为 0 |
 | 审计结论 | 通过：四种业务态各自独立、规范化两边一致、三处变异全红；一条 low 不卡闸门 |
 | 七审全文 | [.ai/验证/06/2026-10-30/证据/run-12-审计七审/结论.md](../验证/06/2026-10-30/证据/run-12-审计七审/结论.md) |
-| 老登对本文件的复核 | [交接记录复核.md](../验证/06/2026-10-30/证据/run-12-审计七审/交接记录复核.md) —— 两条 high、一条 low，已按 §3/§6 与写入口表修订 |
+| 老登对本文件的复核 | [交接记录复核.md](../验证/06/2026-10-30/证据/run-12-审计七审/交接记录复核.md) —— 两条 high、一条 low，已按 §3/§6 与六行矩阵修订 |
+| 六行矩阵实测（李总，8 条探针全绿） | [矩阵逐行验证](../验证/06/2026-10-30/证据/run-10-矩阵逐行验证/结论.md)，探针 `WriteEntryMatrixProbes.cs` 同目录；行号与本文件矩阵同号 |
+| 本文件入库 | `01de48e`（张一一，+43/−12，`src`/`tests` 零差异）；此后 §3 与矩阵的修订以最新 SHA 为准 |
 | 票面 | [06-persistence-base.md](../../docs/work/cross-cutting/tickets/06-persistence-base.md) |
 | 决策理由 | [.agents/notes/implemented/architecture/2026-10-30-persistence-conventions.md](../../.agents/notes/implemented/architecture/2026-10-30-persistence-conventions.md) ——「为什么这么定」只在那里，本文件不复制 |
 
@@ -62,30 +64,36 @@
 
 判断口径：**这个失败是「数据就在这个状态」还是「你根本不该这么调」**。前者返回值（前端能给出重试/恢复的出口），后者抛异常（要改代码，不是要用户重来）。把用错 API 写进返回值，等于把编程错误伪装成可重试的业务失败。
 
-**「活跃 / 已删」要看是谁在说** —— `7a412fe` 上，判据是**调用方实体上的标记**，不是库状态。同一件事走哪条路，取决于实体自己怎么标：
+**「活跃 / 已删」要看是谁在说** —— `7a412fe` 上，判据是**调用方实体上的标记**，不是库状态。同一件事走哪条路，取决于实体自己怎么标。
 
-| 入口 | 实体内存标记 | 走哪条 | 结果 |
-|---|---|---|---|
-| `RestoreAsync` | `IsDeleted=false` | 内存守卫 `:135-139` | **抛** `InvalidOperationException` —— 用错 API |
-| `RestoreAsync` | `IsDeleted=true`，但库里那行已活跃 | SQL 带 `AND IsDeleted=1` → 0 行 → `Active` → `Recycled` 例外不生效（`:282`）→ `:287` | **返回** `VersionConflict`/409 —— 业务态 |
-| `UpdateAsync` | `IsDeleted=true` | 内存守卫 `:184-189` | **抛** `InvalidOperationException`，提示走 `SoftDeleteAsync`/`RestoreAsync` |
-| `UpdateAsync` | `DeletedToken≠0` | 内存守卫 `:191-196` | **抛** `InvalidOperationException`，提示走 `RestoreAsync` |
-| `UpdateAsync` | 干净活跃快照（HTTP 转回来的实体就是这样） | SQL 带 `AND IsDeleted=0` → 0 行 → `Recycled` | **返回** `RecordInTrash`/409 —— 业务态 |
-| `SoftDeleteAsync` | 实体已删、库里也已删 | `AND IsDeleted=0` → 0 行 → `Recycled` | **返回** `RecordInTrash`/409（七审 `R5` 的幂等口径） |
+**本表行号是标准答案**（张一一 2026-10-30 裁定：文档为准，探针与结论跟着文档走）。李总 [矩阵逐行验证](../验证/06/2026-10-30/证据/run-10-矩阵逐行验证/结论.md) 的 8 条探针按此编号；任何人引用「矩阵第 N 行」，两边指的是同一件事：
 
-三条实测对照：老登七审 `R7`（实体自称已删、库活跃 → `VersionConflict`）、`R5`（重复软删 → `InTrash`）、李总合并后复验（活跃快照更新已删记录 → `InTrash`）分别落在上面第 2、6、5 行。
+| # | 入口 | 实体标记 | 走哪条 | 结果 | 用户看到什么 |
+|---|---|---|---|---|---|
+| 1 | `UpdateAsync` | `IsDeleted=true` | 内存守卫 `:184-189` | **抛** `InvalidOperationException`，提示走 `SoftDeleteAsync`/`RestoreAsync` | 无业务文案（用错 API，见下「端点层」） |
+| 2 | `UpdateAsync` | 说活跃但 `DeletedToken≠0` | 内存守卫 `:191-196` | **抛** `InvalidOperationException`，提示走 `RestoreAsync` | 同上 |
+| 3 | `UpdateAsync` | 干净活跃快照（HTTP 转回来的实体就是这样） | SQL 带 `AND IsDeleted=0` → 0 行 → `Recycled` | **返回** `RecordInTrash`/409 | 「这条记录已被删除，如需修改请先恢复」——**准确** |
+| 4 | `SoftDeleteAsync` | 实体已删、库里也已删 | `AND IsDeleted=0` → 0 行 → `Recycled` | **返回** `RecordInTrash`/409（七审 `R5` 的幂等口径） | 同上，重复删除不算错 |
+| 5 | `RestoreAsync` | DTO 形态（`IsDeleted=false`） | 内存守卫 `:135-139` | **抛** `InvalidOperationException`（`…没有处于软删除状态，无法恢复。`） | **现状下唯一会冒 500 的形态**——09 必须兜住 `InvalidOperationException` |
+| 6 | `RestoreAsync` | 实体说删、但库里那行已活跃 | SQL 带 `AND IsDeleted=1` → 0 行 → `Active` → `Recycled` 例外不生效（`:282`）→ `:287` | **返回** `VersionConflict`/409 | 「记录已被其他操作修改，请刷新后重试」——**误导**：刷新一百次也不会变 |
+
+**第 6 行那句文案就是 `NotInTrash` 要取代的东西**：code 分得开、文案分不开，用户仍会被指去重试一件永远不会成功的事。这也是为什么它不只是「补个 code 更整齐」。
+
+顺带一条给测试的教训：**断言要同时校验 `Kind` + `code` + 文案**。第 6 行这个错，偏偏是只比 `Kind` 和 `code` 时完全看不见的——两者都对，只有那句 `请刷新后重试` 是错的。07/08/09 之后加写路径用例时照此写。
+
+实证三方交叉：李总 `run-10` 八条探针六行全绿（行号同本表）；老登七审 `R7` 落在第 6 行、`R5` 落在第 4 行；李总合并后复验的活跃快照更新已删记录落在第 3 行。
 
 **这条对端点层的实际后果（09 必读）**：从 HTTP 请求体反序列化出来的实体，`IsDeleted` 默认 `false`、`DeletedToken` 默认 `0`。所以一个「恢复」请求如果直接把 DTO 转成实体丢进 `RestoreAsync`，**走的是异常路径，拿不到 409**；`UpdateAsync` 也因为实体自称活跃而不会命中内存守卫，只能靠库里状态返回 `RecordInTrash`。换句话说：**只有实体自称删除态时，恢复才返回业务态**。端点层必须给这类 `InvalidOperationException` 一个出口——先按主键查记录确认它真的在回收站再调，或捕获后映射成 409「该记录不在回收站」/ 参数错误，**不要让它冒成 500**。07/08 写调用方时按这张表逐行留分支，别只接返回值。
 
-**但这张表只是现状，不是目标态。** 张一一 2026-10-30 已裁定：`RestoreAsync` 去掉实体自报守卫，改由库判定（`WHERE IsDeleted=1` 本来就在 SQL 里），`affected==0` 时按三态区分，目标行活跃就给 `Persistence.Record.NotInTrash`（409）。理由跟 P8 同一个病根——**该由库判定状态的地方用了实体上的标记**。改造后上面前两行合并为一行：
+**但这张表只是现状，不是目标态。** 张一一 2026-10-30 已裁定：`RestoreAsync` 去掉实体自报守卫，改由库判定（`WHERE IsDeleted=1` 本来就在 SQL 里），`affected==0` 时按三态区分，目标行活跃就给 `Persistence.Record.NotInTrash`（409）。理由跟 P8 同一个病根——**该由库判定状态的地方用了实体上的标记**。改造后矩阵的**第 5、6 两行合并成一行**（第 1–4 行不受影响）：
 
-| 入口 | 情形 | 改造后结果 |
-|---|---|---|
-| `RestoreAsync` | 目标行活跃（不在回收站） | 返回 `NotInTrash`/409，不再抛异常、也不再报 `VersionConflict` |
-| `RestoreAsync` | 目标行已删但版本对不上 | 返回 `VersionConflict`/409 |
-| `RestoreAsync` | DTO 形态（实体 `IsDeleted=false`、库已是删除态） | **恢复成功**，不再被守卫拦住 |
+| 矩阵行 | 入口 | 情形 | 改造后结果 | 用户看到什么 |
+|---|---|---|---|---|
+| 5+6 合并 | `RestoreAsync` | 目标行活跃（不在回收站） | 返回 `NotInTrash`/409，**不再抛异常、也不再报 `VersionConflict`** | 「该记录不在回收站」——准确，不再指路去刷新 |
+| 5 的新形态 | `RestoreAsync` | DTO 形态（实体 `IsDeleted=false`、库已是删除态） | **恢复成功**，不再被内存守卫拦住 | 恢复成功 |
+| 6 拆分 | `RestoreAsync` | 目标行已删但版本对不上 | 返回 `VersionConflict`/409 | 「请刷新后重试」——这里才名副其实 |
 
-改造由雨哥在 `MissKind` 分支里一起做（两处都在 `WriteAsync` 同一段），并补两条用例：DTO 形态恢复已删记录应成功、恢复活跃记录返回 `NotInTrash` 而不是异常。**改完这张表要按实际代码重核一遍**——本文件此刻写的是裁定，不是已实现的事实。
+改造由雨哥在 `MissKind` 分支里一起做（两处都在 `WriteAsync` 同一段），并补两条用例：DTO 形态恢复已删记录应成功、恢复活跃记录返回 `NotInTrash` 而不是异常。李总那套八条探针的可改点是**第 5、6 行**——第 5 行断言改成「恢复成功」、第 6 行拆成「目标活跃→`NotInTrash` 且文案含『不在回收站』」与「已删但版本不符→`VersionConflict`」两条；第 1–4 行断言原样保留（改造碰不到 Update 与 SoftDelete 的内存守卫）。**改完这张矩阵要按实际代码重核一遍**——本文件此刻写的是裁定，不是已实现的事实。
 
 ## 4. 下游各引哪一段
 
