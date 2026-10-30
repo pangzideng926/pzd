@@ -1,0 +1,54 @@
+=== 基线 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.269s
+  exit=0
+基线 判定: 绿 ❌（用例没抓住）
+=== N1 IsDeleted 用实体值而非语义 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 5, Skipped: 0, Not Run: 0, Time: 11.451s
+  exit=1
+N1 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.软删除后能用同一业务键重建 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除记录默认查询不可见且可显式绕过过滤 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除后能恢复且同名可再用 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除入口写全四列且同名可重建 [FAIL]
+=== N2 恢复不清 token ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 11.418s
+  exit=1
+N2 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.软删除后能恢复且同名可再用 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.同名记录已占用时恢复被拒绝 [FAIL]
+=== N3 去掉插入租户校验 ===
+  BUILD_EXIT=1
+E:\pzd\.worktree\audit-06d\src\Pzd.Infrastructure\PersistenceAudit.cs(101,17): error CS0162: 检测到无法访问的代码 [E:\pzd\.worktree\audit-06d\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj]
+E:\pzd\.worktree\audit-06d\src\Pzd.Infrastructure\PersistenceAudit.cs(101,17): error CS0162: 检测到无法访问的代码 [E:\pzd\.worktree\audit-06d\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj]
+  ！！构建失败，本轮结果作废
+=== N4 去掉旁路版本防御 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 11.530s
+  exit=1
+N4 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.SetColumns形态的旁路也被拒绝 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.绕过写入口的Updateable被拒且版本不会被写成0 [FAIL]
+=== N5 物理删除白名单恒放行 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.456s
+  exit=1
+N5 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.物理删除被拒绝不让回收站失效 [FAIL]
+=== N6 SoftDeleteAsync 不算软删除 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 5, Skipped: 0, Not Run: 0, Time: 11.464s
+  exit=1
+N6 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.软删除后能用同一业务键重建 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除记录默认查询不可见且可显式绕过过滤 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除后能恢复且同名可再用 [FAIL]
+Pzd.IntegrationTests.PersistenceTests.软删除入口写全四列且同名可重建 [FAIL]
+=== 还原复核 ===
+  BUILD_EXIT=0
+   Pzd.IntegrationTests  Total: 25, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.450s
+  exit=0
+还原 判定: 绿 ❌（用例没抓住）
+?? tests/Pzd.IntegrationTests/AuditResidualProbes.cs

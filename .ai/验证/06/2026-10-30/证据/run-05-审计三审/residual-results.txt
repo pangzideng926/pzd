@@ -1,0 +1,6 @@
+﻿C2 Updateable(已加载实体) 未抛异常，影响行=1；TenantId=2 UserName=已加载-搬走 Version=1 CreatedBy=7
+C1 Deleteable<T>().Where 未抛异常，影响行=1，物理行数=0
+C3 实体填 2：抛 InvalidOperationException
+C3 实体不填：库里 TenantId=1
+C4 恢复 failure=DuplicateKey；活跃记录数=1
+C5 UpdateAsync 当恢复用：failure=null（未拦）；残留 DeletedToken=2115998690912112640；同名活跃记录数=2
