@@ -1,0 +1,125 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.SmokeTests.独立库建表插入后能查回中文原文 [FAIL]
+      Class fixture type 'Pzd.IntegrationTests.Fixtures.MySqlServerFixture' threw in InitializeAsync
+      ---- DotNet.Testcontainers.Builders.DockerUnavailableException : Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+      You can customize your configuration using either the environment variables or the ~/.testcontainers.properties file.
+      For more information, visit: https://dotnet.testcontainers.org/custom_configuration/.
+        Details: 
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      -------- System.AggregateException : One or more errors occurred. (Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.)
+      ------------ DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      ---------------- System.TimeoutException : The operation has timed out.
+      Stack Trace:
+        
+        ----- Inner Stack Trace -----
+        /_/src/Testcontainers/Guard.Null.cs(62,0): at DotNet.Testcontainers.Guard.ThrowIf[TType](ArgumentInfo`1& argument, Func`2 condition, Func`2 ifClause)
+        /_/src/Testcontainers/Builders/AbstractBuilder`4.cs(153,0): at DotNet.Testcontainers.Builders.AbstractBuilder`4.Validate()
+        /_/src/Testcontainers/Builders/ContainerBuilder`3.cs(510,0): at DotNet.Testcontainers.Builders.ContainerBuilder`3.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(132,0): at Testcontainers.MySql.MySqlBuilder.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(109,0): at Testcontainers.MySql.MySqlBuilder.Build()
+        tests\Pzd.IntegrationTests\Fixtures\MySqlServerFixture.cs(48,0): at Pzd.IntegrationTests.Fixtures.MySqlServerFixture.InitializeAsync()
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+           at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+        --- End of stack trace from previous location ---
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+           at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+        --- End of stack trace from previous location ---
+        /_/src/Docker.DotNet.NPipe/DockerHandlerFactory.cs(58,0): at Docker.DotNet.NPipe.DockerHandlerFactory.<>c__DisplayClass5_0.<<CreateHandler>b__0>d.MoveNext()
+        --- End of stack trace from previous location ---
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(158,0): at Microsoft.Net.Http.Client.ManagedHandler.ProcessRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(75,0): at Microsoft.Net.Http.Client.ManagedHandler.SendAsync(HttpRequestMessage httpRequestMessage, CancellationToken cancellationToken)
+           at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(393,0): at Docker.DotNet.DockerClient.PrivateMakeRequestAsync(TimeSpan timeout, HttpCompletionOption completionOption, HttpMethod method, String path, IQueryString queryString, IDictionary`2 headers, IRequestContent data, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(173,0): at Docker.DotNet.DockerClient.MakeRequestAsync[T](IEnumerable`1 errorHandlers, HttpMethod method, String path, IQueryString queryString, IRequestContent body, IDictionary`2 headers, TimeSpan timeout, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/Endpoints/SystemOperations.cs(33,0): at Docker.DotNet.SystemOperations.PingAsync(CancellationToken cancellationToken)
+        /_/src/Testcontainers/Builders/DockerEndpointAuthenticationProvider.cs(46,0): at DotNet.Testcontainers.Builders.DockerEndpointAuthenticationProvider.<>c__DisplayClass5_0.<<IsAvailable>b__0>d.MoveNext()
+    Pzd.IntegrationTests.SmokeTests.库默认字符集是utf8mb4 [FAIL]
+      Class fixture type 'Pzd.IntegrationTests.Fixtures.MySqlServerFixture' threw in InitializeAsync
+      ---- DotNet.Testcontainers.Builders.DockerUnavailableException : Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+      You can customize your configuration using either the environment variables or the ~/.testcontainers.properties file.
+      For more information, visit: https://dotnet.testcontainers.org/custom_configuration/.
+        Details: 
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      -------- System.AggregateException : One or more errors occurred. (Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.)
+      ------------ DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      ---------------- System.TimeoutException : The operation has timed out.
+      Stack Trace:
+        
+        ----- Inner Stack Trace -----
+        /_/src/Testcontainers/Guard.Null.cs(62,0): at DotNet.Testcontainers.Guard.ThrowIf[TType](ArgumentInfo`1& argument, Func`2 condition, Func`2 ifClause)
+        /_/src/Testcontainers/Builders/AbstractBuilder`4.cs(153,0): at DotNet.Testcontainers.Builders.AbstractBuilder`4.Validate()
+        /_/src/Testcontainers/Builders/ContainerBuilder`3.cs(510,0): at DotNet.Testcontainers.Builders.ContainerBuilder`3.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(132,0): at Testcontainers.MySql.MySqlBuilder.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(109,0): at Testcontainers.MySql.MySqlBuilder.Build()
+        tests\Pzd.IntegrationTests\Fixtures\MySqlServerFixture.cs(48,0): at Pzd.IntegrationTests.Fixtures.MySqlServerFixture.InitializeAsync()
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+           at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+        --- End of stack trace from previous location ---
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+           at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+        --- End of stack trace from previous location ---
+        /_/src/Docker.DotNet.NPipe/DockerHandlerFactory.cs(58,0): at Docker.DotNet.NPipe.DockerHandlerFactory.<>c__DisplayClass5_0.<<CreateHandler>b__0>d.MoveNext()
+        --- End of stack trace from previous location ---
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(158,0): at Microsoft.Net.Http.Client.ManagedHandler.ProcessRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(75,0): at Microsoft.Net.Http.Client.ManagedHandler.SendAsync(HttpRequestMessage httpRequestMessage, CancellationToken cancellationToken)
+           at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(393,0): at Docker.DotNet.DockerClient.PrivateMakeRequestAsync(TimeSpan timeout, HttpCompletionOption completionOption, HttpMethod method, String path, IQueryString queryString, IDictionary`2 headers, IRequestContent data, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(173,0): at Docker.DotNet.DockerClient.MakeRequestAsync[T](IEnumerable`1 errorHandlers, HttpMethod method, String path, IQueryString queryString, IRequestContent body, IDictionary`2 headers, TimeSpan timeout, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/Endpoints/SystemOperations.cs(33,0): at Docker.DotNet.SystemOperations.PingAsync(CancellationToken cancellationToken)
+        /_/src/Testcontainers/Builders/DockerEndpointAuthenticationProvider.cs(46,0): at DotNet.Testcontainers.Builders.DockerEndpointAuthenticationProvider.<>c__DisplayClass5_0.<<IsAvailable>b__0>d.MoveNext()
+    Pzd.IntegrationTests.SmokeTests.每个用例拿到互不相同的独立库 [FAIL]
+      Class fixture type 'Pzd.IntegrationTests.Fixtures.MySqlServerFixture' threw in InitializeAsync
+      ---- DotNet.Testcontainers.Builders.DockerUnavailableException : Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+      You can customize your configuration using either the environment variables or the ~/.testcontainers.properties file.
+      For more information, visit: https://dotnet.testcontainers.org/custom_configuration/.
+        Details: 
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      -------- System.AggregateException : One or more errors occurred. (Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.)
+      ------------ DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      ---------------- System.TimeoutException : The operation has timed out.
+      Stack Trace:
+        
+        ----- Inner Stack Trace -----
+        /_/src/Testcontainers/Guard.Null.cs(62,0): at DotNet.Testcontainers.Guard.ThrowIf[TType](ArgumentInfo`1& argument, Func`2 condition, Func`2 ifClause)
+        /_/src/Testcontainers/Builders/AbstractBuilder`4.cs(153,0): at DotNet.Testcontainers.Builders.AbstractBuilder`4.Validate()
+        /_/src/Testcontainers/Builders/ContainerBuilder`3.cs(510,0): at DotNet.Testcontainers.Builders.ContainerBuilder`3.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(132,0): at Testcontainers.MySql.MySqlBuilder.Validate()
+        /_/src/Testcontainers.MySql/MySqlBuilder.cs(109,0): at Testcontainers.MySql.MySqlBuilder.Build()
+        tests\Pzd.IntegrationTests\Fixtures\MySqlServerFixture.cs(48,0): at Pzd.IntegrationTests.Fixtures.MySqlServerFixture.InitializeAsync()
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+        
+        ----- Inner Stack Trace -----
+           at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+        --- End of stack trace from previous location ---
+           at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+           at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+        --- End of stack trace from previous location ---
+        /_/src/Docker.DotNet.NPipe/DockerHandlerFactory.cs(58,0): at Docker.DotNet.NPipe.DockerHandlerFactory.<>c__DisplayClass5_0.<<CreateHandler>b__0>d.MoveNext()
+        --- End of stack trace from previous location ---
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(158,0): at Microsoft.Net.Http.Client.ManagedHandler.ProcessRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        /_/src/Microsoft.Net.Http.Client/ManagedHandler.cs(75,0): at Microsoft.Net.Http.Client.ManagedHandler.SendAsync(HttpRequestMessage httpRequestMessage, CancellationToken cancellationToken)
+           at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(393,0): at Docker.DotNet.DockerClient.PrivateMakeRequestAsync(TimeSpan timeout, HttpCompletionOption completionOption, HttpMethod method, String path, IQueryString queryString, IDictionary`2 headers, IRequestContent data, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/DockerClient.cs(173,0): at Docker.DotNet.DockerClient.MakeRequestAsync[T](IEnumerable`1 errorHandlers, HttpMethod method, String path, IQueryString queryString, IRequestContent body, IDictionary`2 headers, TimeSpan timeout, CancellationToken cancellationToken)
+        /_/src/Docker.DotNet/Endpoints/SystemOperations.cs(33,0): at Docker.DotNet.SystemOperations.PingAsync(CancellationToken cancellationToken)
+        /_/src/Testcontainers/Builders/DockerEndpointAuthenticationProvider.cs(46,0): at DotNet.Testcontainers.Builders.DockerEndpointAuthenticationProvider.<>c__DisplayClass5_0.<<IsAvailable>b__0>d.MoveNext()
+  Finished:    Pzd.IntegrationTests (ID = '981d110c94f552cee5585decd943b129c0f142548c0451be2b43264a118ea0b5')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 3, Skipped: 0, Not Run: 0, Time: 10.163s
+NOCFG_EXIT=1

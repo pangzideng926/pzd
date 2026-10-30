@@ -1,0 +1,31 @@
+--- pzd_dev 授权 | exit=0
+out: GRANT USAGE ON *.* TO `pzd_dev`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd_master`.* TO `pzd_dev`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd_t_%`.* TO `pzd_dev`@`localhost`
+--- pzd_dev 可见库与字符集 | exit=0
+out: pzd_master	utf8mb4
+--- pzd_master 表数量（应为 0，等 17 号票） | exit=0
+out: 15
+--- pzd_dev 在 pzd_t_% 上 DDL + 清理 | exit=0
+out: ok
+ddl-ok-and-cleaned
+--- 确认探针库已清理 | exit=0
+out: 0
+--- pzd_master 表清单 | exit=0
+qrtz_blob_triggers	0	InnoDB
+qrtz_calendars	0	InnoDB
+qrtz_cron_triggers	1	InnoDB
+qrtz_execution_history	0	InnoDB
+qrtz_fired_triggers	0	InnoDB
+qrtz_job_details	0	InnoDB
+qrtz_job_status	0	InnoDB
+qrtz_locks	2	InnoDB
+qrtz_misfire_history	0	InnoDB
+qrtz_paused_job_grps	0	InnoDB
+qrtz_paused_trigger_grps	0	InnoDB
+qrtz_scheduler_state	0	InnoDB
+qrtz_simple_triggers	0	InnoDB
+qrtz_simprop_triggers	0	InnoDB
+qrtz_triggers	1	InnoDB
+--- （占位，忽略） | exit=1
+err: ERROR 1146 (42S02) at line 1: Table 'pzd_master.___x' doesn't exist
