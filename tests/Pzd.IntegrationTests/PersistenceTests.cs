@@ -23,6 +23,8 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
           Version INT NOT NULL,
           IsDeleted TINYINT(1) NOT NULL DEFAULT 0,
           DeletedToken BIGINT NOT NULL DEFAULT 0,
+          DeletedAt DATETIME(6) NULL,
+          DeletedBy BIGINT NOT NULL DEFAULT 0,
           CreatedAt DATETIME(6) NOT NULL,
           CreatedBy BIGINT NOT NULL,
           UpdatedAt DATETIME(6) NOT NULL,
@@ -167,10 +169,246 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
             "入库与读回必须是同一 UTC 原值，Infrastructure 不得改时区语义");
     }
 
-    private static PersistenceOptions CreateOptions() => new()
+    // ---- 06 审计 high 1：分离实体更新不得抹掉创建审计 ----
+
+    [Fact]
+    public async Task 分离实体更新不抹掉创建审计()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        var inserted = new TestUser { TenantId = 1, UserName = "审计" };
+        await db.Insertable(inserted).ExecuteCommandAsync(ct);
+
+        var baseline = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal(CurrentUser, baseline.CreatedBy);
+
+        // 分离实体：只带 Id / Version / 业务字段，审计列全是默认值。
+        var detached = new TestUser { TenantId = 1, UserName = "审计-改", Version = baseline.Version };
+        detached.ForceId(baseline.Id);
+
+        var failure = await PersistenceWriter.UpdateAsync(db, detached, CreateOptions(), ct);
+        Assert.Null(failure);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal("审计-改", stored.UserName);
+        Assert.Equal(baseline.CreatedAt, stored.CreatedAt);
+        Assert.Equal(baseline.CreatedBy, stored.CreatedBy);
+    }
+
+    // ---- 06 审计 high 2：写入口必须有租户谓词 ----
+
+    [Fact]
+    public async Task 乙租户拿着同Id和版本也改不到甲租户的记录()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        var owner = new TestUser { TenantId = 1, UserName = "甲租户" };
+        await db.Insertable(owner).ExecuteCommandAsync(ct);
+        var baseline = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        // 乙租户手里有完整快照：Id 与 Version 都对，只是把自己的租户号填进去。
+        var intruder = new TestUser { TenantId = 2, UserName = "乙租户改写", Version = baseline.Version };
+        intruder.ForceId(baseline.Id);
+
+        var failure = await PersistenceWriter.UpdateAsync(db, intruder, CreateOptions(tenantId: 2), ct);
+
+        Assert.NotNull(failure);
+        Assert.Equal(PersistenceFailureKind.VersionConflict, failure!.Kind);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal(1, stored.TenantId);
+        Assert.Equal("甲租户", stored.UserName);
+    }
+
+    [Fact]
+    public async Task 租户上下文缺失时写入口抛异常而不是按Id更新()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await db.Insertable(new TestUser { TenantId = 1, UserName = "无上下文" }).ExecuteCommandAsync(ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        loaded.UserName = "无上下文-改";
+
+        var options = new PersistenceOptions
+        {
+            SoftDeleteTypes = [typeof(TestUser)],
+            CurrentUserId = () => CurrentUser,
+            WorkerId = 1,
+            DatacenterId = 1,
+        };
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => PersistenceWriter.UpdateAsync(db, loaded, options, ct));
+
+        Assert.Contains("租户", exception.Message, StringComparison.Ordinal);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal("无上下文", stored.UserName);
+    }
+
+    // ---- 06 审计 high 3：软删除必须有强制点 ----
+
+    [Fact]
+    public async Task 物理删除被拒绝不让回收站失效()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        var user = new TestUser { TenantId = 1, UserName = "物理删" };
+        await db.Insertable(user).ExecuteCommandAsync(ct);
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            async () => await db.Deleteable(user).ExecuteCommandAsync(ct));
+
+        Assert.Contains("软删除", exception.Message, StringComparison.Ordinal);
+
+        var physicalRows = await database.QueryScalarAsync<long>("SELECT COUNT(*) FROM test_user", ct);
+        Assert.Equal(1, physicalRows);
+    }
+
+    [Fact]
+    public async Task 软删除入口写全四列且同名可重建()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await db.Insertable(new TestUser { TenantId = 1, UserName = "入口删" }).ExecuteCommandAsync(ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        var before = DateTime.UtcNow;
+
+        var failure = await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct);
+        Assert.Null(failure);
+
+        Assert.True(loaded.IsDeleted, "成功后内存实体应同步为已删除");
+        Assert.Equal(0, await db.Queryable<TestUser>().CountAsync(ct));
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+        Assert.True(purged.IsDeleted);
+        Assert.Equal(purged.Id, purged.DeletedToken);
+        Assert.Equal(CurrentUser, purged.DeletedBy);
+        Assert.NotNull(purged.DeletedAt);
+        Assert.InRange(purged.DeletedAt!.Value, before.AddSeconds(-1), DateTime.UtcNow.AddSeconds(1));
+        Assert.Equal(2, purged.Version);
+
+        await db.Insertable(new TestUser { TenantId = 1, UserName = "入口删" }).ExecuteCommandAsync(ct);
+        Assert.Equal(1, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
+    [Fact]
+    public async Task SetColumns形态不写DeletedToken是已知边界()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await db.Insertable(new TestUser { TenantId = 1, UserName = "边界" }).ExecuteCommandAsync(ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        // 这条路绕过了唯一软删除入口：AOP 只补 UpdatedAt/UpdatedBy，不会补 DeletedToken。
+        await db.Updateable<TestUser>()
+            .SetColumns(it => new TestUser { IsDeleted = true })
+            .Where(it => it.Id == loaded.Id)
+            .ExecuteCommandAsync(ct);
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+        Assert.True(purged.IsDeleted);
+        Assert.Equal(0, purged.DeletedToken);
+
+        // 代价也钉住：同名重建会撞 1062，下一个人看到这条就知道必须走入口。
+        var duplicate = new TestUser { TenantId = 1, UserName = "边界" };
+        var failure = await CaptureFailureAsync(async () => await db.Insertable(duplicate).ExecuteCommandAsync(ct));
+        Assert.Equal(PersistenceFailureKind.DuplicateKey, failure.Kind);
+    }
+
+    // ---- 06 审计 medium 3：冲突时内存实体不被改写 ----
+
+    [Fact]
+    public async Task 版本冲突时内存实体不被改写()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await db.Insertable(new TestUser { TenantId = 1, UserName = "脏写" }).ExecuteCommandAsync(ct);
+        var stale = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        var fresh = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        fresh.UserName = "先改";
+        Assert.Null(await PersistenceWriter.UpdateAsync(db, fresh, CreateOptions(), ct));
+
+        var staleVersion = stale.Version;
+        var staleUpdatedAt = stale.UpdatedAt;
+        var staleUpdatedBy = stale.UpdatedBy;
+
+        stale.UserName = "后改";
+        var failure = await PersistenceWriter.UpdateAsync(db, stale, CreateOptions(), ct);
+
+        Assert.NotNull(failure);
+        Assert.Equal(staleVersion, stale.Version);
+        Assert.Equal(staleUpdatedAt, stale.UpdatedAt);
+        Assert.Equal(staleUpdatedBy, stale.UpdatedBy);
+    }
+
+    // ---- 06 审计 medium 2：雪花 worker 必须可配 ----
+
+    [Fact]
+    public void 配置的worker与机房号真的被采纳()
+    {
+        var generator = PzdPersistence.CreateIdGenerator(new PersistenceOptions
+        {
+            WorkerId = 2,
+            DatacenterId = 3,
+        });
+
+        // 委托的 Target 就是实际生成 Id 的那个 IdWorker 实例。
+        var target = Assert.IsAssignableFrom<SqlSugar.DistributedSystem.Snowflake.IdWorker>(generator.Target);
+        Assert.Equal(2L, target.WorkerId);
+        Assert.Equal(3L, target.DatacenterId);
+        Assert.True(generator() > 0);
+    }
+
+    [Fact]
+    public void 未配置worker时给出启动期警告()
+    {
+        var warnings = new List<string>();
+
+        var generator = PzdPersistence.CreateIdGenerator(new PersistenceOptions { OnWarning = warnings.Add });
+
+        Assert.Single(warnings);
+        Assert.Contains("多副本", warnings[0], StringComparison.Ordinal);
+        Assert.True(generator() > 0);
+    }
+
+    /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>
+    [Theory]
+    [InlineData(typeof(TestUser), "test_user")]
+    [InlineData(typeof(APILogProbe), "api_log_probe")]
+    [InlineData(typeof(PermissionCodeProbe), "permission_code_probe")]
+    public void 表名按snake_case分段(Type entityType, string expected) =>
+        Assert.Equal(expected, PersistenceConventions.TableNameFor(entityType));
+
+    private static PersistenceOptions CreateOptions(long tenantId = 1) => new()
     {
         SoftDeleteTypes = [typeof(TestUser)],
         CurrentUserId = () => CurrentUser,
+        CurrentTenantId = () => tenantId,
+        WorkerId = 1,
+        DatacenterId = 1,
     };
 
     private static SqlSugar.SqlSugarClient CreateClient(TestDatabase database) =>
@@ -195,6 +433,14 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
     /// 测试实体：故意做成普通类而不是实现任何 Infrastructure 接口——
     /// Domain 不许引用 Infrastructure（architecture.md §3.2），约定只认属性名。
     /// </summary>
+    private sealed class APILogProbe
+    {
+    }
+
+    private sealed class PermissionCodeProbe
+    {
+    }
+
     private sealed class TestUser : Entity
     {
         public long TenantId { get; set; }
@@ -207,6 +453,10 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
 
         public long DeletedToken { get; set; }
 
+        public DateTime? DeletedAt { get; set; }
+
+        public long DeletedBy { get; set; }
+
         public DateTime CreatedAt { get; set; }
 
         public long CreatedBy { get; set; }
@@ -214,5 +464,8 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         public DateTime UpdatedAt { get; set; }
 
         public long UpdatedBy { get; set; }
+
+        /// <summary><c>Entity.Id</c> 是 05 冻结的 <c>protected set</c>，分离实体只能在子类里造。</summary>
+        public void ForceId(long id) => Id = id;
     }
 }

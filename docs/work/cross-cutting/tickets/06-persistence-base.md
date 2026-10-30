@@ -100,7 +100,8 @@ dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests
 
 - 分支：`feat/06-persistence-base`
 - 认领提交：`555a817596d214d19e6ad7099f1a906a3ca89be7`
-- 本次实现（被测 SHA）：见本分支 HEAD（代码与决策笔记在同一个提交，`Bot分工 §6`）
+- 首次实现：`91dabf438b9dcde3ca26b6231e1daeb042b81163`（审计 run-03 结论「需修改」）
+- 审计返工（被测 SHA）：见本分支 HEAD（代码与决策笔记在同一个提交，`Bot分工 §6`）
 
 **3. 验证**（命令、真实退出码、关键输出行，原样粘贴）
 
@@ -118,25 +119,57 @@ $ dotnet build Pzd.slnx
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
 === TEST EXECUTION SUMMARY ===
-   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.851s
+   Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.050s
 ```
 
-用例与断言一一对应：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
+第一层钉约定本身：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
+
+第二层是审计 run-03 的返工用例：`分离实体更新不抹掉创建审计`、`乙租户拿着同Id和版本也改不到甲租户的记录`、`租户上下文缺失时写入口抛异常而不是按Id更新`、`物理删除被拒绝不让回收站失效`、`软删除入口写全四列且同名可重建`、`SetColumns形态不写DeletedToken是已知边界`、`版本冲突时内存实体不被改写`、`配置的worker与机房号真的被采纳`、`未配置worker时给出启动期警告`、`表名按snake_case分段`。
 
 整套回归（确认没动坏 36 的载体与 05 的单元测试）：
 
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe
-   Pzd.IntegrationTests  Total: 14, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.869s
+   Pzd.IntegrationTests  Total: 26, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.869s
 $ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
-   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.111s
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.110s
 $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
    Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.106s
 ```
 
-**4. 遗留**
+**4. 返工（审计 run-03：3 high + 2 medium，全部测试先行）**
 
-- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 6, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 6` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+先让用例变红（补齐被测 API 的表面、保留旧行为），拿到 `Total: 15, Failed: 8`，再改实现到绿。
+
+| 审计条目 | 实证与改法 | 用例 |
+|---|---|---|
+| high 1 分离实体抹掉创建审计 | `CreatedAt/CreatedBy` 与 `TenantId` 一起列为不可写列，SET 里永不出现 | `分离实体更新不抹掉创建审计` |
+| high 2 写入口无租户谓词 | WHERE 加 `AND TenantId=@tenantId`；实体有租户列而 `CurrentTenantId()` 为 null 时抛 `InvalidOperationException`，不退回按 Id 更新 | `乙租户拿着同Id和版本也改不到甲租户的记录`、`租户上下文缺失时写入口抛异常而不是按Id更新` |
+| high 3 软删除无强制点 | 新增 `PersistenceWriter.SoftDeleteAsync` 唯一入口；AOP 在 `DeleteByObject` 抛异常拦物理删除；`SetColumns` 形态的代价用用例钉死 | `物理删除被拒绝不让回收站失效`、`软删除入口写全四列且同名可重建`、`SetColumns形态不写DeletedToken是已知边界` |
+| medium 2 worker 写死 | `PersistenceOptions.WorkerId/DatacenterId`，两者都给才新建 `IdWorker`；未配置时 `OnWarning` 告警 | `配置的worker与机房号真的被采纳`、`未配置worker时给出启动期警告` |
+| medium 3 冲突污染实体 | `ComputeUpdateStamp` 只算不改，SQL 影响 1 行后才回写 | `版本冲突时内存实体不被改写` |
+| low 2 死分支 | `VersionExceptions` 分支保留但注释写明「仅防御外部写路径」 | 无（不改行为） |
+| low 5 `a_p_i_log` | 连续大写算一个词（`APILogProbe → api_log_probe`） | `表名按snake_case分段` |
+
+张一一裁定的两项照办了：租户谓词留在 06（07 只补跨租户红用例）；`DeletedToken` 保留给唯一索引，另按 §5.3 补 `DeletedAt DATETIME(6) NULL` 与 `DeletedBy BIGINT NOT NULL DEFAULT 0`，`SoftDeleteAsync` 与 AOP 的 `UpdateByObject` 两条路径都会写。
+
+**变异验证（六处，每个都精确红一条）**：
+
+| 变异 | 抓到它的用例 | 结果 |
+|---|---|---|
+| 去掉租户谓词 | `乙租户拿着同Id和版本也改不到甲租户的记录` | `Failed: 1`，还原后绿 |
+| `CreatedAt/CreatedBy` 进 SET | `分离实体更新不抹掉创建审计` | `Failed: 1`，还原后绿 |
+| 不拦 `DeleteByObject` | `物理删除被拒绝不让回收站失效` | `Failed: 1`，还原后绿 |
+| 软删除不写 `DeletedAt/DeletedBy` | `软删除入口写全四列且同名可重建` | `Failed: 1`，还原后绿 |
+| 冲突前就落实体 | `版本冲突时内存实体不被改写` | `Failed: 1`，还原后绿 |
+| 忽略 worker 配置 | `配置的worker与机房号真的被采纳` | `Failed: 1`，还原后绿 |
+
+**5. 遗留**
+
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 18, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 18` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+- **`SetColumns` 形态仍是漏网的手写 SQL**：`db.Updateable<T>().SetColumns(it => new T { IsDeleted = true })` 不被拦截、也不会写 `DeletedToken`，代价已写成用例（同名重建 1062）。要堵死得靠 13 号票的静态守卫（禁止业务代码出现 `Deleteable`/`SetColumns` 写软删除列），集成测试拦不住。
+- **`CurrentTenantId` 必须由 07 供给**：有 `TenantId` 列的类型在拿不到租户上下文时写不进去（这是设计选择，不是缺陷）。07 接租户解析时要把 `PersistenceOptions.CurrentTenantId` 填上，否则所有写路径会在运行期抛 `InvalidOperationException`。
+- **`DeletedAt/DeletedBy` 是冻结前补的**：按张一一裁定与架构 §5.3 对齐，`DeletedToken` 只承担唯一索引机制，回收站排序与「谁删的」用 `DeletedAt/DeletedBy`。17 号票写 master 建表 SQL 时这四列都要有。
 - **并发不走 SqlSugar 自带开关**：实测 `IsEnableUpdateVersionValidation`（列配置与链式方法都试过）在 `Updateable(entity)` 路径上生成的 SQL 没有版本列，第二次并发更新照样成功；因此并发写入口是 `PersistenceWriter.UpdateAsync`。SQL 证据与推理写在决策笔记里。
 - **超出票面范围的 3 个文件**：`Directory.Packages.props`（加 `SqlSugarCore 5.1.4.221` 与顶掉漏洞版本的 `System.Security.Cryptography.Pkcs 10.0.14`）、`tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（加指向 `Pzd.Infrastructure` 的 `ProjectReference`，并改掉 36「绝不引用任何 Pzd.* 项目」的注释）、`Pzd.slnx`（挂新工程）。三者都是本票绕不开的，已在群里报备。
 - **SqlSugar 的传递依赖带漏洞**：`System.Security.Cryptography.Pkcs 8.0.1` 触发 `NU1902/NU1903`，在「警告即错误」下直接构建失败，已在 Infrastructure 里直接引用 10.0.14 顶掉，代码不使用该包。

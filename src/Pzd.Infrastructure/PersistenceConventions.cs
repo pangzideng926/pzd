@@ -10,7 +10,8 @@ namespace Pzd.Infrastructure;
 public static class PersistenceConventions
 {
     /// <summary>
-    /// 表名 = 实体类型名的 snake_case：<c>TestUser → test_user</c>、<c>PermissionCode → permission_code</c>。
+    /// 表名 = 实体类型名的 snake_case：<c>TestUser → test_user</c>、<c>PermissionCode → permission_code</c>、
+    /// <c>APILog → api_log</c>（连续大写算一个词，不拆成 <c>a_p_i_log</c>）。
     /// 只做命名转换，不做复数化——将来 db/ 下的版本化 SQL 是唯一权威，改表名就在这里改。
     /// </summary>
     public static string TableNameFor(Type entityType)
@@ -24,7 +25,14 @@ public static class PersistenceConventions
             var current = name[index];
             if (char.IsUpper(current) && index > 0)
             {
-                builder.Append('_');
+                // 词边界：前一个是小写（TestUser 的 U），或者后一个是小写（APILog 的 L）。
+                // 两个大写字母挨着时不断词，否则连续缩写会被拆成 a_p_i_log。
+                var previousIsLower = char.IsLower(name[index - 1]);
+                var nextIsLower = index + 1 < name.Length && char.IsLower(name[index + 1]);
+                if (previousIsLower || nextIsLower)
+                {
+                    builder.Append('_');
+                }
             }
 
             builder.Append(char.ToLowerInvariant(current));

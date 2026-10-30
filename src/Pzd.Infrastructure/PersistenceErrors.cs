@@ -41,6 +41,8 @@ public static class PersistenceErrors
 
         foreach (var current in Flatten(exception))
         {
+            // 仅防御**外部**写路径：本仓库的 PersistenceWriter 用「影响 0 行」表达冲突，
+            // 不抛这个异常。留着是因为别人用 SqlSugar 自带的版本校验更新时仍会走到这里。
             if (current is VersionExceptions)
             {
                 return VersionConflict();

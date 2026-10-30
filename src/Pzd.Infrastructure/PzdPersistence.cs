@@ -30,9 +30,20 @@ public static class PzdPersistence
             },
         });
 
-        PersistenceAudit.Attach(db, options);
+        PersistenceAudit.Attach(db, options, CreateIdGenerator(options));
         PersistenceSoftDelete.RegisterFilters(db, options.SoftDeleteTypes);
 
         return db;
+    }
+
+    /// <summary>
+    /// 主键生成器（architecture.md §5.3 雪花）：worker 与机房序号来自部署配置，
+    /// 多副本必须给不同的值，否则同一毫秒会生成相同 Id。
+    /// </summary>
+    public static Func<long> CreateIdGenerator(PersistenceOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return PersistenceIdentity.CreateGenerator(options);
     }
 }
