@@ -1,0 +1,47 @@
+# 05 号票 审计终审 —— 独立重跑日志（老登）
+# 时间：2026-10-29 22:16:16 +0800
+# 被测代码：6470e7041c741a55ec6ee64b0b9906fe688aa892
+# 最终候选：6bbc157（src/tests 与 6470e70 零差异）
+# worktree：.worktree/audit-05d（detached）
+
+[1] HEAD = 6470e7041c741a55ec6ee64b0b9906fe688aa892
+    git status 非空行数 = 0
+
+[2] dotnet build Pzd.slnx
+    BUILD_EXIT=0
+
+[3] 直跑 Pzd.SharedKernel.UnitTests.exe
+    Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.116s
+    TEST_EXIT=0
+
+[4] dotnet test 本体（环境限制，按四项记未运行）
+    ������������: Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.
+    at System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)
+    at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+    at Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(CancellationToken cancellationToken)
+    ������������: Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.
+    at System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)
+    at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+    at Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(CancellationToken cancellationToken)
+    DOTNET_TEST_EXIT=3762504530（Git Bash 语义 127）
+
+[5] 五处变异：明细见同目录 mutation-results.txt，摘要如下
+    [基线] build_exit=0 | 全量 exit=0 | Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.111s
+    === M1 删掉 ValueObject.Equals 的类型守卫 ===
+      build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.114s
+      判定: ✔ 变红，红在这条
+    === M2 给 Money.Currency 加 public set ===
+      build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+      判定: ✔ 变红，红在这条
+    === M3 DomainEvents 改回直接吐内部 List（绕过缓存与只读） ===
+      build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.128s
+      判定: ✔ 变红，红在这条
+    === M4 给 Order.Number 加 public set ===
+      build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.121s
+      判定: ✔ 变红，红在这条
+    === M5 给 Result<T>.Success 加 ThrowIfNull ===
+      build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.117s
+      判定: ✔ 变红，红在这条
+    === 还原后（含重新构建）===
+      git status 非空行数=0
+      build_exit=0 | 全量 exit=0 | Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.112s

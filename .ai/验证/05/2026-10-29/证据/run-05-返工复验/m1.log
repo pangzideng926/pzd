@@ -1,0 +1,2 @@
+Total: 32, Errors: 0, Failed: 1
+    Pzd.SharedKernel.UnitTests.ValueObjectTests.分量相同但类型不同的值对象不相等 [FAIL]

@@ -1,0 +1,9 @@
+--- utf8mb4 + 3字节中文（现有用例写法） | exit=0
+out: 张三
+--- utf8mb3 + 3字节中文（现有用例抓不到） | exit=0
+out: 张三
+--- utf8mb4 + 4字节 emoji | exit=0
+out: --- utf8mb4 + 4byte emoji | exit=0 | out='F09F9982'
+--- utf8mb3 + 4byte emoji (expect reject) | exit=1 | out=''
+    err: ERROR 1366 (HY000) at line 1: Incorrect string value: '\xF0\x9F\x99\x82' for column 'name' at row 1
+--- cleanup | exit=0 | out='cleaned'
