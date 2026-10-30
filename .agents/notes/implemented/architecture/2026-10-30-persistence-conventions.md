@@ -55,6 +55,12 @@ Status: implemented
 后一种是「活跃却占着已删 token」，唯一索引对它失效，同名活跃记录可以有两条（三返复验 P6）。
 `WriteKind.Update` 干脆**一个删除列都不写**：`IsDeleted`/`DeletedToken`/`DeletedAt`/`DeletedBy` 都只能由 `SoftDeleteAsync`/`RestoreAsync` 改写，
 否则实体上带着的旧 `DeletedAt/DeletedBy` 会被写回库，回收站按 `DeletedAt` 排序时那条被顶到最新（06 四审 C10）。
+**活跃态由库判定，不靠实体上的标记**：`WHERE` 带 `AND IsDeleted=0`（恢复反过来带 `=1`）。
+两条内存守卫认得是「加载回来的实体」，而 DTO 从请求体转回来的实体不带 `IsDeleted`/`DeletedToken`，两道守卫都不触发——
+不加这条条件，它会往已删除的行上改业务字段、版本 +1、还返回成功（06 五审 medium / P8，实测 `failure=null`、库里 `IsDeleted=1`）。
+`affected == 0` 还要再分型：查一次 `Id + TenantId + IsDeleted=1`，命中就抛「在回收站，请走 `RestoreAsync`」，不能回落成 `VersionConflict`——
+否则 09 压成 409「并发冲突」，调用方重载后依然读不到，前端会一直重试。
+内存实体这边，`Update` 干脆连回写都不碰删除四列（张一一裁定不擦、不回查库）：正常路径加载来的实体本来就带活跃态常量，不碰即一致；脏值是调用方自己塞的。
 恢复时若把 `IsDeleted` 置回 false 而留着 `DeletedToken=Id`，唯一索引会认为已删记录仍占着「另一个 token」，
 于是同名活跃记录可以有两条（06 重审 high 3 实测 `活跃同名记录=2`）。归 0 之后，业务键若已被新记录占用，
 唯一索引自己会撞 1062，翻译成 409 `DuplicateKey`——「不能恢复」是有返回值的，不靠调用方自己查。
@@ -80,6 +86,8 @@ Status: implemented
 - **依赖 `IsEnableUpdateVersionValidation` 属性** — 最强理由：框架自带，少写 SQL。没选，是因为实测 SQL 里没有版本列：`UPDATE probe_user SET …,Version=@Version,… WHERE Id=@Id`，链式 `.IsEnableUpdateVersionValidation()` 也一样只发一条按主键的 UPDATE，第二次并发更新照样成功（影响 1 行）。
 - **只写票面契约、不补运行期防御** — 最强理由：约定清楚就够，代码里少一层判断。没选，是因为 `db.Updateable(entity)` 把 `Version` 写成 0 这件事没有报错、没有日志，而后果是那一行永久锁死；运行期拒绝能让错误在第一次写错时就炸出来，成本只有一个分支。
 - **`UpdateAsync` 顺带支持「置 `IsDeleted=true` 即软删除」** — 最强理由：调用方少记一个入口，改个字段就能删，兼容已经这样写的代码。没选，是因为它写出的正是 `IsDeleted=1 DeletedToken=0` 的幽灵行（占唯一索引、应用里查不到），并把 `DeletedAt/DeletedBy` 刷成当前时间、让回收站排序失真；为保住一条旧用例的绿而留这个口子，等于用用例换漏洞（06 四审 medium 2）。
+- **`affected == 0` 一律回落 `VersionConflict`** — 最强理由：返回值少一种，调用方只处理一个分支。没选，是因为它把「记录在回收站」压成了「并发冲突」：09 映射成 409 之后前端提示「刷新重试」，而重载永远读不到这条已删记录，客户端会一直重试到死（06 五审 medium / P8，张一一在 09 票 `7fa5f54` 里要求三种情形三个 `code`）。
+- **`Update` 成功后按库真实值回写删除四列** — 最强理由：内存实体与库永远严格一致。没选，是因为要为一个不该出现在响应里的字段多查一次库；而正常路径上从库里加载的实体本来就带活跃态常量，不碰即一致，脏值属于调用方自己塞的（06 五审 low，张一一裁定）。代价是「调用方塞了脏删除值」时对象上会留着它，序列化层不应输出这四列。
 - **软删除只提供唯一入口、不拦 `Deleteable`** — 最强理由：不改变 ORM 的默认行为，兼容别人已经写的删除代码。没选，是因为架构 §5.3 承诺「软删除 + 回收站可恢复」，物理删掉就永远恢复不了且毫无提示；拦截能让错误在第一次写错时就炸出来，代价只是一行异常文案。
 - **靠 `SnowFlakeSingle` 的静态字段配置 worker** — 最强理由：不用自建实例，一处赋值全局生效。没选，是因为单例懒初始化后字段就固定了（实测赋 5/9 之后 `WorkerId` 仍是 1），多副本场景等于没配。
 - **创建审计也进 SET、由调用方保证传全字段** — 最强理由：写入口逻辑更简单，一条 SQL 覆盖所有列。没选，是因为分离实体会把 `CreatedAt/CreatedBy` 抹成 `1900-01-01`/`0` 且返回成功（06 审计 high 1 实测），审计痕迹静默丢失比功能缺失更难发现。
@@ -97,7 +105,7 @@ Status: implemented
 cd .worktree/06
 dotnet build Pzd.slnx                                   # 0 警告 0 错误
 ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
-# Total: 29, Failed: 0
+# Total: 31, Failed: 0
 ```
 
 用例分两层：第一层钉约定本身（审计填充、软删除不可见、同名重建、并发 409、1062、UTC 原值）；

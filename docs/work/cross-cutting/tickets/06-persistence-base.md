@@ -48,7 +48,7 @@
 - [x] 并发更新冲突可被识别为 409 的来源错误（`Persistence.Record.VersionConflict`）。
 - [x] MySQL 1062 唯一键冲突可被识别为 409 的来源错误（`Persistence.Record.DuplicateKey`）。
 - [x] 直接读回的时间与写入的 UTC 值一致；Infrastructure 未做时区转换。
-- [x] 证据贴出 `PersistenceTests` 的实际通过数：**29 个用例，0 失败**（6 条基础约定 + 9 条首轮返工 + 3 条命名约定 Theory + 7 条重审返工 + 2 条旁路加固 + 2 条四审返工）。
+- [x] 证据贴出 `PersistenceTests` 的实际通过数：**31 个用例，0 失败**（6 条基础约定 + 9 条首轮返工 + 3 条命名约定 Theory + 7 条重审返工 + 2 条旁路加固 + 2 条四审返工 + 2 条五审返工）。
 
 ## 对外契约（下游模块必须遵守）
 
@@ -142,7 +142,7 @@ $ dotnet build Pzd.slnx
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
 === TEST EXECUTION SUMMARY ===
-   Pzd.IntegrationTests  Total: 29, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.518s
+   Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.638s
 ```
 
 第一层钉约定本身：`插入后审计字段自动填充且版本从1开始`、`软删除记录默认查询不可见且可显式绕过过滤`、`软删除后能用同一业务键重建`、`并发更新冲突被识别为409来源错误`、`唯一键1062被识别为409来源错误`、`读回的时间与写入的UTC值一致`。
@@ -153,7 +153,7 @@ $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class
 
 ```
 $ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe
-   Pzd.IntegrationTests  Total: 37, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.563s
+   Pzd.IntegrationTests  Total: 39, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.670s
 $ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
    Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.110s
 $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
@@ -253,9 +253,36 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 | `Update` 也写删除列 | `Failed: 1`，`UpdateAsync不改动任何删除审计列` |
 | `Update` 不拒删除态实体（只留 `DeletedToken` 检查） | `Failed: 1`，`UpdateAsync带IsDeleted时被拒绝` |
 
+**6c. 返工第五轮（审计五审：1 medium + 1 low）**
+
+老登五审确认四审那 5 条全部闭环（P1/P2/P3 + 三条 low + 正路 P5/P7 无回归），又挖出一条**反着打**的 medium：前几轮堵的都是「加载回来的实体带着删除标记 → 被内存守卫拦下」，而 DTO 从 HTTP 请求体转回来的实体**不带标记**，两道内存守卫都不触发，`WHERE` 又不带活跃条件——写入成功、版本 +1、业务字段被改，库里那行仍是删除态，应用侧根本读不到。红先：两条用例（含改写的一条）写好即红，`Total: 30, Failed: 2`，改到绿。
+
+| 审计条目 | 改法 | 用例 |
+|---|---|---|
+| medium `UpdateAsync` 认实体不认库，脱离实体能往已删除的记录上静默写入（P8） | `WHERE` 加 `AND IsDeleted=0`（恢复反过来加 `=1`），让**库**判定活跃态；`affected == 0` 时再按主键 + 租户查一次 `IsDeleted=1`，命中就抛「记录在回收站，请走 `RestoreAsync`」，不再回落成 `VersionConflict` | `脱离实体更新已删除记录被拒绝` |
+| low 成功路径把没写进库的删除四列套回内存实体（P4） | `ApplyUpdateStamp` 增加 `touchDeleteColumns`，`Update` 种类连内存实体都不碰删除四列。张一一裁定**不擦、也不回查库**：正常路径上下载下来的实体本来就带活跃态常量，不碰即一致；只有调用方自己塞了脏值时才不一致，那是调用方的事 | `UpdateAsync不改动内存实体的删除审计列` |
+
+**三种情形的表达口径**（09 需要分三个 `code`/状态码，张一一已写进 09 票 `7fa5f54`）：
+
+| 情形 | `UpdateAsync` 的返回/抛出 |
+|---|---|
+| 版本已被别人改掉 | 返回 `Persistence.Record.VersionConflict` |
+| 记录不存在，或不属于当前租户 | 返回 `Persistence.Record.VersionConflict`（`affected == 0` 且查不到回收站行） |
+| 记录在回收站 | **抛** `InvalidOperationException`，文案指向 `RestoreAsync` |
+
+**变异验证（三处，每处精确红一条）**：
+
+| 变异 | 结果 |
+|---|---|
+| `Update`/`SoftDelete` 的 `WHERE` 不再带活跃条件 | `Failed: 1`，`脱离实体更新已删除记录被拒绝` |
+| `affected == 0` 不分型（回落 `VersionConflict`） | `Failed: 1`，同上（拿到的是返回值而不是异常） |
+| `Update` 也回写删除列（按活跃态） | `Failed: 1`，`UpdateAsync不改动内存实体的删除审计列` |
+
+记一笔脚本缺陷：前两处变异第一次分别写成 `if (false)`（CS0162 不可达）和删掉 `isDeletedColumn is not null`（CS8604 可空），都在「警告即错误」下构建失败；按群规「构建失败判失败、不算红」重做成 `&& kind == WriteKind.Restore` 与 `&& currentTenantId is null`，才拿到真红。
+
 **7. 遗留**
 
-- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 29, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 29` 才算闭环；看到 `总计: 0` 一律按未运行处理。
+- **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 31, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 31` 才算闭环；看到 `总计: 0` 一律按未运行处理。
 - **`SetColumns` 形态已被运行期拒绝，但静态守卫仍必需**：`db.Updateable<T>().SetColumns(...)` 现在会被 `UpdateByObject` 的无条件拦截拒绝（用例 `SetColumns形态的旁路也被拒绝`），最初「漏写 `DeletedToken` → 同名重建 1062」的那条代价路径已经走不到了。注意这不是「可以不带守卫」的理由——AOP 钩不到的 `db.Deleteable<T>().Where(...)` 仍在，13 号票的静态守卫照旧必需。
 - **存量 `Version = 0` 的行在运行期不可修复**（三审要求留痕）：本票之前几个版本里，`db.Updateable(entity)` 会把实体上的默认 `Version` 原样写回，产生 `Version=0` 的行。这类行现在**任何入口都修不了**——AOP 拒绝 `Updateable`，`PersistenceWriter` 拿 0 去比永远返回 `VersionConflict`（09 会映射成 409），排查时看起来像并发冲突。排查与修复只能用运维裸 SQL：
 

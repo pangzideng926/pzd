@@ -206,10 +206,21 @@ internal static class PersistenceAudit
     }
 
     /// <summary>SQL 影响 1 行之后，把算好的审计值落实到调用方实体上。</summary>
-    internal static void ApplyUpdateStamp(object entity, in UpdateStamp stamp)
+    /// <para>
+    /// <paramref name="touchDeleteColumns"/> 为 false 时（<c>Update</c>）连内存实体都不碰删除四列：
+    /// 那组值既没写进库，就不该在回写时被「修」成别的东西——调用方塞进来的脏值自己负责，
+    /// 而正常路径上从库里加载的实体本来就带着活跃态那组常量，不碰即一致（06 五审 low / P4，张一一裁定不回查库）。
+    /// </para>
+    internal static void ApplyUpdateStamp(object entity, in UpdateStamp stamp, bool touchDeleteColumns)
     {
         Set(entity, PersistenceOptions.Columns.UpdatedAt, stamp.UpdatedAt);
         Set(entity, PersistenceOptions.Columns.UpdatedBy, stamp.UpdatedBy);
+
+        if (!touchDeleteColumns)
+        {
+            return;
+        }
+
         Set(entity, PersistenceOptions.Columns.IsDeleted, stamp.MarkDeleted);
         Set(entity, PersistenceOptions.Columns.DeletedToken, stamp.DeletedToken);
         Set(entity, PersistenceOptions.Columns.DeletedAt, stamp.DeletedAt);

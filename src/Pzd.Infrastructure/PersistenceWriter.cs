@@ -150,6 +150,8 @@ public static class PersistenceWriter
 
         var tenantColumn = info.Columns.SingleOrDefault(
             column => column.PropertyName == PersistenceOptions.Columns.TenantId);
+        var isDeletedColumn = info.Columns.SingleOrDefault(
+            column => column.PropertyName == PersistenceOptions.Columns.IsDeleted);
 
         // 有租户列就必须知道当前租户：不知道就只能按 Id 改，那是写穿别家记录的路。
         var currentTenantId = tenantColumn is null ? (long?)null : options.CurrentTenantId()
@@ -218,6 +220,16 @@ public static class PersistenceWriter
             where += $" AND `{tenantColumn.DbColumnName}`=@tenantId";
         }
 
+        // 活跃态由**库**判定，不靠调用方实体上的标记：DTO 转回来的实体不带 IsDeleted/DeletedToken，
+        // 两道内存守卫都不触发，只有这条条件能挡住「往已删除的行上静默写入」（06 五审 medium / P8）。
+        // 恢复反过来要求目标是删除态，否则恢复一条已活跃的记录会白改版本号。
+        if (isDeletedColumn is not null)
+        {
+            where += kind == WriteKind.Restore
+                ? $" AND `{isDeletedColumn.DbColumnName}`=1"
+                : $" AND `{isDeletedColumn.DbColumnName}`=0";
+        }
+
         var sql = $"UPDATE `{info.DbTableName}` SET {string.Join(",", assignments)} WHERE {where}";
 
         int affected;
@@ -240,6 +252,20 @@ public static class PersistenceWriter
 
         if (affected == 0)
         {
+            // 0 行有两种原因：版本已被别人改掉（并发冲突），或这条已经在回收站——后者在「DTO 转回来」
+            // 的脱离实体上最常见，实体不带标记，只有库里的活跃条件挡得住（06 五审 medium / P8）。
+            // 必须区分出来：回落成 VersionConflict 会被 09 映射成 409「并发冲突」，
+            // 调用方重载之后依然查不到这条已删记录。
+            if (kind == WriteKind.Update
+                && isDeletedColumn is not null
+                && await IsRecycledAsync(db, info, primary, tenantColumn, isDeletedColumn, entity, currentTenantId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"类型「{typeof(T).Name}」的这条记录在回收站里（{PersistenceOptions.Columns.IsDeleted}=1），不能直接更新；"
+                    + "请调用 PersistenceWriter.RestoreAsync 先恢复，再更新。");
+            }
+
             return PersistenceErrors.VersionConflict();
         }
 
@@ -249,7 +275,10 @@ public static class PersistenceWriter
             version.PropertyInfo.PropertyType,
             CultureInfo.InvariantCulture);
         version.PropertyInfo.SetValue(entity, next);
-        PersistenceAudit.ApplyUpdateStamp(entity, stamp);
+
+        // Update 连内存实体也不碰删除四列：那组值没进库，就不该被回写成「另一个没进库的值」
+        // （06 五审 low / P4）。
+        PersistenceAudit.ApplyUpdateStamp(entity, stamp, touchDeleteColumns: kind != WriteKind.Update);
 
         return null;
     }
@@ -272,6 +301,35 @@ public static class PersistenceWriter
         where T : class
         => info.Columns.SingleOrDefault(current => current.PropertyName == propertyName)
             ?.PropertyInfo.GetValue(entity) is true;
+
+    /// <summary>
+    /// <c>affected == 0</c> 时判定是不是「记录在回收站」：按主键 + 租户查一次 <c>IsDeleted=1</c>。
+    /// 用裸 SQL 而不是 <c>Queryable</c>，免得软删除过滤器把要查的那行挡掉。
+    /// </summary>
+    private static async Task<bool> IsRecycledAsync<T>(
+        SqlSugarClient db,
+        EntityInfo info,
+        EntityColumnInfo primary,
+        EntityColumnInfo? tenantColumn,
+        EntityColumnInfo isDeletedColumn,
+        T entity,
+        long? currentTenantId,
+        CancellationToken cancellationToken)
+        where T : class
+    {
+        var sql = $"SELECT COUNT(*) FROM `{info.DbTableName}` WHERE `{primary.DbColumnName}`=@missId"
+            + $" AND `{isDeletedColumn.DbColumnName}`=1";
+        var parameters = new List<SugarParameter> { new("@missId", primary.PropertyInfo.GetValue(entity)) };
+
+        if (tenantColumn is not null)
+        {
+            sql += $" AND `{tenantColumn.DbColumnName}`=@missTenantId";
+            parameters.Add(new SugarParameter("@missTenantId", currentTenantId));
+        }
+
+        var count = await db.Ado.GetIntAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        return count > 0;
+    }
 
     private static long ReadLong<T>(EntityInfo info, T entity, string propertyName)
         where T : class

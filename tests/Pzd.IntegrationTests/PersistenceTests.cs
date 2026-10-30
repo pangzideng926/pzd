@@ -645,8 +645,47 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
     }
 
     /// <summary>
+    /// 06 五审 medium（P8）：DTO 形状的「脱离实体」只带主键、版本和业务字段，
+    /// <c>IsDeleted</c> 默认 false、<c>DeletedToken</c> 默认 0，两道内存守卫都不触发。
+    /// 若 <c>WHERE</c> 不带活跃条件，它会把已删除行的业务字段改掉、版本 +1、**还返回成功**，
+    /// 而应用侧因为软删除过滤器根本读不到这条——07/08 接 API 后最常见的形状。
+    /// </summary>
+    [Fact]
+    public async Task 脱离实体更新已删除记录被拒绝()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "脱离" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Null(await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct));
+
+        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+
+        // 典型 DTO 转回来的形状：不带删除标记，只带主键、版本与业务字段。
+        var detached = new TestUser { TenantId = 1, UserName = "脱离-改名", Version = purged.Version };
+        detached.ForceId(purged.Id);
+
+        // 拒绝理由必须指 RestoreAsync：笼统返回版本冲突会被 09 映射成 409「并发冲突」，
+        // 调用方重载之后依然查不到这条记录（票面第 258 行已为 Version=0 行记过同样的坑）。
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => PersistenceWriter.UpdateAsync(db, detached, CreateOptions(), ct));
+        Assert.Contains("RestoreAsync", exception.Message, StringComparison.Ordinal);
+
+        var stored = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
+        Assert.True(stored.IsDeleted);
+        Assert.Equal("脱离", stored.UserName);
+        Assert.Equal(purged.Version, stored.Version);
+        Assert.Equal(0, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
+    /// <summary>
     /// 06 四审 medium 2（含 C10）：<c>Update</c> 一个删除列都不写。否则实体上带着的旧删除审计
     /// 会被写回库里，回收站按 <c>DeletedAt</c> 排序时这条就被顶到最新。
+    /// 06 五审 low（P4）补：内存实体也要跟库一致——调用方会把它序列化给前端，
+    /// 不能带着「库里根本没有」的删除时间回去。
     /// </summary>
     [Fact]
     public async Task UpdateAsync不改动任何删除审计列()
@@ -673,6 +712,36 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         Assert.Null(stored.DeletedAt);
         Assert.Equal(0, stored.DeletedBy);
         Assert.Equal(2, stored.Version);
+    }
+
+    /// <summary>
+    /// 06 五审 low（P4）：<c>Update</c> 连内存实体也不碰删除四列。那组值没写进库，回写时就不该被改成
+    /// 「另一个也没进库的值」——张一一裁定不回查库，正常路径上从库里加载的实体本来就带着活跃态常量，
+    /// 不碰即一致；只有调用方自己塞了脏值时才不一致，那是调用方的事。
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync不改动内存实体的删除审计列()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "内存不动" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        var stale = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        loaded.DeletedAt = stale;
+        loaded.DeletedBy = 5;
+
+        Assert.Null(await PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(), ct));
+
+        // 实体上原样保留调用方塞的值，写入口不替它擦（也没往库里写）。
+        Assert.Equal(stale, loaded.DeletedAt);
+        Assert.Equal(5L, loaded.DeletedBy);
+        Assert.False(loaded.IsDeleted);
+        Assert.Equal(0, loaded.DeletedToken);
+        Assert.Equal(2, loaded.Version);
     }
 
     /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>
