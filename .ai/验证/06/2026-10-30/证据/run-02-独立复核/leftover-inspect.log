@@ -1,0 +1,8 @@
+<stdin>:13: SyntaxWarning: invalid escape sequence '\_'
+<stdin>:14: SyntaxWarning: invalid escape sequence '\_'
+--- 残库名单 | exit=0
+out: pzd_test_probe_5dbeb8e7147b
+--- 残库里的表 | exit=0
+out: pzd_test_probe_5dbeb8e7147b	1
+本机当前时间: 2026-10-30 09:47:38
+pzd_test_probe_5dbeb8e7147b	test_user	2026-10-30 09:40:26

@@ -1,0 +1,20 @@
+  正在确定要还原的项目…
+  已还原 E:\pzd\.worktree\lec-06\src\Pzd.Api\Pzd.Api.csproj (用时 189 毫秒)。
+  已还原 E:\pzd\.worktree\lec-06\src\Pzd.SharedKernel\Pzd.SharedKernel.csproj (用时 189 毫秒)。
+  已还原 E:\pzd\.worktree\lec-06\tests\Pzd.IntegrationTests\Pzd.IntegrationTests.csproj (用时 194 毫秒)。
+  已还原 E:\pzd\.worktree\lec-06\tests\Pzd.SharedKernel.UnitTests\Pzd.SharedKernel.UnitTests.csproj (用时 189 毫秒)。
+  已还原 E:\pzd\.worktree\lec-06\tests\Pzd.ArchitectureTests\Pzd.ArchitectureTests.csproj (用时 189 毫秒)。
+  已还原 E:\pzd\.worktree\lec-06\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj (用时 194 毫秒)。
+  Pzd.SharedKernel -> E:\pzd\.worktree\lec-06\src\Pzd.SharedKernel\bin\Debug\net10.0\Pzd.SharedKernel.dll
+  Pzd.Infrastructure -> E:\pzd\.worktree\lec-06\src\Pzd.Infrastructure\bin\Debug\net10.0\Pzd.Infrastructure.dll
+  Pzd.SharedKernel.UnitTests -> E:\pzd\.worktree\lec-06\tests\Pzd.SharedKernel.UnitTests\bin\Debug\net10.0\Pzd.SharedKernel.UnitTests.dll
+  Pzd.Api -> E:\pzd\.worktree\lec-06\src\Pzd.Api\bin\Debug\net10.0\Pzd.Api.dll
+  Pzd.IntegrationTests -> E:\pzd\.worktree\lec-06\tests\Pzd.IntegrationTests\bin\Debug\net10.0\Pzd.IntegrationTests.dll
+  Pzd.ArchitectureTests -> E:\pzd\.worktree\lec-06\tests\Pzd.ArchitectureTests\bin\Debug\net10.0\Pzd.ArchitectureTests.dll
+
+已成功生成。
+    0 个警告
+    0 个错误
+
+已用时间 00:00:01.91
+BUILD_EXIT=0

@@ -1,0 +1,16 @@
+<stdin>:34: SyntaxWarning: invalid escape sequence '\_'
+--- A 建表：DeletedToken 可空（票面原方案） | exit=0
+--- A 插第一条活跃记录 | exit=0
+--- A 插第二条同名活跃记录（应被拒） | exit=0
+--- A 结果统计 | exit=0
+out: 2
+--- A 清理 | exit=0
+--- B 建表：DeletedToken NOT NULL DEFAULT 0（雨哥方案） | exit=0
+--- B 插第一条活跃记录 | exit=0
+--- B 插第二条同名活跃记录（应被拒） | exit=1
+err: ERROR 1062 (23000) at line 1: Duplicate entry '1-王五-0' for key 'u.ux'
+--- B 软删除后同名重建 | exit=0
+out: 2
+--- B 清理 | exit=0
+--- 复查残库 | exit=0
+out: 1
