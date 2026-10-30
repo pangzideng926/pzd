@@ -1,0 +1,23 @@
+== 基线（未变异）==
+[M0-baseline] BUILD_EXIT=0
+[M0-baseline] TEST_EXIT=0     Pzd.IntegrationTests  Total: 27, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.535s
+[M0-baseline] 红用例：
+== M-A：UpdateByObject 退回只拦 Version<=0 ==
+PATCH_OK
+[MA-version-only] BUILD_EXIT=0
+[MA-version-only] TEST_EXIT=1  
+[MA-version-only] 红用例：
+== M-B：去掉 UpdateAsync 的回收站误用校验 ==
+PATCH_OK
+[MB-no-guard] BUILD_EXIT=0
+[MB-no-guard] TEST_EXIT=1     Pzd.IntegrationTests  Total: 27, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.577s
+[MB-no-guard] 红用例：
+        Pzd.IntegrationTests.PersistenceTests.UpdateAsync涓嶈兘鎶婂洖鏀剁珯璁板綍鏀瑰洖娲昏穬 [FAIL]
+== M-C：校验极性反转 DeletedToken == 0 ==
+PATCH_OK
+[MC-inverted] BUILD_EXIT=0
+[MC-inverted] TEST_EXIT=1  
+[MC-inverted] 红用例：
+== 复原核对 ==
+?? tests/Pzd.IntegrationTests/AuditRound4Probes.cs
+(除 AuditRound4Probes.cs 探针外应为空)

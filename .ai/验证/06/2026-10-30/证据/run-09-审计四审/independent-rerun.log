@@ -1,0 +1,19 @@
+=== 审计 worktree: .worktree/audit-06e  HEAD=21ce52f4097b8ad79875d7c5f794d5c032ebab3f ===
+=== 时间: 2026-10-30 11:05:30     ===
+
+--- dotnet build Pzd.slnx ---
+BUILD_EXIT=0 (0 警告 0 错误，见上)
+
+--- PersistenceTests ---
+   Pzd.IntegrationTests  Total: 27, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.403s
+--- 集成全量 ---
+   Pzd.IntegrationTests  Total: 35, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 12.855s
+--- 单元 ---
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.115s
+--- 架构 ---
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.101s
+--- 探针 ---
+   Pzd.IntegrationTests  Total: 10, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.146s
+--- 残库 pzd_test_% ---
+0
+（说明：上面 10 条是 C1–C10 那批；C11 加进探针文件后单独跑过一次，11 条全执行、EXIT=0，输出见 probe-results.txt）

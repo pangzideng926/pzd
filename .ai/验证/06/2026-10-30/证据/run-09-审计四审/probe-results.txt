@@ -1,0 +1,24 @@
+﻿C6 SetColumns(Version=1) 抛 InvalidOperationException；库里 IsDeleted=0 DeletedToken=0 Version=1
+C8 活跃记录 UpdateAsync：failure=null；UserName=正路-改 Version=2 DeletedToken=0 DeletedAt为NULL=1；内存实体 Version=2
+C3 实体填 2（上下文 1）：抛 InvalidOperationException
+C3 实体不填：库里 TenantId=1
+C4 恢复 failure=DuplicateKey；活跃记录数=1
+C10 删除态记录 UpdateAsync：failure=null；库里 IsDeleted=1 DeletedToken=2116002120640630784 Version=3
+C5 UpdateAsync 当恢复用：抛 InvalidOperationException；残留 DeletedToken=2116002120841957376；同名活跃记录数=1
+C9 存量删除行(token=0) 走 UpdateAsync：failure=null（未拦）；库里 IsDeleted=0 DeletedToken=0 DeletedAt残留=1 DeletedBy=5 Version=2
+C2 Updateable(已加载实体 Version=1) 抛 InvalidOperationException；库里 TenantId=1 UserName=已加载 Version=1 CreatedBy=7
+C7 db.Insertable 未抛异常，影响行=1；Version=1 CreatedBy=7 DeletedToken=0
+C1 Deleteable<T>().Where 未抛异常，影响行=1，物理行数=0
+C6 SetColumns(Version=1) 抛 InvalidOperationException；库里 IsDeleted=0 DeletedToken=0 Version=1
+C8 活跃记录 UpdateAsync：failure=null；UserName=正路-改 Version=2 DeletedToken=0 DeletedAt为NULL=1；内存实体 Version=2
+C3 实体填 2（上下文 1）：抛 InvalidOperationException
+C3 实体不填：库里 TenantId=1
+C4 恢复 failure=DuplicateKey；活跃记录数=1
+C10 删除态记录 UpdateAsync：failure=null；库里 IsDeleted=1 DeletedToken=2116002858775220224 Version=3
+C5 UpdateAsync 当恢复用：抛 InvalidOperationException；残留 DeletedToken=2116002858976546816；同名活跃记录数=1
+C9 存量删除行(token=0) 走 UpdateAsync：failure=null（未拦）；库里 IsDeleted=0 DeletedToken=0 DeletedAt残留=1 DeletedBy=5 Version=2
+C2 Updateable(已加载实体 Version=1) 抛 InvalidOperationException；库里 TenantId=1 UserName=已加载 Version=1 CreatedBy=7
+C7 db.Insertable 未抛异常，影响行=1；Version=1 CreatedBy=7 DeletedToken=0
+C1 Deleteable<T>().Where 未抛异常，影响行=1，物理行数=0
+C11 InsertAsync(IsDeleted=true)：failure=null；库里 IsDeleted=1 DeletedToken=0 DeletedBy=0 DeletedAt为NULL=1 Version=1
+C11 随后同名活跃插入：failure=DuplicateKey；活跃记录数=0；物理行数=1
