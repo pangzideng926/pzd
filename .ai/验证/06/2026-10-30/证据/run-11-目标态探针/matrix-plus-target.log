@@ -1,0 +1,42 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[文案快照] InTrash      → Persistence.Record.InTrash | 这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[文案快照] NotFound     → Persistence.Record.NotFound | 记录不存在，或不属于当前租户。
+[文案快照] VersionConflict → Persistence.Record.VersionConflict | 记录已被其他操作修改，请刷新后重试。
+[目标态2] caught=InvalidOperationException 活跃记录=0 ← 09 若走这条，现状会冒 500
+[文案] VersionConflict=记录已被其他操作修改，请刷新后重试。 | InTrash=这条记录已被删除，如需修改请先恢复（RestoreAsync）。 | NotFound=记录不存在，或不属于当前租户。
+    Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_DTO形态恢复已删记录应成功而不是抛异常 [FAIL]
+      Assert.Null() Failure: Value is not null
+      Expected: null
+      Actual:   System.InvalidOperationException: 类型「ProbeUser」的这条记录没有处于软删除状态，无法恢复。
+         at Pzd.Infrastructure.PersistenceWriter.RestoreAsync[T](SqlSugarClient db, T entity, PersistenceOptions options, CancellationToken cancellationToken) in E:\pzd\.worktree\lec-matrix3\src\Pzd.Infrastructure\PersistenceWriter.cs:line 137
+         at Pzd.IntegrationTests.WriteEntryMatrixProbes.<>c__DisplayClass14_0.<目标态_DTO形态恢复已删记录应成功而不是抛异常>b__0() in E:\pzd\.worktree\lec-matrix3\tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs:line 305
+         at Pzd.IntegrationTests.WriteEntryMatrixProbes.CatchAsync(Func`1 action) in E:\pzd\.worktree\lec-matrix3\tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs:line 375
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(309,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_DTO形态恢复已删记录应成功而不是抛异常()
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(310,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_DTO形态恢复已删记录应成功而不是抛异常()
+        --- End of stack trace from previous location ---
+[正路] failure=null（成功） 活跃记录=1 IsDeleted=False DeletedToken=0 Version=3
+[行6] Kind=VersionConflict Http=409 Code=Persistence.Record.VersionConflict msg=记录已被其他操作修改，请刷新后重试。 库里IsDeleted=False Version=1
+[目标态1] Kind=VersionConflict Code=Persistence.Record.VersionConflict msg=记录已被其他操作修改，请刷新后重试。
+    Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_恢复活跃记录应返回NotInTrash且文案说明不在回收站 [FAIL]
+      Assert.Equal() Failure: Strings differ
+                                    ↓ (pos 19)
+      Expected: "Persistence.Record.NotInTrash"
+      Actual:   "Persistence.Record.VersionConflict"
+                                    ↑ (pos 19)
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(282,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_恢复活跃记录应返回NotInTrash且文案说明不在回收站()
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(285,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.目标态_恢复活跃记录应返回NotInTrash且文案说明不在回收站()
+        --- End of stack trace from previous location ---
+[行1] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录处于删除态，不能用 UpdateAsync 更新：删除态只能经 Persistenc…
+[稳定] Kind=VersionConflict Code=Persistence.Record.VersionConflict 库里IsDeleted=1 （库里Version=2，实体拿的是1）
+[行5] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录没有处于软删除状态，无法恢复。 ← 09 若只接返回值，这条冒 500
+[行2] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录仍在回收站里（DeletedToken 不为 0），不能通过 UpdateAsync…
+[行4] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[行3] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+  Finished:    Pzd.IntegrationTests (ID = '1427499a20cb9891e2143daf6efed14447bfa356c0caaddd26161a98f4fe5bf6')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 12, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 12.522s
