@@ -119,7 +119,8 @@ dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests
 - 分支：`feat/06-persistence-base`
 - 认领提交：`555a817596d214d19e6ad7099f1a906a3ca89be7`
 - 首次实现：`91dabf438b9dcde3ca26b6231e1daeb042b81163`（审计 run-03 结论「需修改」）
-- 审计返工（被测 SHA）：`213753a79dab06b0b3fcfa0cc38d76d2681a9e4c`（代码、决策笔记与票面返工节在同一个提交，`Bot分工 §6`）
+- 首轮返工：`213753a79dab06b0b3fcfa0cc38d76d2681a9e4c`
+- 审计返工第二轮（被测 SHA）：`dddcb5806a884ffabe9ad225665122ac1026de11`（代码、决策笔记与票面在同一个提交，`Bot分工 §6`）
 
 **3. 验证**（命令、真实退出码、关键输出行，原样粘贴）
 
@@ -231,4 +232,4 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
 - worktree：`.worktree/06/`
 - 分支：`feat/06-persistence-base`
-- 提交：认领 `555a817596d214d19e6ad7099f1a906a3ca89be7`；首次实现 `91dabf438b9dcde3ca26b6231e1daeb042b81163`；审计返工 `213753a79dab06b0b3fcfa0cc38d76d2681a9e4c`（与决策笔记同一提交）
+- 提交：认领 `555a817596d214d19e6ad7099f1a906a3ca89be7`；首次实现 `91dabf438b9dcde3ca26b6231e1daeb042b81163`；审计返工 `213753a79dab06b0b3fcfa0cc38d76d2681a9e4c`、第二轮 `dddcb5806a884ffabe9ad225665122ac1026de11`（均与决策笔记同一提交）
