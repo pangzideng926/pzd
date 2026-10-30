@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
 更新日期：2026-10-30 08:56 Asia/Shanghai
-下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL `pzd_test` 账号可连）；库名口径已按架构 §6.1 定为 `pzd_master`，并加了「缺 `Database=` 启动即失败」的校验；只剩 AppHost 实跑被 EventLog 挡住，需维护者在有权限的终端跑一次 `dotnet run --project src/Pzd.AppHost`
+下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL 账号可连）；库名口径已按架构 §6.1 定为 `pzd_master`，并加了「缺 `Database=` 启动即失败」的校验。**待做两件**：①维护者建 `pzd_dev` 账号后按它复核一次回落路径（当前是拿测试账号 `pzd_test` 代跑的）；②在有权限终端跑 `dotnet run --project src/Pzd.AppHost` 拿四资源 Healthy（EventLog 墙）
 交付状态：待收尾
 实施条件：已具备 01、02（`0f25d16`／`f13b946`）与外部 MySQL 账号（`pzd_test@localhost`，2026-10-30 到位）；**待满足**：一处能跑 AppHost 的执行环境（EventLog 可写，或用 Docker）——这道门与连接串无关，已用连接串复跑确认
 
@@ -163,6 +163,7 @@ information_schema  mysql  performance_schema  pzd_master  sys
 ```
 
 - 本机库名是 **`pzd_master`（下划线）**，里面有 15 张 `qrtz_*` 表，`CREATE_TIME` 全是 `2026-10-27 17:46:45`——是清空前那版实现留下的 Quartz 表，**属既有数据，不是本票建的**
+- **账号分工（老何 2026-10-30 定，两个账号不许合一）**：上面复核用的 `pzd_test` 是**测试账号**，只该用在集成测试（36 号票要建删 `pzd_test_%` 临时库），不给任何 `ON *.*`；应用运行与回落路径改用 `pzd_dev`（`pzd_master`.* + `pzd_t_%`.*，含 DDL）。`pzd_dev` 建号前，本票的回落复核只能拿 `pzd_test` 代跑；**建号后必须按 `pzd_dev` 再复核一次**（这一条挂在下一步里，未完成）
 - **`pzd-master`（连字符）不存在**：``USE `pzd-master` `` → `ERROR 1049 (42000): Unknown database 'pzd-master'`
 - 而回落路径注入的连接串键由资源名决定，资源名是 `pzd-master`（Aspire 禁止下划线，会报 `ASPIRE006`）
 - 所以**回落连接串必须自带 `Database=pzd_master`**。维护者这次给的串是 `Server=127.0.0.1;Port=3306;User ID=pzd_test;Password=…`，**不含 `Database=`**

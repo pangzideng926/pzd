@@ -17,7 +17,7 @@ AppHost 会把四个资源一起拉起并在仪表板里显示健康状态：`my
 默认起容器（需要本机可用 Docker / Podman）。没有容器运行时，用外部实例回落——给 AppHost 传两个连接串即可，配了就不再起容器：
 
 ```bash
-External__MySql="Server=127.0.0.1;Port=3306;Database=pzd_master;User ID=<用户>;Password=<口令>" \
+External__MySql="Server=127.0.0.1;Port=3306;Database=pzd_master;User ID=pzd_dev;Password=<口令>" \
 External__Redis="127.0.0.1:6379" \
 dotnet run --project src/Pzd.AppHost
 ```
