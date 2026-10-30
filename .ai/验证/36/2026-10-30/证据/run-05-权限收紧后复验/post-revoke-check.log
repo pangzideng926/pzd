@@ -1,0 +1,15 @@
+<stdin>:20: SyntaxWarning: invalid escape sequence '\_'
+--- pzd_test 当前授权 | exit=0
+out: GRANT USAGE ON *.* TO `pzd_test`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd_test_%`.* TO `pzd_test`@`localhost`
+--- 建一个合法前缀测试库（fixture 走的就是这条） | exit=0
+out: created
+--- 删掉它 | exit=0
+out: dropped
+--- 建非前缀库（预期 1142） | exit=1
+err: ERROR 1044 (42000) at line 1: Access denied for user 'pzd_test'@'localhost' to database 'pzd_probe_no_prefix'
+--- 删非前缀库（预期 1142，这条决定护栏严重度） | exit=1
+err: ERROR 1044 (42000) at line 1: Access denied for user 'pzd_test'@'localhost' to database 'pzd_probe_guard_nonexistent'
+--- pzd_master 状态与残库 | exit=0
+out: 0
+0
