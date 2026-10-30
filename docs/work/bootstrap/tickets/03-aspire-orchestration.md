@@ -1,7 +1,7 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
 更新日期：2026-10-30 08:56 Asia/Shanghai
-下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL `pzd_test` 账号可连）；只剩 AppHost 实跑被 EventLog 挡住，需维护者在有权限的终端跑一次 `dotnet run --project src/Pzd.AppHost`；库名口径（`pzd_master` vs `pzd-master`）待定
+下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL `pzd_test` 账号可连）；库名口径已按架构 §6.1 定为 `pzd_master`，并加了「缺 `Database=` 启动即失败」的校验；只剩 AppHost 实跑被 EventLog 挡住，需维护者在有权限的终端跑一次 `dotnet run --project src/Pzd.AppHost`
 交付状态：待收尾
 实施条件：已具备 01、02（`0f25d16`／`f13b946`）与外部 MySQL 账号（`pzd_test@localhost`，2026-10-30 到位）；**待满足**：一处能跑 AppHost 的执行环境（EventLog 可写，或用 Docker）——这道门与连接串无关，已用连接串复跑确认
 
@@ -167,10 +167,36 @@ information_schema  mysql  performance_schema  pzd_master  sys
 - 而回落路径注入的连接串键由资源名决定，资源名是 `pzd-master`（Aspire 禁止下划线，会报 `ASPIRE006`）
 - 所以**回落连接串必须自带 `Database=pzd_master`**。维护者这次给的串是 `Server=127.0.0.1;Port=3306;User ID=pzd_test;Password=…`，**不含 `Database=`**
 
-这条不会让「四个资源 Healthy」失败（`AddConnectionString` 型资源不做库级健康检查），但会在 06 之后第一次真正读写库时暴露。改法两选，需先定口径，**本段不动代码**：
+这条不会让「四个资源 Healthy」失败（`AddConnectionString` 型资源不做库级健康检查），但会在 06 之后第一次真正读写库时暴露。
 
-1. 回落连接串统一带 `Database=pzd_master`（根 README 的示例已这样写，运维侧要补齐）
-2. 或把 `db/master` 对应的库名统一成 `pzd-master`，与容器路径一致——代价是要迁走现有 15 张表
+**口径已定（老何，2026-10-30）：采用方案 1——回落连接串显式带 `Database=pzd_master`。** 依据不是权衡，是架构书 §6.1 原文就写 `pzd_master`（平台库）与 `pzd_t_{code}`（租户库）；方案 2 改库名属对架构的偏离，要为它迁走 15 张旧表不值。判据一句话：**键名可以有连字符，库名不行。**
+
+两选留档：
+
+1. 回落连接串统一带 `Database=pzd_master`（根 README 的示例已按此写，运维侧要补齐）——**采纳**
+2. 把库名统一成 `pzd-master`、与容器路径一致——未采纳，代价是迁走现有 15 张表，且偏离 §6.1
+
+### 启动期校验：缺 `Database=` 直接起不来（已实现）
+
+只在 README 写一句挡不住下一次踩坑，所以在 `src/Pzd.AppHost/AppHost.cs` 加了一道启动期校验：回落连接串里没有 `Database=`（也认 `Initial Catalog=`）就抛 `InvalidOperationException`，消息给出正确写法。
+
+**这道校验能真验**，它放在 `builder.Build().Run()` 之前，比 EventLog 崩溃更早触发：
+
+```text
+$ External__MySql="Server=127.0.0.1;Port=3306;User ID=pzd_test;Password=…"     # 缺 Database=
+Unhandled exception. System.InvalidOperationException: 回落路径的 MySQL 连接串缺少 Database=…
+   at Program.<Main>$(String[] args) in E:\pzd\.worktree\03\src\Pzd.AppHost\AppHost.cs:line 18
+（这条输出里没有 EventLog 报错）
+
+$ External__MySql="…;Database=pzd_master"                                       # 带库名
+System.InvalidOperationException: Cannot open log for source '.NET Runtime'. You may not have write access.
+   ---> System.ComponentModel.Win32Exception (5): 拒绝访问
+（校验放行，落在既有的 EventLog 墙上）
+```
+
+控制台代码页会把中文消息显示成乱码，消息正文以 `AppHost.cs` 源码为准——判据是两个场景**抛出的异常不同**：缺库名抛本票新增的校验、带库名落到 EventLog，说明校验既拦得住、也不误伤正确写法。`dotnet build Pzd.slnx` 0 警告 0 错误。
+
+决策笔记：`.agents/notes/implemented/architecture/2026-10-30-datasource-fallback-database-guard.md`（为什么不在代码里替使用者补 `Database=`、为什么不用健康检查替代）。
 
 ### 授权比脚本声明的宽（安全提示，只报事实）
 
