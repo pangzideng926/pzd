@@ -47,6 +47,7 @@
 - [ ] 未预加载的租户首次访问能建立连接，并发首次访问不重复建连。
 - [ ] 缓存 key 带 `t:{tid}:` 前缀。
 - [ ] **补硬用例（2026-10-30 加，来源：06 复核）**：`PersistenceWriter.UpdateAsync` 的 WHERE 只有 `Id` + `Version`、**没有 `TenantId`**，而 `pzd_master` 是共享库、每张表都有 `TenantId`。**处置已定（2026-10-30 调度裁定，经 06 审计 high 2 实测确认「能写穿」）**：租户谓词归 **06**，写入口必须在缺租户上下文时抛异常、不得静默按 `Id` 更新；本票只负责补跨租户红用例——两条不同 `TenantId` 的同 `Id` 记录，A 租户上下文写 B 的必须失败，跑在 `PersistenceWriter` 上。**不得默认按分库理解**——同库多租户这张网目前是漏的。
+- [ ] **恢复路径的跨租户也必须有用例（2026-10-30 加，来源：06 八审 medium / M-E）**：`PersistenceWriter.RestoreAsync` 去掉实体自报守卫后，租户隔离**只依赖 SQL 的 `AND TenantId=@tenantId`**（`PersistenceWriter.cs:232-237`）。老登只从恢复路径拿掉这个条件做变异，`PersistenceTests` **36 条全绿、零失败**——行为是对的（实测恢复别家已删记录 → `NotFound/404`，别家那行 `IsDeleted=1 DeletedToken<>0 TenantId=2 Version=2` 一字未动），但**没有任何用例守它**。本票必须补：租户 1 的上下文恢复租户 2 的已删记录 → `NotFound`（不是 403、不是 `VersionConflict`），且别家那行逐列未变；**该用例必须在「从 `Restore` 路径删掉 `AND TenantId`」时变红**，否则不算覆盖。同样的验收要求适用于 `SoftDeleteAsync`（它也没有内存守卫，活跃态与租户全由库判定）。
 
 ## 验证入口
 
