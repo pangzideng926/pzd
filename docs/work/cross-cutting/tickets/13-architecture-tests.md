@@ -43,6 +43,7 @@
 - [ ] 故意违规时测试变红，有前后两次输出作证。
 - [ ] 覆盖三类规则：Domain 依赖、Application 依赖、模块跨引。
 - [ ] 追加一条守卫（2026-10-30 加）：`Pzd.IntegrationTests.Fixtures` 命名空间不得引用 `Pzd.*` 业务程序集（`NetArchTest` 按命名空间断言），防止有人在 `Fixtures/` 里直接引 `Pzd.Infrastructure` 绕过 36 号的载体契约。
+- [ ] 追加一条守卫（2026-10-30 加，来源：06 两轮审计 + 李总写路径盲区探针 P4/P5）：**写路径唯一性静态守卫**——除 `src/Pzd.Infrastructure/**` 之外，任何 `src/` 代码出现 `db.Updateable(...)` / `db.Deleteable(...)`（含**不带实体的条件形态**）即判红；`Infrastructure` 内部也只允许经 `PersistenceWriter` 调用，物理删除另设白名单（08 的 outbox 清理需要豁免，白名单要显式列出而不是通配）。理由：AOP 只能拦 `DeleteByObject`，不带实体的 `Deleteable<T>().Where(...)` 和 `Updateable(intruder)` 都能绕过租户谓词、创建审计与版本自增，实测整行可搬到 `TenantId=2` 且 `Version` 不自增。
 - [ ] 已接入 CI 门禁。
 
 ## 验证入口
