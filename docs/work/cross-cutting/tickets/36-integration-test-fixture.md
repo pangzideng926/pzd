@@ -54,7 +54,8 @@ S2 `SmokeTests` 走一次建表 → 插入 → 查询。抓到：驱动、连接
 
 - [x] `dotnet test tests/Pzd.IntegrationTests --filter SmokeTests` 连真 MySQL 完成建表、插入、查询，通过数 >0。
       —— 替代执行方式实跑 `Total: 8, Errors: 0, Failed: 0` 退出 0（见 R2/R2b）；`dotnet test` **本体未运行**（沙箱拒命名管道，`总计: 0`），按「环境性 0 tests」四项记录在 R1，需在无管道限制环境补跑一次。
-- [x] 工程不引用任何 `Pzd.*` 项目（`dotnet list reference` 输出为空可证）。
+- [x] 测试载体（`Fixtures/**`）不依赖任何 `Pzd.*` 项目：`dotnet list reference` 对 `Fixtures` 所在工程查 `Pzd.Infrastructure` 等业务程序集时只允许出现在测试用例侧。
+      —— 约束升级说明（2026-10-30，06 号票起）：原条文「工程不引用任何 `Pzd.*`」的目的是让载体与 05 并行开发，该目的已达成；06 起测试工程需要引用 `Pzd.Infrastructure` 编写真实断言，因此约束收窄到 `Fixtures/` 命名空间，由 13 号票的架构测试守卫。
 - [x] 每个用例独立库，重复运行结果一致，失败后无残留库。
       —— 跑完 `SHOW DATABASES LIKE 'pzd\_test\_%'` 无输出行；护栏用例另证「释放句柄不会误删非测试库」。
 - [ ] 容器可用时按 `mysql:8.4` 起库；容器不可用时回落外部真库并成功跑通冒烟。两种来源各贴一次实际输出；本机做不到的那一种写「未运行＋原因」，不算通过。
