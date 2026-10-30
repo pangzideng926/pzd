@@ -45,7 +45,7 @@
 - [ ] 未知异常 500 且不含堆栈。
 - [ ] 四类响应都含 `traceId` 与 `code`。
 - [ ] 不使用「永远 200 + code/msg/data」包装。
-- [ ] 写失败必须分型映射，不许一律压成 409 并发冲突（2026-10-30 加，来源：06 五审 medium + P8）。06 的 `PersistenceWriter` 已能区分三种情形——**版本被别人改掉**（`Persistence.Record.VersionConflict`）、**记录在回收站**（`Persistence.Record.InTrash`）、**记录不存在或不属于当前租户**；09 要给出互不相同的 `code`，并且**三种都以返回值为信号，不得靠捕获异常区分**（2026-10-30 补：张一一裁定 06 侧统一返回 `PersistenceFailure`，「在回收站」不再抛 `InvalidOperationException`——异常只留给调用方用错 API）。状态码取 409 但 `code` 与文案必须不同：「记录在回收站」要写清「请先恢复」，**不用 410**，因为这条记录可恢复，410 语义是不可恢复。理由：把「已删」映射成「并发冲突」会让前端提示「请刷新重试」，而重载永远读不到这条记录（06 票面 `:258` 已为存量 `Version=0` 行记过同一个坑）。
+- [ ] 写失败必须分型映射，不许压成同一种失败（2026-10-30 加，来源：06 五审 medium / P8、六审 high）。06 侧要能区分四种情形，**全部以返回值为信号，不得靠捕获异常区分**（张一一裁定：异常只留给调用方用错 API，业务态一律返回 `PersistenceFailure`）：`Persistence.Record.VersionConflict`（版本被别人改掉）、`Persistence.Record.NotFound`（记录不存在或不属于当前租户）、`Persistence.Record.InTrash`（记录在回收站）、`Persistence.Record.DuplicateKey`（唯一键冲突）。09 要给出互不相同的 `code`；版本冲突与在回收站都取 409 但 `code` 与文案必须不同——「在回收站」写清「请先恢复」，**不用 410**（记录可恢复，410 语义是不可恢复）。**前置**：本条落地前 06 必须先把四种情形分开（06 六审 high：现状是前两种都返回 `VersionConflict`、「在回收站」与「无租户上下文」抛同一个裸 `InvalidOperationException`）；06 未分开前 09 不得自行猜测分类。理由：把「已删」映射成「并发冲突」会让前端提示「请刷新重试」，而重载永远读不到这条记录（06 票面 `:258` 已为存量 `Version=0` 行记过同一个坑）。
 
 ## 验证入口
 
