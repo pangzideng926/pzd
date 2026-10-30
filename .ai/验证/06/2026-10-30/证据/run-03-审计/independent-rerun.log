@@ -1,0 +1,28 @@
+### 审计独立复跑 | 审计 Bot 老登 | 2026-10-30 10:02:58    
+### worktree .worktree/audit-06 detached at 91dabf438b9dcde3ca26b6231e1daeb042b81163
+### dotnet 10.0.402
+
+### [1] dotnet build Pzd.slnx
+    0 个警告
+    0 个错误
+
+已用时间 00:00:01.37
+
+### [2] PersistenceTests (--class 字面一致)
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.823s
+
+### [3] 集成全量（探测文件已删，干净计数）
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 14, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.803s
+
+### [4] 单元
+=== TEST EXECUTION SUMMARY ===
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.107s
+
+### [5] 架构
+=== TEST EXECUTION SUMMARY ===
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.097s
+
+### [6] 工作树
+(空输出=干净)

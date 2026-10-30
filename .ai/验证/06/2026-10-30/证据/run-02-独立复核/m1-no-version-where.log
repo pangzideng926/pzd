@@ -1,0 +1,14 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.PersistenceTests.并发更新冲突被识别为409来源错误 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\PersistenceTests.cs(121,0): at Pzd.IntegrationTests.PersistenceTests.并发更新冲突被识别为409来源错误()
+        tests\Pzd.IntegrationTests\PersistenceTests.cs(129,0): at Pzd.IntegrationTests.PersistenceTests.并发更新冲突被识别为409来源错误()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = '1985a272f87519dd46d0c75069cb7e1db3825f33cf34c01dc3c7ea70f6dc8cc5')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.779s
+M1_EXIT=1

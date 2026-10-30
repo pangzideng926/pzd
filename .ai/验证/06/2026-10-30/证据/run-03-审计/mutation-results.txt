@@ -1,0 +1,31 @@
+=== 基线 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.900s
+=== M1 更新 WHERE 去掉 Version ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.769s
+M1 判定: 红（被抓住）
+=== M2 时间改成本地时间 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.773s
+M2 判定: 红（被抓住）
+=== M3 软删除不写 DeletedToken ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 10.815s
+M3 判定: 红（被抓住）
+=== M4 不登记软删除过滤 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 10.881s
+M4 判定: 红（被抓住）
+=== M5 插入不设 Version=1 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 10.843s
+M5 判定: 红（被抓住）
+=== M6 1062 分类失效 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.866s
+M6 判定: 红（被抓住）
+=== 还原后复核 ===
+    0 个错误
+   Pzd.IntegrationTests  Total: 6, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.770s
+?? tests/Pzd.IntegrationTests/AuditProbeTests.cs

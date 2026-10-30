@@ -42,6 +42,7 @@
 - [ ] 架构测试全绿。
 - [ ] 故意违规时测试变红，有前后两次输出作证。
 - [ ] 覆盖三类规则：Domain 依赖、Application 依赖、模块跨引。
+- [ ] 追加一条守卫（2026-10-30 加）：`Pzd.IntegrationTests.Fixtures` 命名空间不得引用 `Pzd.*` 业务程序集（`NetArchTest` 按命名空间断言），防止有人在 `Fixtures/` 里直接引 `Pzd.Infrastructure` 绕过 36 号的载体契约。
 - [ ] 已接入 CI 门禁。
 
 ## 验证入口

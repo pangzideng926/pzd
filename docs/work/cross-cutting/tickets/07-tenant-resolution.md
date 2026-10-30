@@ -46,6 +46,7 @@
 - [ ] 租户停用/到期返回 403 `Tenant.Disabled` / `Tenant.Expired`。
 - [ ] 未预加载的租户首次访问能建立连接，并发首次访问不重复建连。
 - [ ] 缓存 key 带 `t:{tid}:` 前缀。
+- [ ] **补硬用例（2026-10-30 加，来源：06 复核）**：`PersistenceWriter.UpdateAsync` 的 WHERE 只有 `Id` + `Version`、**没有 `TenantId`**，而 `pzd_master` 是共享库、每张表都有 `TenantId`。**处置已定（2026-10-30 调度裁定，经 06 审计 high 2 实测确认「能写穿」）**：租户谓词归 **06**，写入口必须在缺租户上下文时抛异常、不得静默按 `Id` 更新；本票只负责补跨租户红用例——两条不同 `TenantId` 的同 `Id` 记录，A 租户上下文写 B 的必须失败，跑在 `PersistenceWriter` 上。**不得默认按分库理解**——同库多租户这张网目前是漏的。
 
 ## 验证入口
 
