@@ -1,8 +1,8 @@
 状态：进行中
 主写入者：PZD-实现Bot-3
-更新日期：2026-10-30 08:55 Asia/Shanghai
-下一步：绿灯已回填 R2（外部真库 8.0.46，3/3 通过）；等李总独立验证后转老登审计
-交付状态：待测试（代码与绿灯证据齐；`dotnet test` 本体仍受沙箱限制，见 R1）
+更新日期：2026-10-30 09:30 Asia/Shanghai
+下一步：审计 6 项已全部返工（代码 `8c4033b`），等老登按新 SHA 重跑冒烟 + 反向 + 容器指引
+交付状态：待审计（代码与证据齐；容器分支本机未运行，`dotnet test` 本体仍受沙箱限制）
 实施条件：已具备（01 `0f25d16` 于 2026-10-29 合入 main）；本机容器不可用，见「环境与替代方案」
 
 # 36 集成测试库 fixture（真 MySQL）
@@ -26,6 +26,8 @@
 
 新建 `tests/Pzd.IntegrationTests/**`（工程与 `Fixtures/**`）。不碰 `src/`。
 
+返工后该目录下的文件：`Fixtures/MySqlServerFixture.cs`、`Fixtures/TestDatabase.cs`、`AssemblyFixtures.cs`（程序集级 fixture 注册）、`SmokeTests.cs`、`FixtureGuardTests.cs`（删库护栏）、`SourceSelectionTests.cs`（来源优先级与不可用指引）。
+
 ## 关键接口与依赖
 
 - 前置票：01
@@ -47,12 +49,19 @@ S2 `SmokeTests` 走一次建表 → 插入 → 查询。抓到：驱动、连接
 
 ## 验收标准
 
-- [ ] `dotnet test tests/Pzd.IntegrationTests --filter SmokeTests` 连真 MySQL 完成建表、插入、查询，通过数 >0。
-- [ ] 工程不引用任何 `Pzd.*` 项目（`dotnet list reference` 输出为空可证）。
-- [ ] 每个用例独立库，重复运行结果一致，失败后无残留库。
+判定一律按本票「假绿防线」：贴实际通过数、`-class` 字面与类名一致、`0 tests` 退出码 0 按失败算。返工后全量 8 条通过（3 条冒烟 + 2 条护栏 + 3 条来源判定）。
+
+- [x] `dotnet test tests/Pzd.IntegrationTests --filter SmokeTests` 连真 MySQL 完成建表、插入、查询，通过数 >0。
+      —— 替代执行方式实跑 `Total: 8, Errors: 0, Failed: 0` 退出 0（见 R2/R2b）；`dotnet test` **本体未运行**（沙箱拒命名管道，`总计: 0`），按「环境性 0 tests」四项记录在 R1，需在无管道限制环境补跑一次。
+- [x] 工程不引用任何 `Pzd.*` 项目（`dotnet list reference` 输出为空可证）。
+- [x] 每个用例独立库，重复运行结果一致，失败后无残留库。
+      —— 跑完 `SHOW DATABASES LIKE 'pzd\_test\_%'` 无输出行；护栏用例另证「释放句柄不会误删非测试库」。
 - [ ] 容器可用时按 `mysql:8.4` 起库；容器不可用时回落外部真库并成功跑通冒烟。两种来源各贴一次实际输出；本机做不到的那一种写「未运行＋原因」，不算通过。
+      —— **未运行（容器分支）**：本机无 Docker，只有外部真库分支有实际输出（R2）。来源优先级本身已用纯函数用例钉死（`容器可用时即使配了外部连接串也走容器`），但**「容器真的起得来」本机无法验证**，故本条不勾。
 - [ ] 回落外部真库时，实测版本（本机 `8.0.46`）与 `mysql:8.4` 的差异写进本票遗留，并在有容器的环境复核一次（未复核前不算版本一致性已验证）。
-- [ ] 不存在 InMemory 替身路径，也没有用事务回滚冒充隔离（审查确认）。
+      —— 差异已写进遗留；**有容器环境复核未运行**，本条不勾。
+- [x] 不存在 InMemory 替身路径，也没有用事务回滚冒充隔离（审查确认）。
+      —— 隔离靠每用例独立库 + 句柄释放 `DROP DATABASE`，无事务回滚包装；来源只有「容器 / 外部真库」两种，没有第三种替身。
 
 ## 验证入口
 
@@ -71,10 +80,13 @@ dotnet test tests/Pzd.IntegrationTests --filter SmokeTests
 本机实测（2026-10-29 21:40）：**无 Docker、无 Podman、无 colima**（都不在 PATH，Testcontainers 连 `npipe://./pipe/docker_engine` 超时）；
 有 **MySQL80 `8.0.46`** 服务跑在 `127.0.0.1:3306`（服务 Running、端口可连），但 `root` 无密码登录被拒。
 
-fixture 因此实现两种来源，判定写在 `MySqlServerFixture.InitializeAsync`：
+fixture 因此实现两种来源，判定集中在 `MySqlServerFixture.ChooseSource`（纯函数，可被用例钉住）：
 
-1. 容器可用 → 按票面固定 tag `mysql:8.4` 起库；
-2. 调用方给出外部连接串 → 回落外部真库（本机为 `8.0.46`）。
+1. 容器可用 → 按票面固定 tag `mysql:8.4` 起库（**优先**，AC-04）；
+2. 容器不可用 → 回落外部真库（本机为 `8.0.46`）；
+3. 两者都不可用 → 抛 `InvalidOperationException`，外层是中文指引（说清两条出路），内层才是 Testcontainers 的英文原因。
+
+**测试类 fixture 形态（06–32 一律照此写）**：程序集级 `[assembly: AssemblyFixture(typeof(MySqlServerFixture))]`，注册在 `tests/Pzd.IntegrationTests/AssemblyFixtures.cs`，测试类构造注入即可，**不要用 `IClassFixture`**——它是每个测试类一个实例，容器模式下等于每个类各起一个 MySQL 容器，几十个类会线性放大。
 
 外部连接串只从两处读，都不入库：
 
@@ -86,7 +98,8 @@ fixture 因此实现两种来源，判定写在 `MySqlServerFixture.InitializeAs
 **剩余风险**
 
 - 本机只有 `8.0.46`，`mysql:8.4` 分支未在本机运行过；按 AC 要求，有容器的环境需复核一次，复核前版本一致性不算已验证。
-- 外部真库是共享实例：用例库名固定 `pzd_test_` + GUID，句柄释放即 `DROP DATABASE`，失败路径同样清理；但仍需专用测试账号，不用业务账号。
+- **无 Docker 的机器每次跑测试要先付约 10 秒容器探测**（`Build()` 连 `npipe://./pipe/docker_engine` 超时后才回落外部库）。这是容器优先的代价，实测 5 条用例 0.3s → 8 条用例 10.4s；若以后觉得慢，先改 AC-04 再说，别在代码里偷偷反转优先级。
+- 外部真库是共享实例：用例库名固定 `pzd_test_` + GUID，句柄释放即 `DROP DATABASE`，失败路径同样清理；但仍需专用测试账号，不用业务账号。`pzd_test` 已按 spec 收紧为只有 `pzd_test_%` 权限（全局 CREATE/DROP 已收回），护栏 + 权限两道防线并存，不互相替代。
 
 **本机其它依赖**（不属于本票 fixture 范围，供 03 等票参考）：Redis 由 **Memurai `8.2.10`** 提供，服务 `Memurai` 为 Running、`127.0.0.1:6379` 实测可连。36 的 fixture 只负责 MySQL 载体，不代理 Redis；需要 Redis 的票自行接入。
 
@@ -177,6 +190,43 @@ xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
 
 `dotnet test` 本体：仍受沙箱限制未运行，与 R1 同一原因（`System.UnauthorizedAccessException` + `NamedPipeClientStream`，`总计: 0`），**本票所有绿灯结论均来自直跑 exe**，剩余风险见「环境与替代方案」。
 
+### R2b 返工证据（审计 6 项返工后，代码 `8c4033b613518103952e5526596e24a40edc21eb`）
+
+全量 8 条（3 条冒烟 + 2 条护栏 + 3 条来源判定），构建 0 警告 0 错误：
+
+```text
+$ ./Pzd.IntegrationTests.exe
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.399s
+[exe exit=0]
+```
+
+**high：容器不可用时的中文指引**（把连接串移走、本机无 Docker）——返工前这里只有 Testcontainers 英文栈：
+
+```text
+$ ./Pzd.IntegrationTests.exe -class "Pzd.IntegrationTests.SmokeTests" -method "...库默认字符集是utf8mb4"
+---- System.InvalidOperationException : 容器不可用（镜像 mysql:8.4）：Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+-------- DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 1, Failed: 1
+[exe exit=1]
+```
+
+**medium 1：来源优先级改成容器优先（AC-04）**，判定抽成纯函数 `ChooseSource`，三条用例钉住：容器可用且有连接串 → `Container`；容器不可用 → `External`；两者都无 → 抛带中文指引的 `InvalidOperationException`（断言同时检查指引三条出路与内层原始原因）。
+
+**medium 2：删库护栏 + 变异自证**
+
+| 变异 | 改动 | 结果 |
+|---|---|---|
+| M1 | 摘掉 `DropDatabaseAsync` 里的 `EnsureTestDatabaseName(name)` 调用 | `FixtureGuardTests` `Total: 2, Failed: 1`，退出 1（落成 `1044/1142` 这种不明所以的库错误） |
+| M2 | 让前缀校验恒真（`if (false)`） | `Total: 2, Failed: 2`，退出 1（`Assert.Throws() Failure: No exception was thrown` / `Exception type was not an exact match`） |
+
+还原后**先 build 再跑**，8/8 绿（上轮审计记过我「先还原漏重构建」的顺序错误，这次没再犯）。护栏抛的是 `ArgumentException`，用例断言就是这一个精确类型，没有用 `ThrowsAnyAsync`——拒绝原因必须说得清。
+
+**medium 5：分支同步** `git merge origin/main`（落后 13 个提交），`.gitignore` 与 `Pzd.slnx` 两处冲突取并集，合完 `git rev-list --count HEAD..origin/main` = `0`，上面的 8/8 就是在合并后的树上跑出来的。
+
+**low 三条**：`IClassFixture` 换成程序集级 `AssemblyFixture`（见「环境与替代方案」里的约定）；`Database = string.Empty` 和 `Build()` 进 `try` 两处都写了「为什么」注释，防止后人当冗余删掉；`pzd_chk_*` 探针残库由李总认领并已清，本次跑完 `pzd_test_%` 残库 **0 个**。
+
 ## 恢复方式
 
 删除工程与 fixture；容器与测试库直接销毁；回落外部真库时，fixture 建出的临时库同样必须删干净，失败路径也要清。
@@ -185,15 +235,20 @@ xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
 
 - worktree：`.worktree/36/`
 - 分支：`test/36-integration-test-fixture`
-- 代码与 R1 红灯提交：`dfb5bfbda61280f4d5b7d68a9650ce4fb0cf1953`
-- R2 绿灯回填提交：本文件所在分支顶端，推送后由接手方按 `git log -1 --format=%H` 取完整 SHA
+- R1 红灯提交（初版）：`dfb5bfbda61280f4d5b7d68a9650ce4fb0cf1953`
+- R2 绿灯回填提交：`8ca97a9dcc0cb012aa83df8cd9f5dea233f06ae7`
+- 合并 `origin/main`：`cb8b2fe`（落后 13 个提交，`.gitignore`/`Pzd.slnx` 取并集）
+- **审计返工代码提交（本次送审对象）**：`8c4033b613518103952e5526596e24a40edc21eb`
+- 票面返工记录提交：本文件所在提交（其父提交即上一条，按 `git log -2 --format=%H` 核对）
 
-## 交接：实现 → 测试（李总）
+## 交接：实现 → 审计（老登，返工后第二轮）
 
-1. **目标**：证明 fixture 能在真 MySQL 上「建独立库 → 建表 → 插入 → 查询」跑通，并把 R1 红灯翻成绿灯；不证明业务表语义。
-2. **提交**：分支 `test/36-integration-test-fixture`，代码 `dfb5bfbda61280f4d5b7d68a9650ce4fb0cf1953`，证据回填为分支顶端提交。
-3. **验证**：`dotnet build` 0 警告 0 错误；直跑 `Total: 3, Errors: 0, Failed: 0`、exe 退出 0；无误口令反向验证 `Total: 1, Failed: 1` 退出 1；服务端无残库、`VERSION()` = `8.0.46`。输出原文见 R2。
+1. **目标**：证明审计 6 项已闭环——容器优先（AC-04）、删库护栏、验收勾选、完整 SHA、分支同步、fixture 形态定死；不重开「外部真库能不能跑通」这个已通过的结论。
+2. **提交**：分支 `test/36-integration-test-fixture`，代码 `8c4033b613518103952e5526596e24a40edc21eb`（在 `cb8b2fe` 合并后的树上）。
+3. **验证**（原文都在 R2b）：`dotnet build` 0 警告 0 错误；全量 `Total: 8, Errors: 0, Failed: 0` 退出 0；连接串移走 + 无 Docker 时抛带中文指引的 `InvalidOperationException`；护栏变异 M1 `Failed: 1`、M2 `Failed: 2` 均退出 1，还原后先 build 再跑回 8/8；合并后 `rev-list HEAD..origin/main` = `0`。
 4. **遗留**：
-   - `dotnet test` 本体本机未运行（沙箱拒命名管道，`总计: 0`），需在无管道限制环境补跑一次；李总若也受限，直跑 exe 可作为替代，但必须写「本体未运行」。
-   - 容器路径（`mysql:8.4`）本机无法验证，仅验证了外部真库回落；装了 Docker 的机器需再跑一次确认容器分支。
-   - Redis 不在本票范围（本机由 Memurai `8.2.10` 提供），需要 Redis 的票自行接入。
+   - **容器分支本机未运行**（无 Docker）：`mysql:8.4` 起库、版本一致性都未验证，AC 第 4/5 条因此不勾。
+   - **无 Docker 机器每次跑测试多付约 10 秒**容器探测（8 条用例 0.4s → 10.4s）。这是容器优先的代价，要提速得先改 AC-04，不许在代码里反转优先级。
+   - `dotnet test` 本体仍受沙箱限制未运行（`Access denied` + 命名管道，`总计: 0`），需无管道限制环境补跑一次。
+   - **fixture 形态建议待老何确认**：本票已按「程序集级 `AssemblyFixture`」写进约定并要求 06–32 照抄，`IClassFixture` 明确排除。若老何要改成 collection fixture，只动 `AssemblyFixtures.cs` 与各测试类的声明，不动 fixture 本体。
+   - 本机 `pzd_master` 里仍有 15 张 `qrtz_*` 旧表（不是本票产物），17 号票迁移前需要先定处理方式。
