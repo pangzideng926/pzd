@@ -10,6 +10,12 @@ public enum PersistenceFailureKind
     /// <summary>乐观并发：更新时 Version 不匹配（影响 0 行）。</summary>
     VersionConflict,
 
+    /// <summary>记录不存在，或存在但不属于当前租户（影响 0 行且查不到本租户的行）。</summary>
+    NotFound,
+
+    /// <summary>记录在回收站里（<c>IsDeleted=1</c>）：能恢复，所以不是 404 也不是并发冲突。</summary>
+    RecordInTrash,
+
     /// <summary>唯一键冲突：MySQL 1062。</summary>
     DuplicateKey,
 
@@ -34,6 +40,24 @@ public static class PersistenceErrors
         PersistenceFailureKind.VersionConflict,
         409,
         new Error("Persistence.Record.VersionConflict", "记录已被其他操作修改，请刷新后重试。"));
+
+    /// <summary>
+    /// 记录不存在，或存在但不属于当前租户。和版本冲突分开：一个是「查错地方」，一个是「同时被人改」，
+    /// 压成同一个 409 会让排查方向全错（06 六审 high / Q4、Q7）。
+    /// </summary>
+    public static PersistenceFailure NotFound() => new(
+        PersistenceFailureKind.NotFound,
+        404,
+        new Error("Persistence.Record.NotFound", "记录不存在，或不属于当前租户。"));
+
+    /// <summary>
+    /// 记录在回收站里。这是**数据状态**、不是用错 API，所以走返回值；能恢复，所以用 409 而不是 410
+    /// （410 的语义是永久消失）。<c>code</c> 与 09 号票的 <c>Persistence.Record.InTrash</c> 对齐。
+    /// </summary>
+    public static PersistenceFailure RecordInTrash() => new(
+        PersistenceFailureKind.RecordInTrash,
+        409,
+        new Error("Persistence.Record.InTrash", "这条记录已被删除，如需修改请先恢复（RestoreAsync）。"));
 
     public static PersistenceFailure Classify(Exception exception)
     {

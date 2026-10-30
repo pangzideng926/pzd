@@ -8,10 +8,13 @@ namespace Pzd.Infrastructure;
 /// 所有 UPDATE 都带 <c>WHERE Id AND Version=旧值 AND TenantId=当前租户</c>：
 /// <list type="bullet">
 /// <item>版本不匹配 → <c>Persistence.Record.VersionConflict</c>（09 号票映射 409）</item>
+/// <item>本租户下查不到这行 → <c>Persistence.Record.NotFound</c>（404）</item>
+/// <item>这行在回收站 → <c>Persistence.Record.InTrash</c>（409；可恢复，所以不是 410）</item>
 /// <item>租户上下文缺失 → 抛 <see cref="InvalidOperationException"/>，绝不按 Id 静默更新（06 审计 high 2）</item>
 /// <item>唯一键冲突（例如恢复时业务键已被占用）→ <c>Persistence.Record.DuplicateKey</c></item>
 /// <item>冲突时调用方实体保持原值，可以直接重载重试（06 审计 medium 3）</item>
 /// </list>
+/// <para>上面四种业务态**都是返回值**，异常只留给「调用方用错入口」（06 六审 high）。</para>
 /// 不用 SqlSugar 的 <c>IsEnableUpdateVersionValidation</c>：实测（SqlSugarCore 5.1.4.221）它在
 /// <c>Updateable(entity)</c> 路径上只按主键更新，SET/WHERE 里都没有版本列，冲突根本拦不住。
 /// </summary>
@@ -44,6 +47,14 @@ public static class PersistenceWriter
         Update,
         SoftDelete,
         Restore,
+    }
+
+    /// <summary><c>affected == 0</c> 之后查出来的事实：本租户下没这行、有但已删、有且活跃（版本对不上）。</summary>
+    private enum MissKind
+    {
+        NoRow,
+        Recycled,
+        Active,
     }
 
     /// <summary>
@@ -186,7 +197,11 @@ public static class PersistenceWriter
         }
 
         // 先算，不落实体：冲突时调用方手里的对象要保持加载时的样子。
-        var stamp = PersistenceAudit.ComputeUpdateStamp(entity, options.CurrentUserId(), markDeleted, clearDeleted);
+        // Update 只作用于活跃行（WHERE IsDeleted=0），四列删除审计在库里必然是活跃态常量，
+        // 用它算 stamp 才能把实体也规范化成同一组值（06 六审 medium）。
+        var stamp = kind == WriteKind.Update
+            ? PersistenceAudit.ActiveUpdateStamp(options.CurrentUserId())
+            : PersistenceAudit.ComputeUpdateStamp(entity, options.CurrentUserId(), markDeleted, clearDeleted);
 
         var parameters = new List<SugarParameter>();
         var assignments = new List<string>();
@@ -252,18 +267,21 @@ public static class PersistenceWriter
 
         if (affected == 0)
         {
-            // 0 行有两种原因：版本已被别人改掉（并发冲突），或这条已经在回收站——后者在「DTO 转回来」
-            // 的脱离实体上最常见，实体不带标记，只有库里的活跃条件挡得住（06 五审 medium / P8）。
-            // 必须区分出来：回落成 VersionConflict 会被 09 映射成 409「并发冲突」，
-            // 调用方重载之后依然查不到这条已删记录。
-            if (kind == WriteKind.Update
-                && isDeletedColumn is not null
-                && await IsRecycledAsync(db, info, primary, tenantColumn, isDeletedColumn, entity, currentTenantId, cancellationToken)
-                    .ConfigureAwait(false))
+            // 0 行的原因必须分清：三种业务事实各有各的 code（06 六审 high / Q1、Q3、Q4、Q5、Q7）。
+            // 一次聚合查询同时拿「本租户下有没有这行」和「这行是不是删除态」，避免两次查询看到不同状态。
+            var miss = await ResolveMissAsync(db, info, primary, tenantColumn, isDeletedColumn, entity, currentTenantId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (miss == MissKind.NoRow)
             {
-                throw new InvalidOperationException(
-                    $"类型「{typeof(T).Name}」的这条记录在回收站里（{PersistenceOptions.Columns.IsDeleted}=1），不能直接更新；"
-                    + "请调用 PersistenceWriter.RestoreAsync 先恢复，再更新。");
+                // 不存在，或存在但不属于当前租户——两者对调用方是同一件事（不泄露别家的存在性）。
+                return PersistenceErrors.NotFound();
+            }
+
+            // 恢复的目标本来就是删除态：那条行「已删」不是错误，版本对不上才是。
+            if (miss == MissKind.Recycled && kind != WriteKind.Restore)
+            {
+                return PersistenceErrors.RecordInTrash();
             }
 
             return PersistenceErrors.VersionConflict();
@@ -276,9 +294,8 @@ public static class PersistenceWriter
             CultureInfo.InvariantCulture);
         version.PropertyInfo.SetValue(entity, next);
 
-        // Update 连内存实体也不碰删除四列：那组值没进库，就不该被回写成「另一个没进库的值」
-        // （06 五审 low / P4）。
-        PersistenceAudit.ApplyUpdateStamp(entity, stamp, touchDeleteColumns: kind != WriteKind.Update);
+        // 实体与库一致：Update 的 stamp 是活跃态常量，回写后实体上的四个删除列也被规范化。
+        PersistenceAudit.ApplyUpdateStamp(entity, stamp);
 
         return null;
     }
@@ -303,22 +320,26 @@ public static class PersistenceWriter
             ?.PropertyInfo.GetValue(entity) is true;
 
     /// <summary>
-    /// <c>affected == 0</c> 时判定是不是「记录在回收站」：按主键 + 租户查一次 <c>IsDeleted=1</c>。
+    /// <c>affected == 0</c> 时把「为什么一行没改」查清楚：本租户下这行不存在、存在但已删、还是存在且活跃
+    /// （那就是版本对不上）。一次查询就返回三态（编码成 0/2/1），避免两次查询在并发下看到不同状态。
     /// 用裸 SQL 而不是 <c>Queryable</c>，免得软删除过滤器把要查的那行挡掉。
     /// </summary>
-    private static async Task<bool> IsRecycledAsync<T>(
+    private static async Task<MissKind> ResolveMissAsync<T>(
         SqlSugarClient db,
         EntityInfo info,
         EntityColumnInfo primary,
         EntityColumnInfo? tenantColumn,
-        EntityColumnInfo isDeletedColumn,
+        EntityColumnInfo? isDeletedColumn,
         T entity,
         long? currentTenantId,
         CancellationToken cancellationToken)
         where T : class
     {
-        var sql = $"SELECT COUNT(*) FROM `{info.DbTableName}` WHERE `{primary.DbColumnName}`=@missId"
-            + $" AND `{isDeletedColumn.DbColumnName}`=1";
+        var deletedSum = isDeletedColumn is null
+            ? "0"
+            : $"COALESCE(SUM(`{isDeletedColumn.DbColumnName}`), 0)";
+        var sql = $"SELECT CASE WHEN COUNT(*)=0 THEN 0 WHEN {deletedSum}>0 THEN 2 ELSE 1 END"
+            + $" FROM `{info.DbTableName}` WHERE `{primary.DbColumnName}`=@missId";
         var parameters = new List<SugarParameter> { new("@missId", primary.PropertyInfo.GetValue(entity)) };
 
         if (tenantColumn is not null)
@@ -327,8 +348,13 @@ public static class PersistenceWriter
             parameters.Add(new SugarParameter("@missTenantId", currentTenantId));
         }
 
-        var count = await db.Ado.GetIntAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
-        return count > 0;
+        var code = await db.Ado.GetIntAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        return code switch
+        {
+            0 => MissKind.NoRow,
+            2 => MissKind.Recycled,
+            _ => MissKind.Active,
+        };
     }
 
     private static long ReadLong<T>(EntityInfo info, T entity, string propertyName)

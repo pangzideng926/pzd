@@ -218,8 +218,10 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
 
         var failure = await PersistenceWriter.UpdateAsync(db, intruder, CreateOptions(tenantId: 2), ct);
 
+        // 06 六审 high（Q7）：本租户下查不到这行，对调用方就是「不存在」。
+        // 原来报 VersionConflict 会让 09 提示「刷新重试」，而重载永远读不到别家的记录。
         Assert.NotNull(failure);
-        Assert.Equal(PersistenceFailureKind.VersionConflict, failure!.Kind);
+        Assert.Equal(PersistenceFailureKind.NotFound, failure!.Kind);
 
         var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
         Assert.Equal(1, stored.TenantId);
@@ -651,7 +653,7 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
     /// 而应用侧因为软删除过滤器根本读不到这条——07/08 接 API 后最常见的形状。
     /// </summary>
     [Fact]
-    public async Task 脱离实体更新已删除记录被拒绝()
+    public async Task 脱离实体更新已删除记录返回回收站错误()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var database = await fixture.CreateDatabaseAsync(ct);
@@ -668,17 +670,81 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         var detached = new TestUser { TenantId = 1, UserName = "脱离-改名", Version = purged.Version };
         detached.ForceId(purged.Id);
 
-        // 拒绝理由必须指 RestoreAsync：笼统返回版本冲突会被 09 映射成 409「并发冲突」，
-        // 调用方重载之后依然查不到这条记录（票面第 258 行已为 Version=0 行记过同样的坑）。
-        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
-            () => PersistenceWriter.UpdateAsync(db, detached, CreateOptions(), ct));
-        Assert.Contains("RestoreAsync", exception.Message, StringComparison.Ordinal);
+        // 「记录在回收站」是数据状态、不是用错 API，所以走**返回值**而不是异常：
+        // 异常只留给调用方用错入口（手写 Updateable、插入删除态实体等）。笼统返回版本冲突会被
+        // 09 映射成 409「并发冲突」，调用方重载之后依然查不到这条记录（06 六审 high / Q1、Q5）。
+        // 直接 await 也把「必须返回、不许抛」钉住了：真抛了这条就红。
+        var failure = await PersistenceWriter.UpdateAsync(db, detached, CreateOptions(), ct);
+
+        Assert.NotNull(failure);
+        Assert.Equal(PersistenceFailureKind.RecordInTrash, failure.Kind);
+        Assert.Equal(409, failure.HttpStatusCode);
+        Assert.Equal("Persistence.Record.InTrash", failure.Error.Code);
+        Assert.Contains("RestoreAsync", failure.Error.Message, StringComparison.Ordinal);
 
         var stored = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
         Assert.True(stored.IsDeleted);
         Assert.Equal("脱离", stored.UserName);
         Assert.Equal(purged.Version, stored.Version);
         Assert.Equal(0, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
+    /// <summary>
+    /// 06 六审 high（Q4、Q7）：记录不存在、或存在但属于别家租户，都是 <c>NotFound</c>。
+    /// 「查不到」和「版本被人改了」是两种不同的运维事实，压成同一个 409 会让排查方向全错。
+    /// </summary>
+    [Fact]
+    public async Task 更新不存在或非本租户的记录返回未找到()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        // 不存在的主键。
+        var ghost = new TestUser { TenantId = 1, UserName = "不存在", Version = 1 };
+        ghost.ForceId(424242);
+        var missing = await PersistenceWriter.UpdateAsync(db, ghost, CreateOptions(), ct);
+        Assert.NotNull(missing);
+        Assert.Equal(PersistenceFailureKind.NotFound, missing.Kind);
+        Assert.Equal(404, missing.HttpStatusCode);
+        Assert.Equal("Persistence.Record.NotFound", missing.Error.Code);
+
+        // 存在，但属于租户 1；用租户 2 的上下文更新它。
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "别家" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        loaded.UserName = "别家-改名";
+
+        var foreign = await PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(tenantId: 2), ct);
+        Assert.NotNull(foreign);
+        Assert.Equal(PersistenceFailureKind.NotFound, foreign.Kind);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal("别家", stored.UserName);
+        Assert.Equal(1, stored.Version);
+    }
+
+    /// <summary>
+    /// 06 六审 high（Q5）：重复软删除原来报版本冲突，对幂等 DELETE 是误导——
+    /// 真实原因是「它已经在回收站里」。
+    /// </summary>
+    [Fact]
+    public async Task 重复软删除返回回收站错误()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "再删" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Null(await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct));
+
+        var second = await PersistenceWriter.SoftDeleteAsync(db, loaded, CreateOptions(), ct);
+        Assert.NotNull(second);
+        Assert.Equal(PersistenceFailureKind.RecordInTrash, second.Kind);
+        Assert.Equal(409, second.HttpStatusCode);
+        Assert.Equal(1, await db.Queryable<TestUser>().ClearFilter().CountAsync(ct));
     }
 
     /// <summary>
@@ -715,33 +781,38 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
     }
 
     /// <summary>
-    /// 06 五审 low（P4）：<c>Update</c> 连内存实体也不碰删除四列。那组值没写进库，回写时就不该被改成
-    /// 「另一个也没进库的值」——张一一裁定不回查库，正常路径上从库里加载的实体本来就带着活跃态常量，
-    /// 不碰即一致；只有调用方自己塞了脏值时才不一致，那是调用方的事。
+    /// 06 六审 medium：<c>Update</c> 把内存实体的四个删除列**规范化**为活跃态常量（<c>false / 0 / NULL / 0</c>）。
+    /// 这不是编造数据——写入口的 <c>WHERE IsDeleted=0</c> 已保证目标是活跃行，那四列在库里本来就是这组值；
+    /// 规范化之后实体与库一致，调用方 DTO 带来的旧删除时间也不会跟着响应回去。
     /// </summary>
     [Fact]
-    public async Task UpdateAsync不改动内存实体的删除审计列()
+    public async Task UpdateAsync把内存实体的删除列规范化为活跃态()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var database = await fixture.CreateDatabaseAsync(ct);
         await database.ExecuteAsync(SchemaSql, ct);
         var db = CreateClient(database);
 
-        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "内存不动" }, CreateOptions(), ct);
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "内存规范" }, CreateOptions(), ct);
         var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
 
-        var stale = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
-        loaded.DeletedAt = stale;
+        loaded.DeletedAt = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         loaded.DeletedBy = 5;
 
         Assert.Null(await PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(), ct));
 
-        // 实体上原样保留调用方塞的值，写入口不替它擦（也没往库里写）。
-        Assert.Equal(stale, loaded.DeletedAt);
-        Assert.Equal(5L, loaded.DeletedBy);
+        // 实体上的脏值被规范化为活跃态，与库一致。
         Assert.False(loaded.IsDeleted);
         Assert.Equal(0, loaded.DeletedToken);
+        Assert.Null(loaded.DeletedAt);
+        Assert.Equal(0L, loaded.DeletedBy);
         Assert.Equal(2, loaded.Version);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.False(stored.IsDeleted);
+        Assert.Equal(0, stored.DeletedToken);
+        Assert.Null(stored.DeletedAt);
+        Assert.Equal(0L, stored.DeletedBy);
     }
 
     /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>
