@@ -1,0 +1,37 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[目标态1] Kind=NotInTrash Code=Persistence.Record.NotInTrash msg=这条记录不在回收站，无需恢复。
+[正路] failure=null（成功） 活跃记录=1 IsDeleted=False DeletedToken=0 Version=3
+[新面2] Kind=NotFound Http=404 Code=Persistence.Record.NotFound 别家 IsDeleted=1 TenantId=2
+[行3] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[行1] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录处于删除态，不能用 UpdateAsync 更新：删除态只能经 Persistenc…
+[行5] caught=无异常 msg= ← 09 若只接返回值，这条冒 500
+    Pzd.IntegrationTests.WriteEntryMatrixProbes.行5_RestoreAsync_实体IsDeleted为假_现状抛异常 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(137,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.行5_RestoreAsync_实体IsDeleted为假_现状抛异常()
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(138,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.行5_RestoreAsync_实体IsDeleted为假_现状抛异常()
+        --- End of stack trace from previous location ---
+[文案快照] InTrash      → Persistence.Record.InTrash | 这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[文案快照] NotFound     → Persistence.Record.NotFound | 记录不存在，或不属于当前租户。
+[文案快照] VersionConflict → Persistence.Record.VersionConflict | 记录已被其他操作修改，请刷新后重试。
+[稳定] Kind=VersionConflict Code=Persistence.Record.VersionConflict 库里IsDeleted=1 （库里Version=2，实体拿的是1）
+[行4] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[文案] VersionConflict=记录已被其他操作修改，请刷新后重试。 | InTrash=这条记录已被删除，如需修改请先恢复（RestoreAsync）。 | NotFound=记录不存在，或不属于当前租户。
+[行2] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录仍在回收站里（DeletedToken 不为 0），不能通过 UpdateAsync…
+[行6] Kind=NotInTrash Http=409 Code=Persistence.Record.NotInTrash msg=这条记录不在回收站，无需恢复。 库里IsDeleted=False Version=1
+    Pzd.IntegrationTests.WriteEntryMatrixProbes.行6_RestoreAsync_实体说删而库活跃_返回VersionConflict [FAIL]
+      Assert.Equal() Failure: Values differ
+      Expected: VersionConflict
+      Actual:   NotInTrash
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(169,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.行6_RestoreAsync_实体说删而库活跃_返回VersionConflict()
+        tests\Pzd.IntegrationTests\WriteEntryMatrixProbes.cs(171,0): at Pzd.IntegrationTests.WriteEntryMatrixProbes.行6_RestoreAsync_实体说删而库活跃_返回VersionConflict()
+        --- End of stack trace from previous location ---
+[新面1] Kind=NotFound Http=404 Code=Persistence.Record.NotFound
+[目标态2] caught=无异常 活跃记录=1 ← 09 若走这条，现状会冒 500
+  Finished:    Pzd.IntegrationTests (ID = '4e6686f85b43843ec8008fdf3486c324f26cc77abed82ce64886794d20268da7')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 14, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 11.185s
