@@ -1,0 +1,19 @@
+== 基线 ==
+[M0-baseline] BUILD_EXIT=0
+[M0-baseline] TEST_EXIT=0  Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.640s
+== M-1：Update 的 WHERE 去掉活跃条件（只留恢复的 =1）==
+PATCH_OK
+[M1-no-active-condition] BUILD_EXIT=0
+[M1-no-active-condition] TEST_EXIT=1  Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.686s
+    Pzd.IntegrationTests.PersistenceTests.脱离实体更新已删除记录被拒绝 [FAIL]
+== M-2：affected==0 不分型（IsRecycledAsync 恒 false）==
+PATCH_OK
+[M2-no-classification] BUILD_EXIT=0
+[M2-no-classification] TEST_EXIT=1  Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 12.000s
+    Pzd.IntegrationTests.PersistenceTests.脱离实体更新已删除记录被拒绝 [FAIL]
+== M-3：Update 也回写内存实体的删除四列 ==
+PATCH_OK
+[M3-touch-delete-columns] BUILD_EXIT=0
+[M3-touch-delete-columns] TEST_EXIT=0  Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.705s
+== 复原核对 ==
+?? tests/Pzd.IntegrationTests/AuditRound6Probes.cs

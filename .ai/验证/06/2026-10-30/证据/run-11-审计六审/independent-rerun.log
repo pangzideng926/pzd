@@ -1,0 +1,16 @@
+=== audit-06g HEAD=735de2445c50dc76f37458569f180b6ed7c661f9 ===
+=== 时间 2026-10-30 11:39:58 ===
+
+BUILD_EXIT=0 0 警告 0 错误
+--- PersistenceTests ---
+   Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.629s
+--- 集成全量 ---
+   Pzd.IntegrationTests  Total: 39, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.570s
+--- 单元 ---
+   Pzd.SharedKernel.UnitTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.109s
+--- 架构 ---
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.097s
+--- 探针(9) ---
+   Pzd.IntegrationTests  Total: 9, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.956s
+--- 残库 ---
+0

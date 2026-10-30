@@ -1,0 +1,10 @@
+﻿Q7 别家租户的已删记录：failure=VersionConflict
+Q4 记录不存在：failure=VersionConflict
+Q5 重复软删除：failure=VersionConflict
+Q3 版本被改掉：failure=VersionConflict
+Q9 更新→软删→恢复：restore failure=null；Version=4 IsDeleted=0 DeletedToken=0 DeletedAt为NULL=1 UserName=正路-改
+Q2 更新后：failure=null；库里 DeletedAt为NULL=1 DeletedBy=0 IsDeleted=0 Version=2
+Q2 更新后：内存 DeletedAt=2020-01-02T03:04:05.0000000Z、DeletedBy=5、Version=2
+Q1 脱离实体更新已删除记录：抛 System.InvalidOperationException；库里 IsDeleted=1 UserName=脱离 Version=2
+Q8 无租户上下文：抛 System.InvalidOperationException
+Q6 恢复版本冲突：failure=VersionConflict

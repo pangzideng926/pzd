@@ -1,0 +1,15 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.PersistenceTests.UpdateAsync不改动任何删除审计列 [FAIL]
+      Assert.Null() Failure: Value of type 'Nullable<DateTime>' has a value
+      Expected: null
+      Actual:   2020-01-02T03:04:05.0000000
+      Stack Trace:
+        E:\pzd\.worktree\audit-06g\tests\Pzd.IntegrationTests\PersistenceTests.cs(712,0): at Pzd.IntegrationTests.PersistenceTests.UpdateAsync不改动任何删除审计列()
+        E:\pzd\.worktree\audit-06g\tests\Pzd.IntegrationTests\PersistenceTests.cs(714,0): at Pzd.IntegrationTests.PersistenceTests.UpdateAsync不改动任何删除审计列()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = '15ddf2b5a42559f55ee35aa1a1b3da1b5c34f32dd49673c0332b6ad4422bbaa6')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 31, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.660s
