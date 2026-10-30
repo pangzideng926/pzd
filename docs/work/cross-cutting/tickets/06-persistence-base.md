@@ -122,7 +122,8 @@ dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests
 - 认领提交：`555a817596d214d19e6ad7099f1a906a3ca89be7`
 - 首次实现：`91dabf438b9dcde3ca26b6231e1daeb042b81163`（审计 run-03 结论「需修改」）
 - 首轮返工：`213753a79dab06b0b3fcfa0cc38d76d2681a9e4c`
-- 审计返工第二轮（被测 SHA）：`dddcb5806a884ffabe9ad225665122ac1026de11`（代码、决策笔记与票面在同一个提交，`Bot分工 §6`）
+- 第二轮返工：`dddcb5806a884ffabe9ad225665122ac1026de11`
+- 审计返工第三轮（被测 SHA）：`21ce52f4097b8ad79875d7c5f794d5c032ebab3f`（代码、决策笔记与票面在同一个提交，`Bot分工 §6`）
 
 **3. 验证**（命令、真实退出码、关键输出行，原样粘贴）
 
