@@ -1,0 +1,44 @@
+=== 基线 ===
+  BUILD_EXIT=0
+  exit=0 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.117s
+=== M1 去掉租户谓词 ===
+  BUILD_EXIT=0
+  exit=1 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.222s
+M1 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.乙租户拿着同Id和版本也改不到甲租户的记录 [FAIL]
+=== M2 创建审计回到 SET ===
+  BUILD_EXIT=0
+  exit=1 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.254s
+M2 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.分离实体更新不抹掉创建审计 [FAIL]
+=== M3 不拦 DeleteByObject ===
+  BUILD_EXIT=0
+  exit=1 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.211s
+M3 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.物理删除被拒绝不让回收站失效 [FAIL]
+=== M4 软删除不写 DeletedAt/DeletedBy ===
+  BUILD_EXIT=0
+  exit=1 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.157s
+M4 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.软删除入口写全四列且同名可重建 [FAIL]
+=== M5 冲突前就落实体 ===
+  BUILD_EXIT=0
+  exit=1 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.138s
+M5 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.版本冲突时内存实体不被改写 [FAIL]
+=== M6 忽略 worker 配置 ===
+  BUILD_EXIT=1
+E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\PersistenceIdentity.cs(22,39): error CS0103: 当前上下文中不存在名称“workerId” [E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj]
+E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\PersistenceIdentity.cs(22,49): error CS0103: 当前上下文中不存在名称“datacenterId” [E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj]
+E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\PersistenceIdentity.cs(22,13): error CS0162: 检测到无法访问的代码 [E:\pzd\.worktree\audit-06b\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj]
+  ！！构建失败，变异结果不可用
+M6 判定: 红 ✅
+Pzd.IntegrationTests.PersistenceTests.版本冲突时内存实体不被改写 [FAIL]
+=== M7 ComputeUpdateStamp 传 deleting ===
+  BUILD_EXIT=0
+  exit=0 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.088s
+M7 判定: 绿 ❌（用例没抓住）
+=== 还原复核 ===
+  BUILD_EXIT=0
+  exit=0 |    Pzd.IntegrationTests  Total: 18, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.144s
+?? tests/Pzd.IntegrationTests/AuditProbeTests.cs

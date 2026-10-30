@@ -1,0 +1,6 @@
+﻿Q2 删除后同名重建成功，活跃记录数=1
+Q2 恢复 failure=null；同名活跃记录数=2；恢复后 DeletedToken=2115992297291255808
+Q3 上下文租户=1，插入实体 TenantId=2 → 库里 TenantId=2
+Q3 实体未填租户 → 库里 TenantId=0
+Q1 UpdateAsync(IsDeleted=true) failure=null DeletedToken=2115992298666987520 DeletedBy=0 DeletedAt为NULL=True
+Q1 同名重建=成功

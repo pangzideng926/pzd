@@ -1,0 +1,44 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[P2] caught=无异常 rows=1 TenantId=2 CurrentTenantId=1
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针2_插入到别的租户不应当成功 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(91,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针2_插入到别的租户不应当成功()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(92,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针2_插入到别的租户不应当成功()
+        --- End of stack trace from previous location ---
+[P5] caught=无异常 TenantId=2 UserName=乙租户改写 Version=1（调用前 1）CreatedBy=0
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5_直连Updateable不应当跨租户按Id更新 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(208,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5_直连Updateable不应当跨租户按Id更新()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(210,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针5_直连Updateable不应当跨租户按Id更新()
+        --- End of stack trace from previous location ---
+[P1] caught=无异常 rows=1 TenantId=0 CurrentTenantId=null
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针1_无租户上下文插入不应当成功 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(62,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针1_无租户上下文插入不应当成功()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(63,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针1_无租户上下文插入不应当成功()
+        --- End of stack trace from previous location ---
+[P3] restoreFailure=null DeletedToken=2115993763838038016 DeletedBy=7 DeletedAt残留=1 同名重建=成功 活跃同名记录=2
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针3_回收站恢复后删除痕迹应当清干净 [FAIL]
+      Assert.Equal() Failure: Values differ
+      Expected: 0
+      Actual:   2115993763838038016
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(137,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针3_回收站恢复后删除痕迹应当清干净()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(141,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针3_回收站恢复后删除痕迹应当清干净()
+        --- End of stack trace from previous location ---
+[P4] caught=无异常 物理行数=0 逻辑行数=0
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(173,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(174,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = '10c9fa6432747b1d70f673da35243eb716ab433e7e76853ca5c707c5a1768cc0')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 5, Errors: 0, Failed: 5, Skipped: 0, Not Run: 0, Time: 10.809s
