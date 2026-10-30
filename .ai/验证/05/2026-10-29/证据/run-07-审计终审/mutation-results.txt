@@ -1,0 +1,36 @@
+# 05 号票 审计终审 变异验证（老登亲手压）
+# 被测代码：6470e7041c741a55ec6ee64b0b9906fe688aa892
+# 说明：本次 src/ 有 8 行改动（只读视图缓存 + protected 无参构造），故五处变异全部重压，含首轮 M1/M2 防回退
+
+[基线] build_exit=0 | 全量 exit=0 | Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.111s
+
+=== M1 删掉 ValueObject.Equals 的类型守卫 ===
+  build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.114s
+  目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.112s
+  判定: ✔ 变红，红在这条
+
+=== M2 给 Money.Currency 加 public set ===
+  build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+  目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.112s
+  判定: ✔ 变红，红在这条
+
+=== M3 DomainEvents 改回直接吐内部 List（绕过缓存与只读） ===
+  build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.128s
+  目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.111s
+  判定: ✔ 变红，红在这条
+
+=== M4 给 Order.Number 加 public set ===
+  build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.121s
+  目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.108s
+  判定: ✔ 变红，红在这条
+
+=== M5 给 Result<T>.Success 加 ThrowIfNull ===
+  build_exit=0 | 全量 exit=1 | Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.117s
+  目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.108s
+  判定: ✔ 变红，红在这条
+
+=== 还原后（含重新构建）===
+  git status 非空行数=0
+  build_exit=0 | 全量 exit=0 | Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.112s
+
+结论：五处变异全部被抓，还原并重构建后 33/33 绿、工作树无残留。

@@ -1,0 +1,82 @@
+# 05 号票 审计复审 —— 独立重跑日志（审计 Bot：老登）
+# 生成时间：2026-10-29 22:08:42 +0800
+# 被测代码 SHA：e0cf96fdd01fdb43dce6a3cd547d5b1540bf4b8e
+# 分支顶端：7a9bc89（与 e0cf96f 相比 src/tests 零差异，仅票面文档）
+# 方式：一次性 worktree .worktree/audit-05c，未采信实现方与测试方日志
+
+== [1] 干净 worktree ==
+$ git rev-parse HEAD -> e0cf96fdd01fdb43dce6a3cd547d5b1540bf4b8e
+$ git status --porcelain -> 非空行数 0
+
+== [2] 构建 ==
+$ dotnet build Pzd.slnx
+  BUILD_EXIT=0
+
+== [3] 直跑测试产物（等价 dotnet test，dontet test 本体受环境限制见 [4]）==
+$ ./tests/Pzd.SharedKernel.UnitTests/bin/Debug/net10.0/Pzd.SharedKernel.UnitTests.exe
+     Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.118s
+  TEST_EXIT=0
+
+== [4] dotnet test 本体（环境性 0 tests，按票面四项记「未运行」）==
+$ dotnet test tests/Pzd.SharedKernel.UnitTests
+  ������������: Unhandled exception. System.UnauthorizedAccessException: Access to the path is denied.
+  at System.IO.Pipes.NamedPipeClientStream.TryConnect(Int32 timeout)
+  at System.IO.Pipes.NamedPipeClientStream.ConnectInternal(Int32 timeout, CancellationToken cancellationToken, Int32 startTime)
+  at Microsoft.Testing.Platform.IPC.NamedPipeClient.ConnectAsync(CancellationToken cancellationToken)
+  DOTNET_TEST_EXIT=3762504530   (Git Bash 语义：127)
+  ① 错误原文与真实退出码：见上，System.UnauthorizedAccessException / NamedPipeClientStream.TryConnect，退出码 127
+  ② 替代执行结果：直跑测试 exe，Total: 32, Failed: 0，退出码 0（见 [3]）
+  ③ dotnet test 本体未运行，需在无管道限制环境（或 04 号票 CI）补跑一次
+  ④ 剩余风险：--filter 入口在本机无效，只能直跑 exe 等价替代
+
+== [5] 四处变异（审计亲手压；M1/M2 为上轮同一变异的重跑，用于防回退）==
+  明细与判定见同目录 mutation-results.txt
+  # 判定方式：变异后全量跑 + 目标用例单跑(-method)，单跑非 0 退出即证「红的正是这条」
+  [基线] 全量: exit=0 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.113s
+  === M1 删掉 ValueObject.Equals 的类型守卫 ===
+    全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.120s
+    目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.110s
+    判定: ✔ 变红，红在这条
+  === M2 给 Money.Currency 加 public set ===
+    全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.121s
+    目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.114s
+    判定: ✔ 变红，红在这条
+  === M3 DomainEvents 改回直接吐内部 List ===
+    全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.124s
+    目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.111s
+    判定: ✔ 变红，红在这条
+  === M4 给 Order.Number 加 public set ===
+    全量: exit=1 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.122s
+    目标用例单跑: exit=1 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.109s
+    判定: ✔ 变红，红在这条
+  === 还原后 ===
+    git status 非空行数=0
+    build_exit=0 | 全量: exit=0 | Pzd.SharedKernel.UnitTests  Total: 32, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.113s
+    还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.101s
+    还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.099s
+    还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.098s
+    还原后单跑 exit=0 | Pzd.SharedKernel.UnitTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.098s
+
+== [6] 编译器探测：按票面公告写代码，三种禁用写法是否真编译失败 ==
+$ dotnet build .tmp/2026-10-29-audit05-rerun/probe/Probe.csproj       # ProjectReference 指向 audit-05c 的 SharedKernel
+  CS0200
+  CS0411
+  CS1739
+  CS8129
+  CS8130
+  PROBE_EXIT=1
+  解读：CS1739=命名参数 Code/Message 不可用；CS0200=不能用 with 改 Message；CS8129/CS0411=无 Deconstruct。
+  注意：Probe.cs 里 `e with { }`（空初始化器）未报错 —— 它可编译，故公告「不支持 with」措辞不精确。
+
+== [7] with 语义对照：校验写在哪决定能否被 with 绕过 ==
+$ dotnet run --project .tmp/2026-10-29-audit05-rerun/probe2/withprobe.csproj
+  A ������������������������ / ������������ => ������: A { Raw = 合法码, Code = 合法码 }
+  A ������������������������ / with ��� Code => ������: A { Raw = 合法码, Code = ������ }
+  B init ��������������� / ������������ => ������: B { Raw = 合法码, Code =  }
+  B init ��������������� / with ��� Code => ��� ArgumentException: ������������������������������
+  C ��������� / with ��� Code => ������: C { Code = ������ }
+  RUN_EXIT=0
+
+== [8] 结论 ==
+  代码侧：构建 0 警告 0 错误；直跑 32/32 全绿；四处变异全部被抓且还原后无残留；工作树干净。
+  文档侧：票面公告三处 with 措辞与实测不符（详见 结论.md 第 1 条），须在合入前修正。

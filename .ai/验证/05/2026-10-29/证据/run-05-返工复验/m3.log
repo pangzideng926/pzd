@@ -1,0 +1,2 @@
+Total: 32, Errors: 0, Failed: 1
+    Pzd.SharedKernel.UnitTests.AggregateRootTests.领域事件集合不能被调用方强转后增删 [FAIL]

@@ -39,6 +39,14 @@ M2 的任务是**把这些答案一次性定型到共享层**，让后续模块�
 - 依赖方向：`Pzd.Api → Pzd.<Module> → Pzd.SharedKernel / Pzd.Infrastructure`；模块之间只允许引用对方的 `.Contracts`；`Domain/` 禁止引用 SqlSugar、ASP.NET Core、Infrastructure 和其他模块（§3.2）。
 - 聚合状态只通过方法变更、属性 `private set`；仓储接口在 `Domain/`，按聚合整体加载保存；业务失败返回 `Result`，不抛异常。
 
+**两条已定的契约细节（2026-10-29，改这里就是改契约）**
+
+1. **`Result<T>` 的成功值允许 `null`**（引用类型）。骨架层**不加** `ThrowIfNull`，也不把「成功即非空」写进约定；需要非空约束的调用方自己校验并返回失败。理由：骨架票不引入过强约定，但必须写明并用一条用例钉住（`Result<string>.Success(null!)` → `IsSuccess == true`、不抛异常），否则 06 之后每个调用方各猜一套。
+2. **`with` 与校验的关系（措辞模板，照抄不要自创）**：record 主构造的参数校验只在构造那一次生效；`with` 走复制构造、**不重跑属性初始化器**，所以校验写在属性初始化器里会被 `with` 绕过。要让 `with` 也受约束，校验必须放进 `init` 访问器（写法更绕、属性也不再是纯只读）。综合成本，本层选**显式构造 + get-only 属性**：校验写一次，`with` 直接编译不过。
+   - **禁止**把它简写成「record 天生不安全」或「改成 record 主构造 + init 属性就会绕过校验」——那是把三种写法混成一句，会让后来人误以为「静态工厂 + 无校验 init」是安全的。34 号票写 `CLAUDE.md` 时必须照上面这段。
+
+**冻结签名块的作用域（2026-10-29，回答 05 审计遗留 low 1）**：05 票里的「冻结签名块」**只列下游必须照抄的成员与继承契约**（`Entity`/`AggregateRoot` 的成员、`protected` 构造、事件视图的实例语义），**不追求 API 完整快照**——例如 `ValueObject` 的 `Equals(ValueObject?)`、`GetHashCode()` 属于 `IEquatable<ValueObject>` 的公开成员，下游派生时无需显式知道，因此不在块内，补它反而要重开一轮审计。哪天 06 或 13 真正碰到这两处，一并补进块里。
+
 **持久化**
 - 映射全部集中在 Infrastructure（`EntityService`）；Domain 中禁止 `[SugarColumn]`，由架构测试检查。
 - 主键雪花 `long`，对外字符串；`CreatedBy/At`、`UpdatedBy/At` 由 AOP 填充；`IsDeleted` + 全局 `QueryFilter`；`Version` 乐观并发冲突 → 409；MySQL 1062 唯一键 → 409。
