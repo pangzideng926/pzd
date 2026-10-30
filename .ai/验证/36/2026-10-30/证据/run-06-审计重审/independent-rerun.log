@@ -1,0 +1,41 @@
+== [3a] 全量（容器优先探测后回落外部真库）==
+FULL_EXIT=0  ELAPSED=11s
+   Pzd.IntegrationTests  Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.375s
+
+== [3b] 单用例精确选择（防 0 用例假绿）==
+SINGLE_EXIT=0     Pzd.IntegrationTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.368s
+
+== [3c] 护栏用例精确单跑 ==
+  exit=0     Pzd.IntegrationTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.331s
+  exit=0     Pzd.IntegrationTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.335s
+
+== [3d] 跑完后服务端残库（fixture 自清）==
+REMAINING_TEST_DATABASES=0
+== [1] HEAD / 工作树 ==
+8c4033b613518103952e5526596e24a40edc21eb
+0
+
+== [2] 构建 ==
+已成功生成。
+    0 个警告
+    0 个错误
+BUILD_EXIT=0
+
+== [3] 全量（容器优先探测约 10s 后回落外部真库）==
+FULL_EXIT=127
+
+== [4] 反向：错口令必须红在外部连接、不许回落容器 ==
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+WRONG_PW_EXIT=1
+
+== [5] 容器指引：无外部串 + 无 Docker，必须出现中文指引 ==
+      ---- System.InvalidOperationException : 容器不可用（镜像 mysql:8.4）：Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.。请安装并启动 Docker，或设置环境变量 PZD_TEST_MYSQL_CONNECTION（或写入仓库根 .local/mysql-test-connection.txt）指向一个能建库的真 MySQL。
+      ---- System.InvalidOperationException : 容器不可用（镜像 mysql:8.4）：Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.。请安装并启动 Docker，或设置环境变量 PZD_TEST_MYSQL_CONNECTION（或写入仓库根 .local/mysql-test-connection.txt）指向一个能建库的真 MySQL。
+      ---- System.InvalidOperationException : 容器不可用（镜像 mysql:8.4）：Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+          Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.。请安装并启动 Docker，或设置环境变量 PZD_TEST_MYSQL_CONNECTION（或写入仓库根 .local/mysql-test-connection.txt）指向一个能建库的真 MySQL。
+NO_SOURCE_EXIT=1

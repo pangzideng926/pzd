@@ -1,0 +1,26 @@
+# 36 号票 审计重审 变异验证（老登亲手压，被测代码 8c4033b）
+# 判定：变异后跑目标用例（-method 精确选择），非 0 退出即证「红的正是这条」
+
+[基线] build_exit=0 | 全量 exit=0 | Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.391s
+
+=== M1 摘掉 DropDatabaseAsync 里的护栏调用 ===
+  build_exit=0 | 目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.352s
+  判定: ✔ 变红，用例守得住
+
+=== M2 让前缀校验恒真 ===
+  build_exit=0 | 目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.313s
+  判定: ✔ 变红，用例守得住
+
+=== M3 ChooseSource 改成外部优先（回退到审计指出的 AC-04 偏离） ===
+  build_exit=0 | 目标用例单跑 exit=1 | Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.308s
+  判定: ✔ 变红，用例守得住
+
+=== M4 把 Build() 挪回 try 外（high 那条的回退）===
+  build_exit=0 | 全量 exit=1
+  中文指引是否出现: False
+  Testcontainers 原始异常是否直出: True
+  判定: ✔ 退化被实跑抓到（中文指引消失）
+
+=== 还原后（重新构建）===
+  git status 非空行数=0
+  build_exit=0 | 全量 exit=0 | Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.379s
