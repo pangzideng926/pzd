@@ -1,0 +1,22 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.PersistenceWritePathProbes.更新不得把整行搬到别的租户 [FAIL]
+      跨租户更新应当被拒绝，但调用返回了成功
+      Stack Trace:
+        tests\Pzd.IntegrationTests\PersistenceWritePathProbes.cs(73,0): at Pzd.IntegrationTests.PersistenceWritePathProbes.更新不得把整行搬到别的租户()
+        tests\Pzd.IntegrationTests\PersistenceWritePathProbes.cs(74,0): at Pzd.IntegrationTests.PersistenceWritePathProbes.更新不得把整行搬到别的租户()
+        --- End of stack trace from previous location ---
+    Pzd.IntegrationTests.PersistenceWritePathProbes.分离实体更新不得抹掉创建审计字段 [FAIL]
+      Assert.Equal() Failure: Values differ
+      Expected: 7
+      Actual:   0
+      Stack Trace:
+        tests\Pzd.IntegrationTests\PersistenceWritePathProbes.cs(51,0): at Pzd.IntegrationTests.PersistenceWritePathProbes.分离实体更新不得抹掉创建审计字段()
+        tests\Pzd.IntegrationTests\PersistenceWritePathProbes.cs(52,0): at Pzd.IntegrationTests.PersistenceWritePathProbes.分离实体更新不得抹掉创建审计字段()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = 'dde3cd873a76798228cdbef4336a52a38006bc91eb28f55e0dc2fc74dd1cadea')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 2, Errors: 0, Failed: 2, Skipped: 0, Not Run: 0, Time: 10.584s
+EXIT=1

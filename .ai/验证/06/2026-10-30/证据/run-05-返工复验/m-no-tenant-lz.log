@@ -1,0 +1,14 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.LzWriteProbes.乙租户改不到甲租户的记录且租户归属不变 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\__lzprobe.cs(49,0): at Pzd.IntegrationTests.LzWriteProbes.乙租户改不到甲租户的记录且租户归属不变()
+        tests\Pzd.IntegrationTests\__lzprobe.cs(51,0): at Pzd.IntegrationTests.LzWriteProbes.乙租户改不到甲租户的记录且租户归属不变()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = '10c9fa6432747b1d70f673da35243eb716ab433e7e76853ca5c707c5a1768cc0')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 4, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.607s
+LZ_EXIT=1
