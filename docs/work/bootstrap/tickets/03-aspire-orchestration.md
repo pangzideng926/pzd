@@ -227,6 +227,26 @@ $ External__MySql="Server=…;Database=pzd_master;User ID=pzd_dev;…" dotnet ru
 
 同时把分支合并到 main（`12b543f`）：冲突只在 `Pzd.slnx`，两边各加一个项目，都保留。合并后 `dotnet build Pzd.slnx` 0 警告 0 错误，`Pzd.SharedKernel.UnitTests` 直跑 `Total: 33, Failed: 0`。
 
+### `pzd_master` 里那 15 张 Quartz 表的来历（给 17 号票与接手人）
+
+**不是本票建的，本票也没动它们。** 事实如下：
+
+- 15 张表，`CREATE_TIME` 全是 `2026-10-27 17:46:45`，`SCHED_NAME = pzd`，属清空前那版实现（`d34cf66`）的 Quartz.NET 调度器 schema
+- **没有活着的调度器在连**：`qrtz_scheduler_state` 只有一行（`INSTANCE_NAME=AUTO`，`CHECKIN_INTERVAL=7500` 毫秒），`LAST_CHECKIN_TIME` 距今约 48 小时
+- **`qrtz_locks` 仍压着 `STATE_ACCESS`、`TRIGGER_ACCESS` 两行**，是进程被打断后留下的锁记录
+
+**一个会误导判断的坑：这些时间字段是 .NET ticks（100 纳秒），不是 Unix 时间戳。** 用 `FROM_UNIXTIME(...)` 查只会得到 `NULL`，很容易被读成「字段为空 / 触发器是半死状态」。正确换算是 `ticks / 10^7 - 62135596800` 得到 Unix 秒：
+
+| 字段 | 原始值（ticks） | UTC | 本地（+08:00） |
+|---|---|---|---|
+| `qrtz_scheduler_state.LAST_CHECKIN_TIME` | `639287464167601504` | 2026-10-28 01:06:56 | 2026-10-28 09:06:56 |
+| `qrtz_triggers.PREV_FIRE_TIME`（`heartbeat` / `pzd`） | `639287464200000000` | 2026-10-28 01:07:00 | 2026-10-28 09:07:00 |
+| `qrtz_triggers.NEXT_FIRE_TIME`（同上） | `639287464800000000` | 2026-10-28 01:08:00 | 2026-10-28 09:08:00 |
+
+所以那条 `heartbeat` 触发器**不是**「WAITING 却没有下次触发时间」：它上一次 09:07:00、下一次 09:08:00，是 1 分钟间隔的正常心跳，只是进程在 09:06:56 之后没再跑过。
+
+处置不属本票：老何已单开票处理这 15 张旧表，17 号票照那张票的前置执行。本票只留上面这些事实，免得接手人凭空猜。
+
 ### 授权比脚本声明的宽（安全提示，只报事实）
 
 ```text
