@@ -1,0 +1,23 @@
+== 基线 ==
+[M0-baseline] BUILD_EXIT=0
+[M0-baseline] TEST_EXIT=0  Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.705s
+== M-A：三态不分型（一律当成活跃行）==
+PATCH_OK
+[MA-no-classification] BUILD_EXIT=0
+[MA-no-classification] TEST_EXIT=1  Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 4, Skipped: 0, Not Run: 0, Time: 11.665s
+    Pzd.IntegrationTests.PersistenceTests.乙租户拿着同Id和版本也改不到甲租户的记录 [FAIL]
+    Pzd.IntegrationTests.PersistenceTests.脱离实体更新已删除记录返回回收站错误 [FAIL]
+    Pzd.IntegrationTests.PersistenceTests.更新不存在或非本租户的记录返回未找到 [FAIL]
+    Pzd.IntegrationTests.PersistenceTests.重复软删除返回回收站错误 [FAIL]
+== M-B：只对 Update 分型（SoftDelete 回落版本冲突）==
+PATCH_OK
+[MB-update-only] BUILD_EXIT=0
+[MB-update-only] TEST_EXIT=1  Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.877s
+    Pzd.IntegrationTests.PersistenceTests.重复软删除返回回收站错误 [FAIL]
+== M-C：Update 不规范化（stamp 退回按实体原值算）==
+PATCH_OK
+[MC-no-normalize] BUILD_EXIT=0
+[MC-no-normalize] TEST_EXIT=1  Pzd.IntegrationTests  Total: 33, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 11.731s
+    Pzd.IntegrationTests.PersistenceTests.UpdateAsync把内存实体的删除列规范化为活跃态 [FAIL]
+== 复原核对 ==
+?? tests/Pzd.IntegrationTests/AuditRound7Probes.cs

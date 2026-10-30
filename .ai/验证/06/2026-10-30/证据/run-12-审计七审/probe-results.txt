@@ -1,0 +1,12 @@
+﻿R5 重复软删除：RecordInTrash/409/Persistence.Record.InTrash
+R10 恢复撞唯一键：DuplicateKey/409/Persistence.Record.DuplicateKey；活跃记录数=1
+R6 恢复时版本被改掉：VersionConflict/409/Persistence.Record.VersionConflict
+R2 更新不存在记录：NotFound/404/Persistence.Record.NotFound
+R2 软删除不存在记录：NotFound/404/Persistence.Record.NotFound
+R3 更新别家租户的行：NotFound/404/Persistence.Record.NotFound；别家那行 TenantId=2 UserName=别家 Version=3
+R9 更新=null（成功） 软删=null（成功） 恢复=null（成功）；Version=4 IsDeleted=0 DeletedToken=0 DeletedAt为NULL=1 DeletedBy=0 UserName=正路-改
+R4 版本被改掉：VersionConflict/409/Persistence.Record.VersionConflict；内存 Version=1
+R7 恢复一条活跃行：VersionConflict/409/Persistence.Record.VersionConflict；库里 IsDeleted=0 Version=1
+R1 更新回收站记录：RecordInTrash/409/Persistence.Record.InTrash；文案含 RestoreAsync=True；库里 IsDeleted=1 UserName=回收站 Version=2
+R8 更新后：null（成功）；库里 IsDeleted=0 DeletedToken=0 DeletedAt为NULL=1 DeletedBy=0 Version=2
+R8 更新后：内存 IsDeleted=False、DeletedToken=0、DeletedAt=NULL、DeletedBy=0、Version=2

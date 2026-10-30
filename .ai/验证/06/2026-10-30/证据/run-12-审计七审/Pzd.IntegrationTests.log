@@ -1,0 +1,7 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+  Finished:    Pzd.IntegrationTests (ID = '3962f31713c0cb3cf07a4d0913bd57fe7f9e1ebc6a4080349f97dafb8aab7a4f')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 41, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 11.842s
