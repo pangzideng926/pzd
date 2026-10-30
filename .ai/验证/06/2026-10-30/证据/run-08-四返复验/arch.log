@@ -1,0 +1,7 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.ArchitectureTests
+  Discovered:  Pzd.ArchitectureTests
+  Starting:    Pzd.ArchitectureTests
+  Finished:    Pzd.ArchitectureTests (ID = '7f5e082de6760e61f623729fb52a54fe2d74902c58eadeaef66f0a85aa051b4c')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.ArchitectureTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.101s

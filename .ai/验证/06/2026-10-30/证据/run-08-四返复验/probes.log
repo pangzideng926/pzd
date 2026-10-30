@@ -1,0 +1,22 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[P4] caught=无异常 物理行数=0
+    Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦 [FAIL]
+      Assert.NotNull() Failure: Value is null
+      Stack Trace:
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(148,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        tests\Pzd.IntegrationTests\WritePathBlindSpotProbes.cs(149,0): at Pzd.IntegrationTests.WritePathBlindSpotProbes.探针4_不带实体的条件删除也应当被拦()
+        --- End of stack trace from previous location ---
+[P5b] caught=InvalidOperationException TenantId=1 UserName=版本漏填 Version=1
+[P1] caught=InvalidOperationException rows=0 CurrentTenantId=null
+[P5a] Version填的是1 caught=InvalidOperationException TenantId=1 UserName=甲租户 Version=1 CreatedBy=7
+[P2] caught=InvalidOperationException rows=0 CurrentTenantId=1
+[P5c] 旁路被拒后 TenantId=1 UserName=并发甲 CreatedBy=7 Version=1
+[P5c] A的更新=成功（无他人改动，应成功）
+[P3] restoreFailure=null DeletedToken=0 DeletedBy=0 DeletedAt残留=0 活跃记录=1
+[P6] misuseCaught=InvalidOperationException DeletedToken=2116001728330600448 活跃记录=0
+  Finished:    Pzd.IntegrationTests (ID = '4f000d2a311efe089bb251eed4e60275d93d341f820ab8b070d50ccc755c2067')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 8, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 10.897s
