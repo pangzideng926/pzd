@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    集成测试载体（36 号票）：只引测试框架与数据库驱动，绝不引用任何 Pzd.* 项目。
-    fixture 的公开契约只有「建一个独立库、给出连接串、用完销毁」，业务断言由 06 及后续票追加。
+    集成测试工程：36 号票建立载体（fixture），06 号票起在本工程追加业务断言，
+    因此从 06 起引用 Pzd.Infrastructure。36 原有「绝不引用任何 Pzd.* 项目」只适用于
+    fixture 载体本身（Fixtures/** 仍然不依赖任何 Pzd.* 项目），测试用例可以有依赖。
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -17,6 +18,10 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="MySqlConnector" />
     <PackageReference Include="Testcontainers.MySql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pzd.Infrastructure\Pzd.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
