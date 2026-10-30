@@ -239,8 +239,9 @@ $ ./Pzd.IntegrationTests.exe -class "Pzd.IntegrationTests.SmokeTests" -method ".
 - R1 红灯提交（初版）：`dfb5bfbda61280f4d5b7d68a9650ce4fb0cf1953`
 - R2 绿灯回填提交：`8ca97a9dcc0cb012aa83df8cd9f5dea233f06ae7`
 - 合并 `origin/main`：`cb8b2fe`（落后 13 个提交，`.gitignore`/`Pzd.slnx` 取并集）
-- **审计返工代码提交（本次送审对象）**：`8c4033b613518103952e5526596e24a40edc21eb`
-- 票面返工记录提交：本文件所在提交（其父提交即上一条，按 `git log -2 --format=%H` 核对）
+- **审计返工代码提交（送审对象）**：`8c4033b613518103952e5526596e24a40edc21eb`
+- 票面返工记录提交：`698ea6b2b8b8eba8cb48dbd4aad8ba223ff445fd`
+- 审计通过后再次合并 `origin/main`：`98a3c1752b08f5f38683985cbb0dbd900602c0a9`（落后 4 个提交，**无冲突**；`git diff 698ea6b HEAD -- tests Directory.Packages.props Pzd.slnx` 空输出，合并后重跑 `Total: 8, Errors: 0, Failed: 0` 退出 0）
 
 ## 交接：实现 → 审计（老登，返工后第二轮）
 
@@ -253,3 +254,14 @@ $ ./Pzd.IntegrationTests.exe -class "Pzd.IntegrationTests.SmokeTests" -method ".
    - `dotnet test` 本体仍受沙箱限制未运行（`Access denied` + 命名管道，`总计: 0`），需无管道限制环境补跑一次。
    - **fixture 形态已定**：程序集级 `AssemblyFixture`（张一一、老何 2026-10-30 确认），`IClassFixture` 明确排除；同时钉住「共享实例不等于共享库」，每用例仍独立库。若日后要改为 collection fixture，只动 `AssemblyFixtures.cs` 与各测试类声明，不动 fixture 本体。
    - 本机 `pzd_master` 里仍有 15 张 `qrtz_*` 旧表（不是本票产物），17 号票迁移前需要先定处理方式。
+
+## 遗留（不阻塞合入；后续票引用本票时从这里取，不必翻正文）
+
+| # | 事项 | 谁 | 触发时机 |
+|---|---|---|---|
+| 1 | 容器分支（`mysql:8.4`）从未在本机运行，AC 第 4/5 条未勾，版本一致性未验证 | 有 Docker 的环境 | 首次在有 Docker 的机器上跑集成测试时 |
+| 2 | `dotnet test` 本体受沙箱限制未运行（`Access denied` + 命名管道，`总计: 0`），本票结论均来自直跑 exe | 无管道限制环境 | 合入后首次在普通终端跑 CI/本地全量时 |
+| 3 | 无 Docker 的机器每次多付约 10 秒容器探测；提速需先改 AC-04，不许反转优先级 | 后续票认领人 | 觉得慢的时候 |
+| 4 | `ChooseSource` 抛出的指引文案有双句号（`…engine'.` 拼 `。请安装` → `'.。请安装`），建议 `TrimEnd('.')` | 触碰 fixture 的人 | 下一次改 `MySqlServerFixture` 时（含修第 5 条） |
+| 5 | `TestDatabase` 构造是 `public`，护栏只加在 `DropDatabaseAsync` 上；收紧成 `internal` 更严（同程序集内测试仍可调） | 触碰 fixture 的人 | 同上 |
+| 6 | `pzd_master` 有 15 张 `qrtz_*` 旧表（`d34cf66` 遗物），不属本票范围 | 37 号票 | 已在 37 处理 |
