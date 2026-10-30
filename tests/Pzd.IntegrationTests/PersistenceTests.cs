@@ -319,8 +319,9 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
         var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
 
         // 这条写法原来是「最能绕过软删除约定」的一条：SetColumns 只写 IsDeleted，不写 DeletedToken，
-        // 随后同名重建会撞 1062。现在它被 AOP 的版本校验一并挡在门外——不带版本条件的 Updateable
-        // 连 Version 都是 0，直接拒绝。用例的价值因此变成：证明这条旁路也走不通（06 重审 high 4）。
+        // 随后同名重建会撞 1062。现在它被 AOP 对 UpdateByObject 的无条件拒绝挡在门外，跟 Version
+        // 填不填无关——这里显式写了 Version = 1，同样被拒（06 重审 high 4、06 四审 low 2）。
+        // 用例的价值因此变成：证明这条旁路也走不通。
         var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
             async () => await db.Updateable<TestUser>()
                 .SetColumns(it => new TestUser { IsDeleted = true, Version = 1 })
@@ -398,7 +399,7 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
     // ---- 审计 run-04 重审：medium 1 / 2 / 3 与 low 1 ----
 
     [Fact]
-    public async Task UpdateAsync带IsDeleted时也写全删除审计()
+    public async Task UpdateAsync带IsDeleted时被拒绝()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var database = await fixture.CreateDatabaseAsync(ct);
@@ -407,18 +408,20 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
 
         await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "走更新删" }, CreateOptions(), ct);
         var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
-        var before = DateTime.UtcNow;
 
+        // 删除态的翻转只由 SoftDeleteAsync / RestoreAsync 负责。Update 顺带写 IsDeleted 的话，
+        // 既可造出「删除态但 DeletedToken=0」的幽灵行，也会把回收站的删除审计刷成当前时间
+        // （06 四审 medium 2）。
         loaded.IsDeleted = true;
-        var failure = await PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(), ct);
-        Assert.Null(failure);
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(), ct));
 
-        var purged = (await db.Queryable<TestUser>().ClearFilter().ToListAsync(ct)).Single();
-        Assert.True(purged.IsDeleted);
-        Assert.Equal(purged.Id, purged.DeletedToken);
-        Assert.Equal(CurrentUser, purged.DeletedBy);
-        Assert.NotNull(purged.DeletedAt);
-        Assert.InRange(purged.DeletedAt!.Value, before.AddSeconds(-1), DateTime.UtcNow.AddSeconds(1));
+        Assert.Contains("SoftDeleteAsync", exception.Message, StringComparison.Ordinal);
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.False(stored.IsDeleted);
+        Assert.Equal(0, stored.DeletedToken);
+        Assert.Equal(1, stored.Version);
     }
 
     [Fact]
@@ -610,6 +613,66 @@ public sealed class PersistenceTests(MySqlServerFixture fixture)
 
         Assert.Contains("RestoreAsync", exception.Message, StringComparison.Ordinal);
         Assert.Equal(0, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
+    /// <summary>
+    /// 06 四审 medium 1：<c>InsertAsync</c> 传 <c>IsDeleted=true</c> 原来会写出一行
+    /// 「删除态但四列删除审计全空」的记录——应用里查不到（被软删除过滤器挡着），却占着唯一索引，
+    /// 同名记录再也建不出来，调用方只看到 409。插入入口只写活跃记录。
+    /// </summary>
+    [Fact]
+    public async Task 插入入口拒绝删除态实体()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(
+            () => PersistenceWriter.InsertAsync(
+                db,
+                new TestUser { TenantId = 1, UserName = "幽灵", IsDeleted = true },
+                CreateOptions(),
+                ct));
+
+        Assert.Contains("SoftDeleteAsync", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, await db.Queryable<TestUser>().ClearFilter().CountAsync(ct));
+
+        // 关键后果：不再有幽灵行占住唯一索引，同名活跃记录能正常插入。
+        Assert.Null(await PersistenceWriter.InsertAsync(
+            db, new TestUser { TenantId = 1, UserName = "幽灵" }, CreateOptions(), ct));
+        Assert.Equal(1, await db.Queryable<TestUser>().CountAsync(ct));
+    }
+
+    /// <summary>
+    /// 06 四审 medium 2（含 C10）：<c>Update</c> 一个删除列都不写。否则实体上带着的旧删除审计
+    /// 会被写回库里，回收站按 <c>DeletedAt</c> 排序时这条就被顶到最新。
+    /// </summary>
+    [Fact]
+    public async Task UpdateAsync不改动任何删除审计列()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await fixture.CreateDatabaseAsync(ct);
+        await database.ExecuteAsync(SchemaSql, ct);
+        var db = CreateClient(database);
+
+        await PersistenceWriter.InsertAsync(db, new TestUser { TenantId = 1, UserName = "不碰审计" }, CreateOptions(), ct);
+        var loaded = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+
+        loaded.IsDeleted = false;
+        loaded.DeletedAt = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        loaded.DeletedBy = 5;
+        loaded.UserName = "改过名";
+
+        Assert.Null(await PersistenceWriter.UpdateAsync(db, loaded, CreateOptions(), ct));
+
+        var stored = (await db.Queryable<TestUser>().ToListAsync(ct)).Single();
+        Assert.Equal("改过名", stored.UserName);
+        Assert.False(stored.IsDeleted);
+        Assert.Equal(0, stored.DeletedToken);
+        Assert.Null(stored.DeletedAt);
+        Assert.Equal(0, stored.DeletedBy);
+        Assert.Equal(2, stored.Version);
     }
 
     /// <summary>表名约定（06 审计 low 5）：连续大写算一个词，别拆成 a_p_i_log。</summary>

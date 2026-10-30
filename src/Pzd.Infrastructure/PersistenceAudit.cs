@@ -100,6 +100,27 @@ internal static class PersistenceAudit
             case PersistenceOptions.Columns.DeletedToken:
                 entity.SetValue(0L);
                 break;
+            case PersistenceOptions.Columns.IsDeleted:
+                // 插入入口只写活跃记录。原来传 IsDeleted=true 能写出一行「删除态但四列删除审计全空」的
+                // 记录：应用里查不到（被软删除过滤器挡着），却占着唯一索引，同名记录再也建不出来，
+                // 调用方只看到 409（06 四审 medium 1 / C11）。
+                if (ReadBool(entity.EntityValue!, PersistenceOptions.Columns.IsDeleted))
+                {
+                    throw new InvalidOperationException(
+                        $"插入「{entity.EntityName}」时实体带 IsDeleted=true：插入入口只写活跃记录。"
+                        + "要删除请先 PersistenceWriter.InsertAsync 再调用 PersistenceWriter.SoftDeleteAsync，"
+                        + "否则会写出「删除态但 DeletedToken=0」的幽灵行，它挡住唯一索引却在应用里查不到。");
+                }
+
+                entity.SetValue(false);
+                break;
+            case PersistenceOptions.Columns.DeletedAt:
+                // 活跃记录的删除审计必须是空的：带着旧值插进来会让回收站按 DeletedAt 排序时把这条顶到最新。
+                entity.SetValue(null);
+                break;
+            case PersistenceOptions.Columns.DeletedBy:
+                entity.SetValue(0L);
+                break;
             case PersistenceOptions.Columns.TenantId:
                 // 插入侧原来完全敞开：错填写进别家租户，漏填就是 TenantId=0 的幽灵行（06 重审 medium 3）。
                 ApplyTenantOnInsert(entity, options);

@@ -25,6 +25,20 @@ public static class PersistenceWriter
         PersistenceOptions.Columns.TenantId,
     ];
 
+    /// <summary>
+    /// 删除态的四个列。<see cref="WriteKind.Update"/> 一个都不写：删除态的翻转只由
+    /// <see cref="SoftDeleteAsync"/> 与 <see cref="RestoreAsync"/> 负责，否则 Update 既能造出
+    /// 「删除态但 DeletedToken=0」的幽灵行，也会把回收站的 DeletedAt/DeletedBy 刷成当前时间，
+    /// 让回收站排序失真（06 四审 medium 2 / C9、C10）。
+    /// </summary>
+    private static readonly string[] DeleteColumns =
+    [
+        PersistenceOptions.Columns.IsDeleted,
+        PersistenceOptions.Columns.DeletedToken,
+        PersistenceOptions.Columns.DeletedAt,
+        PersistenceOptions.Columns.DeletedBy,
+    ];
+
     private enum WriteKind
     {
         Update,
@@ -66,8 +80,9 @@ public static class PersistenceWriter
     }
 
     /// <summary>
-    /// 按版本条件更新一条记录：成功返回 <c>null</c>；版本已被别人改掉返回版本冲突。
-    /// 实体 <c>IsDeleted=true</c> 时同样按软删除处理、四个删除列一起写（06 重审 medium 1）。
+    /// 按版本条件更新一条活跃记录：成功返回 <c>null</c>；版本已被别人改掉返回版本冲突。
+    /// 删除态的四个列一个都不碰，也不接受删除态或回收站里的实体——翻转请走
+    /// <see cref="SoftDeleteAsync"/> / <see cref="RestoreAsync"/>（06 四审 medium 2）。
     /// </summary>
     public static Task<PersistenceFailure?> UpdateAsync<T>(
         SqlSugarClient db,
@@ -145,24 +160,27 @@ public static class PersistenceWriter
         var currentVersion = Convert.ToInt64(version.PropertyInfo.GetValue(entity), CultureInfo.InvariantCulture);
 
         // 一个语义只留一个布尔：markDeleted 决定「这次是不是软删除」，clearDeleted 决定「这次是不是恢复」。
-        var markDeleted = kind switch
-        {
-            WriteKind.SoftDelete => true,
-            WriteKind.Update => ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted),
-            _ => false,
-        };
+        var markDeleted = kind == WriteKind.SoftDelete;
         var clearDeleted = kind == WriteKind.Restore;
 
-        // 回收站里的记录只能经 RestoreAsync 复活。走 UpdateAsync 把 IsDeleted 改回 false 的话，
-        // DeletedToken 会带着主键一起写回，那条就成了「活跃但占着已删 token」的记录，
-        // 唯一索引当场失效、同名活跃记录可以有两条（06 三返复验 P6）。
-        if (kind == WriteKind.Update
-            && !markDeleted
-            && ReadLong(info, entity, PersistenceOptions.Columns.DeletedToken) != 0)
+        // 删除态的翻转只由 SoftDeleteAsync / RestoreAsync 负责，Update 一律拒绝删除态实体：
+        // 放行的话它要么把回收站记录改成「活跃但留着旧 token」，要么复活一条 token=0 的幽灵行
+        // （06 三返复验 P6、06 四审 medium 2 / C9）。
+        if (kind == WriteKind.Update)
         {
-            throw new InvalidOperationException(
-                $"类型「{typeof(T).Name}」的这条记录仍在回收站里（{PersistenceOptions.Columns.DeletedToken} 不为 0），"
-                + "不能通过 UpdateAsync 改回活跃；请调用 PersistenceWriter.RestoreAsync。");
+            if (ReadBool(info, entity, PersistenceOptions.Columns.IsDeleted))
+            {
+                throw new InvalidOperationException(
+                    $"类型「{typeof(T).Name}」的这条记录处于删除态，不能用 UpdateAsync 更新："
+                    + "删除态只能经 PersistenceWriter.SoftDeleteAsync 标记、经 PersistenceWriter.RestoreAsync 恢复。");
+            }
+
+            if (ReadLong(info, entity, PersistenceOptions.Columns.DeletedToken) != 0)
+            {
+                throw new InvalidOperationException(
+                    $"类型「{typeof(T).Name}」的这条记录仍在回收站里（{PersistenceOptions.Columns.DeletedToken} 不为 0），"
+                    + "不能通过 UpdateAsync 改回活跃；请调用 PersistenceWriter.RestoreAsync。");
+            }
         }
 
         // 先算，不落实体：冲突时调用方手里的对象要保持加载时的样子。
@@ -173,6 +191,12 @@ public static class PersistenceWriter
         foreach (var column in info.Columns)
         {
             if (column == primary || column == version || ImmutableColumns.Contains(column.PropertyName, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            // Update 一个删除列都不写：它们只能由软删除 / 恢复入口改写（06 四审 medium 2 / C10）。
+            if (kind == WriteKind.Update && DeleteColumns.Contains(column.PropertyName, StringComparer.Ordinal))
             {
                 continue;
             }
@@ -246,11 +270,8 @@ public static class PersistenceWriter
 
     private static bool ReadBool<T>(EntityInfo info, T entity, string propertyName)
         where T : class
-        => ReadLong(info, entity, propertyName) switch
-        {
-            _ => info.Columns.SingleOrDefault(current => current.PropertyName == propertyName)
-                ?.PropertyInfo.GetValue(entity) is true,
-        };
+        => info.Columns.SingleOrDefault(current => current.PropertyName == propertyName)
+            ?.PropertyInfo.GetValue(entity) is true;
 
     private static long ReadLong<T>(EntityInfo info, T entity, string propertyName)
         where T : class
