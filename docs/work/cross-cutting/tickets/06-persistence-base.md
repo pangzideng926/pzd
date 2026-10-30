@@ -97,6 +97,8 @@ CREATE TABLE test_user (
 
 **建表时必须一起带的约定**：主键 `BIGINT`（雪花，对外序列化成字符串）、`Version INT NOT NULL`、审计四列、时间列用 `DATETIME(6)`（微秒精度，对齐 .NET 侧截断），以及软删除四列——`IsDeleted`、`DeletedToken`（唯一索引机制）、`DeletedAt`（回收站排序）、`DeletedBy`（谁删的）。后两列是审计字段，不是可选项：缺了它们 `SoftDeleteAsync` 会报 `Unknown column`，而看报错的人会误以为是 ORM 映射问题。
 
+**`DeletedAt` 必须可空**：声明成 `DATETIME(6) NULL`。活跃行这一列就是 `NULL`（写入口会把活跃态的四个删除列规范化成 `false / 0 / NULL / 0`），写成 `NOT NULL` 会让插入直接失败，或者被逼出一个哨兵时间值——那样回收站按 `DeletedAt` 排序立刻失真，而且问题要到第一次软删除才暴露。
+
 ## 验证入口
 
 ```bash
@@ -312,6 +314,7 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
 **7. 遗留**
 
+- **`MissKind` 的编码顺序与声明顺序相反（07 开工前必修，七审 low）**：枚举声明是 `NoRow, Recycled, Active`（0/1/2），而 `ResolveMissAsync` 的 SQL 把「已删」编成 2、「活跃」编成 1——正好反着。现在靠显式 `switch` 翻译，行为正确、没有 bug；但谁哪天图省事写成 `(MissKind)code`，语义当场反转，而且**不会有编译错误**。修法两字符级别：把 SQL 改成 `WHEN … THEN 1`（已删）/ `ELSE 2`（活跃），或让枚举声明与 SQL 编码同序。07 的租户解析要碰这条路径，必须在那之前修掉。
 - **`dotnet test` 本体未运行**：本机执行环境跑不了 MTP 命名管道握手（36 已留证），本次用「直跑测试产物 + `-class` 过滤」替代，输出 `Total: 33, Failed: 0`。需在无管道限制的环境补跑一次 `dotnet test tests/Pzd.IntegrationTests --filter PersistenceTests`，看到 `总计: 33` 才算闭环；看到 `总计: 0` 一律按未运行处理。
 - **`SetColumns` 形态已被运行期拒绝，但静态守卫仍必需**：`db.Updateable<T>().SetColumns(...)` 现在会被 `UpdateByObject` 的无条件拦截拒绝（用例 `SetColumns形态的旁路也被拒绝`），最初「漏写 `DeletedToken` → 同名重建 1062」的那条代价路径已经走不到了。注意这不是「可以不带守卫」的理由——AOP 钩不到的 `db.Deleteable<T>().Where(...)` 仍在，13 号票的静态守卫照旧必需。
 - **存量 `Version = 0` 的行在运行期不可修复**（三审要求留痕）：本票之前几个版本里，`db.Updateable(entity)` 会把实体上的默认 `Version` 原样写回，产生 `Version=0` 的行。这类行现在**任何入口都修不了**——AOP 拒绝 `Updateable`，`PersistenceWriter` 拿 0 去比永远返回 `VersionConflict`（09 会映射成 409），排查时看起来像并发冲突。排查与修复只能用运维裸 SQL：
@@ -325,7 +328,7 @@ $ ./tests/Pzd.ArchitectureTests/bin/Debug/net10.0/Pzd.ArchitectureTests.exe
 
   这轮之后新数据写不出这种行，但历史库（如果有）必须按上面捞一遍。
 - **`CurrentTenantId` 必须由 07 供给**：有 `TenantId` 列的类型在拿不到租户上下文时写不进去（这是设计选择，不是缺陷）。07 接租户解析时要把 `PersistenceOptions.CurrentTenantId` 填上，否则所有写路径会在运行期抛 `InvalidOperationException`。
-- **`DeletedAt/DeletedBy` 是冻结前补的**：按张一一裁定与架构 §5.3 对齐，`DeletedToken` 只承担唯一索引机制，回收站排序与「谁删的」用 `DeletedAt/DeletedBy`。17 号票写 master 建表 SQL 时这四列都要有。
+- **`DeletedAt/DeletedBy` 是冻结前补的**：按张一一裁定与架构 §5.3 对齐，`DeletedToken` 只承担唯一索引机制，回收站排序与「谁删的」用 `DeletedAt/DeletedBy`。17 号票写 master 建表 SQL 时这四列都要有，且 `DeletedAt` 必须是 `DATETIME(6) NULL`（活跃行这一列就是 NULL）、`DeletedBy` 用 `BIGINT NOT NULL DEFAULT 0`。
 - **并发不走 SqlSugar 自带开关**：实测 `IsEnableUpdateVersionValidation`（列配置与链式方法都试过）在 `Updateable(entity)` 路径上生成的 SQL 没有版本列，第二次并发更新照样成功；因此并发写入口是 `PersistenceWriter.UpdateAsync`。SQL 证据与推理写在决策笔记里。
 - **超出票面范围的 3 个文件**：`Directory.Packages.props`（加 `SqlSugarCore 5.1.4.221` 与顶掉漏洞版本的 `System.Security.Cryptography.Pkcs 10.0.14`）、`tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj`（加指向 `Pzd.Infrastructure` 的 `ProjectReference`，并改掉 36「绝不引用任何 Pzd.* 项目」的注释）、`Pzd.slnx`（挂新工程）。三者都是本票绕不开的，已在群里报备。
 - **SqlSugar 的传递依赖带漏洞**：`System.Security.Cryptography.Pkcs 8.0.1` 触发 `NU1902/NU1903`，在「警告即错误」下直接构建失败，已在 Infrastructure 里直接引用 10.0.14 顶掉，代码不使用该包。
