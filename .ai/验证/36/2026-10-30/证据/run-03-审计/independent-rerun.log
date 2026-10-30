@@ -1,0 +1,68 @@
+== [1] HEAD ==
+8ca97a9dcc0cb012aa83df8cd9f5dea233f06ae7
+0
+
+== [2] 构建 Pzd.slnx ==
+已成功生成。
+    0 个警告
+    0 个错误
+BUILD_EXIT=0
+
+== [3] AC-02 工程引用（必须为空）==
+项目 tests/Pzd.IntegrationTests/Pzd.IntegrationTests.csproj 中没有 项目到项目 引用。
+
+== [4] 外部真库路径：全量直跑 ==
+  Starting:    Pzd.IntegrationTests
+  Finished:    Pzd.IntegrationTests (ID = 'b5e4e32b682b3b817748b7cd417e708ad390b3eb5c9a4d2adcf0d83410620af1')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.321s
+EXE_EXIT=0
+
+== [5] 单用例精确选择（防假绿）==
+  Finished:    Pzd.IntegrationTests (ID = 'b5e4e32b682b3b817748b7cd417e708ad390b3eb5c9a4d2adcf0d83410620af1')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.261s
+SINGLE_EXIT=0
+
+== [6] 容器路径：无外部串、无 Docker（本机已知）==
+      ---- DotNet.Testcontainers.Builders.DockerUnavailableException : Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+      -------- System.AggregateException : One or more errors occurred. (Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.)
+      ------------ DotNet.Testcontainers.Builders.DockerUnavailableException : Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.
+      ---------------- System.TimeoutException : The operation has timed out.
+      ---- DotNet.Testcontainers.Builders.DockerUnavailableException : Docker is either not running or misconfigured. Please ensure that Docker is running and that the endpoint is properly configured.
+      -------- System.AggregateException : One or more errors occurred. (Failed to connect to Docker endpoint at 'npipe://./pipe/docker_engine'.)
+CONTAINER_MODE_EXIT=1
+== [7] 残库检查（跑完后服务端是否还有 pzd_test_* 库）==
+mysql CLI 不可用，改用 .NET 探测
+
+== [8] 反向验证：错口令必须红在外部连接上（不许悄悄回落容器）==
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+      ---- MySqlConnector.MySqlException : Access denied for user 'pzd_test'@'localhost' (using password: YES)
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 3, Skipped: 0, Not Run: 0, Time: 0.189s
+WRONG_PW_EXIT=1
+
+== [9] 并发：两个进程同时跑同一 class，是否撞库 ==
+A_EXIT=0
+B_EXIT=0
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.338s
+   Pzd.IntegrationTests  Total: 3, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 0.331s
+
+== [10] 服务端残库与权限探测（独立小工程，仓库外，未入库）==
+$ dotnet run   # 连 .worktree/36/.local 的连接串，清空 Database 后查服务端
+SERVER_VERSION=8.0.46
+LEFTOVER_TEST_DATABASES=2
+  pzd_test_chk_mb4
+  pzd_test_chk_mb3
+GRANT: GRANT CREATE, DROP ON *.* TO `pzd_test`@`localhost`
+GRANT: GRANT ALL PRIVILEGES ON `pzd\_test\_%`.* TO `pzd_test`@`localhost`
+CURRENT_USER=pzd_test@localhost
+
+说明：
+- pzd_test_chk_mb3 / pzd_test_chk_mb4 是**人工字符集探测**留下的库（李总验「utf8mb3 能否存张三」时手起的名），
+  不是 fixture 产物（fixture 的库名是 pzd_test_ + 32 位 GUID）。已由审计清理，留下记录：
+  DROPPED=pzd_test_chk_mb4
+  DROPPED=pzd_test_chk_mb3
+  REMAINING_TEST_DATABASES=0
+- 证据：fixture 自身没留残库；清理后服务端没有任何 pzd_test_* 库。
+- 权限：账号带 `GRANT CREATE, DROP ON *.*`（全局），可在任意库建表/删表，包括 pzd_master。

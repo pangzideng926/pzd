@@ -1,0 +1,14 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+    Pzd.IntegrationTests.DropGuardProbe.传非前缀库名时必须拒绝销毁 [FAIL]
+      Assert.ThrowsAny() Failure: No exception was thrown
+      Expected: typeof(System.Exception)
+      Stack Trace:
+        tests\Pzd.IntegrationTests\__dropguard.cs(14,0): at Pzd.IntegrationTests.DropGuardProbe.传非前缀库名时必须拒绝销毁()
+        --- End of stack trace from previous location ---
+  Finished:    Pzd.IntegrationTests (ID = 'b25e1e7a189f154d5ced699769ea0af92b34f47cc067a74541618f64ac1fb775')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 1, Errors: 0, Failed: 1, Skipped: 0, Not Run: 0, Time: 0.250s
+PROBE_EXIT=1
