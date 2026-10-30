@@ -1,0 +1,14 @@
+﻿P4 failure=null（更新成功）；之后 TenantId=2 UserName=乙租户改写
+P6 服务端 pzd_test% 库数量=0 明细=[]
+P1 插入后 CreatedAt=2026-10-30T02:02:33.0829370 CreatedBy=7
+P1 UpdateAsync 返回 failure=null（更新成功）
+P1 更新后 CreatedAt=1900-01-01T00:00:00.0000000 CreatedBy=0 UserName=改过
+P1 判定：创建审计被改写 = True
+P5 属性 WorkerId = 1
+P5 属性 DatacenterId = 1
+P5 属性 Sequence = 0
+P5 连续两个 Id = 2115987690007695360, 2115987690007695361（差 1）
+P5 位移推演：Id>>22 = 504490778448
+P3 SetColumns 影响行=1；DeletedToken=0
+P3 同名重建=失败（DuplicateKey / Duplicate entry '1-王五-0' for key 'probe_user.ux_probe_user_tenant_name'）
+P2 Deleteable 影响行=1；过滤后可见=0；ClearFilter 后=0；真 SQL 物理行数=0；IsDeleted 列写入=0
