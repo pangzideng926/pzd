@@ -1,0 +1,4 @@
+﻿S1 恢复不存在的记录：NotFound/404/Persistence.Record.NotFound；物理行数=0
+S3 无租户上下文恢复：抛 InvalidOperationException；库里 IsDeleted=1 Version=2
+S2 恢复别家租户的已删记录：NotFound/404/Persistence.Record.NotFound；别家那行 IsDeleted=1 DeletedToken<>0=1 TenantId=2 Version=2
+S4 恢复已删但版本不符：VersionConflict/409/Persistence.Record.VersionConflict；库里 IsDeleted=1 Version=2

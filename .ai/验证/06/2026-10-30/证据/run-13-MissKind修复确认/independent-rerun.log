@@ -1,0 +1,74 @@
+# 06 八审（范围收敛确认）独立复跑日志
+# 审计员：老登　日期：2026-10-30　被测：9c05fa5（分支 fix/06-misskind-order，HEAD 0c11a4a）
+# worktree：E:\pzd\.worktree\audit-06i（detached 9c05fa5）
+# 连接串：cp E:\pzd\.local\mysql-test-connection.txt → .worktree/audit-06i/.local/mysql-test-connection.txt
+# 改动范围（vs main 7a412fe，仅 src/tests）：PersistenceErrors.cs +13、PersistenceWriter.cs +42/-?、PersistenceTests.cs +122
+#   3 文件，160 insertions(+), 17 deletions(-)
+
+## 1. 构建 + PersistenceTests 基线
+
+$ dotnet build Pzd.slnx
+    0 个警告
+    0 个错误
+BUILD_EXIT=0
+
+$ ./tests/Pzd.IntegrationTests/bin/Debug/net10.0/Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.PersistenceTests
+   Pzd.IntegrationTests  Total: 36, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 12.083s
+PERSIST_EXIT=0
+
+## 2. 变异（脚本见 mutations.py / mutations-M-D.py；明细 mutation-results.txt）
+
+[M-A 恢复实体自报守卫加回去]     TEST_EXIT=1  Total: 36, Failed: 2
+    → DTO形态恢复已删记录应成功 [FAIL]；恢复活跃记录返回不在回收站 [FAIL]
+[M-B NotInTrash 合并成 RecordInTrash]  TEST_EXIT=1  Total: 36, Failed: 1
+    → 恢复活跃记录返回不在回收站 [FAIL]
+[M-C 三态字符串 Recycled/Active 对调]  TEST_EXIT=1  Total: 36, Failed: 5
+    → 恢复活跃记录返回不在回收站；并发更新冲突被识别为409来源错误；脱离实体更新已删除记录返回回收站错误；
+      三种未命中情形各自返回对应的失败种类；重复软删除返回回收站错误
+[M-D NoRow 吞成 Active]          TEST_EXIT=1  Total: 36, Failed: 3
+    → 乙租户拿着同Id和版本也改不到甲租户的记录；更新不存在或非本租户的记录返回未找到；三种未命中情形各自返回对应的失败种类
+[M-E 仅 Restore 丢租户条件]       TEST_EXIT=0  Total: 36, Failed: 0   ← 无失败：Restore 跨租户无用例守
+[还原复跑]                       BUILD_EXIT=0  TEST_EXIT=0  Total: 36, Failed: 0
+
+变异脚本自身的坑（如实记录，与实现无关）：
+- 第一版 mutate.py 用文本模式读写，还原时把 CRLF 改成了 LF（`git status` 出现 M，`file` 显示 LF）。
+  已 `git checkout --` 还原，第二/三版改为二进制读写，字节级还原。
+- M-D 第一次写成 `return TryParse(...) && kind != NoRow ? kind : MissKind.Active`，撞构建错误（BUILD_EXIT=1），
+  按群规不算红，重写成不含短路的三元才拿到 Failed: 3。
+
+## 3. 探针（AuditRound8Probes.cs 临时拷入 tests/Pzd.IntegrationTests/，跑完删除）
+
+$ dotnet build Pzd.slnx            BUILD_EXIT=0
+$ ...Pzd.IntegrationTests.exe -class Pzd.IntegrationTests.AuditRound8Probes
+   Pzd.IntegrationTests  Total: 4, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0
+PROBE_EXIT=0
+
+S1 恢复不存在的记录：NotFound/404/Persistence.Record.NotFound；物理行数=0
+S2 恢复别家租户的已删记录：NotFound/404/Persistence.Record.NotFound；别家那行 IsDeleted=1 DeletedToken<>0=1 TenantId=2 Version=2
+S3 无租户上下文恢复：抛 InvalidOperationException；库里 IsDeleted=1 Version=2
+S4 恢复已删但版本不符：VersionConflict/409/Persistence.Record.VersionConflict；库里 IsDeleted=1 Version=2
+
+## 4. 删探针后重建复跑 + 残留检查
+
+$ rm tests/Pzd.IntegrationTests/AuditRound8Probes.cs && dotnet build Pzd.slnx   BUILD_EXIT=0
+$ ...PersistenceTests    Total: 36, Failed: 0   PERSIST_EXIT=0
+LEFT_PROBE_FILES=0
+git status --porcelain -- src tests → 空
+
+## 5. 三套回归（全部真实退出码）
+
+$ ...Pzd.IntegrationTests.exe            Total: 44, Errors: 0, Failed: 0   EXIT=0
+$ ...Pzd.SharedKernel.UnitTests.exe      Total: 33, Errors: 0, Failed: 0   EXIT=0
+$ ...Pzd.ArchitectureTests.exe           Total: 1,  Errors: 0, Failed: 0   EXIT=0
+
+## 6. 残库
+
+$ python check-db.py
+MYSQL_EXIT=0
+RESIDUAL_DB_COUNT=0
+
+## 7. 未做（如实记录）
+
+- `dotnet test` 本体仍未跑：本机沙箱拒命名管道（System.UnauthorizedAccessException / NamedPipeClientStream.TryConnect），
+  摘要会是 `总计: 0`，按环境性记，需维护者在普通终端补跑。
+- 未做全量代码走查：本轮按张一一的范围收敛要求，只审 6e 这一笔（diff 3 文件）。

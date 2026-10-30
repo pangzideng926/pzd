@@ -1,0 +1,2 @@
+[M-E 仅 Restore 丢租户条件] TEST_EXIT=0 Pzd.IntegrationTests  Total: 36, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 13.776s | 无失败 → Restore 跨租户无用例守
+[M-E 还原复跑] BUILD_EXIT=0 TEST_EXIT=0 ['Pzd.IntegrationTests  Total: 36, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 12.071s'] FAILS=0
