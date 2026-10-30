@@ -1,9 +1,9 @@
 状态：进行中
 主写入者：PZD-实现Bot-1
-更新日期：2026-10-29 22:05 Asia/Shanghai
-下一步：代码已落地、编译绿；实跑按「未运行」记——本沙箱 EventLog 无写权限（退出码 `-532462766`）、本机无 Docker，需维护者在有权限的终端补跑，或给外部 MySQL 连接串走回落路径
+更新日期：2026-10-30 08:56 Asia/Shanghai
+下一步：连接串已到位，回落链路两侧数据源已复核（Redis 四项真语义、MySQL `pzd_test` 账号可连）；只剩 AppHost 实跑被 EventLog 挡住，需维护者在有权限的终端跑一次 `dotnet run --project src/Pzd.AppHost`；库名口径（`pzd_master` vs `pzd-master`）待定
 交付状态：待收尾
-实施条件：已具备 01、02（`0f25d16`／`f13b946`）；待满足一项：外部 MySQL 建库账号（本机 MySQL80 root 无密码进不去，与 36 号票同一门槛）——容器不可用时回落路径必需；另需一处能跑 AppHost 的执行环境（EventLog 可写或可用 Docker）
+实施条件：已具备 01、02（`0f25d16`／`f13b946`）与外部 MySQL 账号（`pzd_test@localhost`，2026-10-30 到位）；**待满足**：一处能跑 AppHost 的执行环境（EventLog 可写，或用 Docker）——这道门与连接串无关，已用连接串复跑确认
 
 # 03 Aspire 编排：一条命令拉起 MySQL / Redis / API / Web
 
@@ -117,7 +117,7 @@ cd E:/pzd/.worktree/03 && dotnet run --project src/Pzd.AppHost
 1. **错误原文与真实退出码**：`Unhandled exception. System.AggregateException: ... (Cannot open log for source '.NET Runtime'. You may not have write access.)` → `System.ComponentModel.Win32Exception (5): 拒绝访问` → `The AppHost process exited unexpectedly with exit code -532462766`，`RUN_EXIT=2`
 2. **替代执行方式的实际结果**：`dotnet build Pzd.slnx` → `已成功生成。0 个警告 0 个错误`，退出码 0（证明代码可编译、接线类型正确，但**不证明资源能起**）
 3. **明确记录**：四个资源 Healthy **未运行**，需在 EventLog 可写、且具备 Docker 或外部 MySQL 连接串的终端补跑一次
-4. **剩余风险**：`WithPnpm`/`AddViteApp` 的 Vite 端口与端点注入、`WithReference(api)` 的服务发现环境变量名（`services__api__http__0`）都只在运行时才暴露，编译通过不代表代理真通；回落路径的 MySQL/Redis 真语义（`SET/GET`、`SUBSCRIBE/PUBLISH`）也还没复核
+4. **剩余风险**：`WithPnpm`/`AddViteApp` 的 Vite 端口与端点注入、`WithReference(api)` 的服务发现环境变量名（`services__api__http__0`）都只在运行时才暴露，编译通过不代表代理真通；回落路径的数据源已在 2026-10-30 单独复核（Redis 四项真语义全通、MySQL 账号可连，见下文「回落链路复核」），但**库名口径仍有缺口**——AppHost 注入的连接串键取资源名 `pzd-master`，本机实际库是 `pzd_master`，回落连接串必须自带 `Database=`
 
 **四个资源真 Healthy 之前不标完成**，本票维持「进行中／待收尾」。
 
@@ -127,4 +127,67 @@ cd E:/pzd/.worktree/03 && dotnet run --project src/Pzd.AppHost
 - **为什么**：`Aspire.Hosting.MySql 13.6.4` 传递依赖 `MySqlConnector 2.3.1`，该版本有已知漏洞（`NU1902`，GHSA-473q-m89c-ghf8），被 `TreatWarningsAsErrors` 抬成构建失败；除非降级 Aspire，否则只能显式提升。
 - **还有谁钉旧版**：全仓库 `grep MySqlConnector` 只有上两处（一处 `Directory.Packages.props`、一处 AppHost csproj），其余项目未直接引用；`Pzd.Api` 目前不引数据库包。
 - **有没有夹带无关升级**：没有。本票新增包只有 `Aspire.Hosting.{AppHost,MySql,Redis,JavaScript} 13.6.4` 与 `MySqlConnector 2.6.2`，其余项目依赖零变动。
+
+## 回落链路复核（2026-10-30 08:52–08:56，PZD-实现Bot-1）
+
+维护者给出外部 MySQL 账号（`pzd_test@localhost`）后，本段只做复核，不改代码。凭据不出现在票面、日志与任何提交里。
+
+### Redis / Memurai：四项真语义全部通过
+
+```text
+$ memurai-cli -h 127.0.0.1 -p 6379 ping
+PONG
+
+$ memurai-cli ... set pzd:verify:key "fallback-ok"   → OK
+$ memurai-cli ... get pzd:verify:key                 → fallback-ok
+
+$ memurai-cli ... subscribe pzd:verify:chan &        （订阅端）
+$ memurai-cli ... publish pzd:verify:chan "pubsub-ok"
+PUBLISH_RECEIVERS=1
+订阅端收到：subscribe / pzd:verify:chan / 1 / message / pzd:verify:chan / pubsub-ok
+
+$ memurai-cli ... info server
+redis_version:8.2.10   memurai_version:8.2.0   tcp_port:6379
+```
+
+验证键已清理（`DEL pzd:verify:key` → `exists=0`）。老何要求的「`PING` 之外还要 `SET`/`GET` 与 `SUBSCRIBE`/`PUBLISH`」到此满足，不是只 PING 通。
+
+### MySQL：账号可连，但库名口径不一致（本段最重要的发现）
+
+```text
+$ mysql -h 127.0.0.1 -P 3306 -u pzd_test -e "SELECT VERSION(), CURRENT_USER()"
+8.0.46    pzd_test@localhost
+
+$ SHOW DATABASES;
+information_schema  mysql  performance_schema  pzd_master  sys
+```
+
+- 本机库名是 **`pzd_master`（下划线）**，里面有 15 张 `qrtz_*` 表，`CREATE_TIME` 全是 `2026-10-27 17:46:45`——是清空前那版实现留下的 Quartz 表，**属既有数据，不是本票建的**
+- **`pzd-master`（连字符）不存在**：``USE `pzd-master` `` → `ERROR 1049 (42000): Unknown database 'pzd-master'`
+- 而回落路径注入的连接串键由资源名决定，资源名是 `pzd-master`（Aspire 禁止下划线，会报 `ASPIRE006`）
+- 所以**回落连接串必须自带 `Database=pzd_master`**。维护者这次给的串是 `Server=127.0.0.1;Port=3306;User ID=pzd_test;Password=…`，**不含 `Database=`**
+
+这条不会让「四个资源 Healthy」失败（`AddConnectionString` 型资源不做库级健康检查），但会在 06 之后第一次真正读写库时暴露。改法两选，需先定口径，**本段不动代码**：
+
+1. 回落连接串统一带 `Database=pzd_master`（根 README 的示例已这样写，运维侧要补齐）
+2. 或把 `db/master` 对应的库名统一成 `pzd-master`，与容器路径一致——代价是要迁走现有 15 张表
+
+### 授权比脚本声明的宽（安全提示，只报事实）
+
+```text
+GRANT CREATE, DROP ON *.* TO `pzd_test`@`localhost`
+GRANT ALL PRIVILEGES ON `pzd\_test\_%`.* TO `pzd_test`@`localhost`
+```
+
+`CREATE, DROP ON *.*` 是**全局**权限：`pzd_test` 能在任何库建表、删表，不只是 `pzd_test_%`。实测在 `pzd_master` 建表**成功**；探针表 `__probe` 已 `DROP`，回查该库仍是 15 张原表。这不属本票范围，只把事实报出来——若账号本意是「只能动 `pzd_test_%`」，这条要收紧。
+
+### AppHost 实跑：仍被 EventLog 挡，与连接串无关
+
+```text
+Cannot open log for source '.NET Runtime'. You may not have write access.
+   ---> System.ComponentModel.Win32Exception (5): 拒绝访问
+❌ 发生意外错误: The AppHost process exited unexpectedly with exit code -532462766
+```
+
+带上 `External__MySql` / `External__Redis` 重跑，崩在同一处，说明**障碍来自 Windows EventLog 源需要管理员权限，不是数据源**。四个资源 Healthy 继续记「未运行」，本票维持「进行中／待收尾」。
 

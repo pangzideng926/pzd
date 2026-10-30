@@ -17,12 +17,19 @@ AppHost 会把四个资源一起拉起并在仪表板里显示健康状态：`my
 默认起容器（需要本机可用 Docker / Podman）。没有容器运行时，用外部实例回落——给 AppHost 传两个连接串即可，配了就不再起容器：
 
 ```bash
-External__MySql="Server=127.0.0.1;Port=3306;Database=pzd-master;User ID=<用户>;Password=<口令>" \
+External__MySql="Server=127.0.0.1;Port=3306;Database=pzd_master;User ID=<用户>;Password=<口令>" \
 External__Redis="127.0.0.1:6379" \
 dotnet run --project src/Pzd.AppHost
 ```
 
 连接串只走环境变量或 AppHost 配置，不写进 `appsettings.json`，也不入库。
+
+**`Database=` 不能省，库名要和实际实例对齐。** 上面写的是 `pzd_master`（下划线），注意两条路径的库名不同：
+
+- 容器路径：由 `AddDatabase("pzd-master")` 生成，库名是 `pzd-master`
+- 回落路径：库名由连接串的 `Database=` 决定，本机实例上是 `pzd_master`，**没有** `pzd-master`
+
+资源名必须是 `pzd-master`（含下划线会触发 `ASPIRE006`），但那只是连接串的**键名**，不决定库名。回落时若照抄容器库名，会直接得到 `ERROR 1049 (42000): Unknown database 'pzd-master'`——这是实测的。
 
 ## 目录
 
