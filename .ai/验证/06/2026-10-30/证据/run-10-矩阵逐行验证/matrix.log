@@ -1,0 +1,15 @@
+xUnit.net v3 In-Process Runner v4.0.2+0c7aa4991f (64-bit .NET 10.0.13)
+  Discovering: Pzd.IntegrationTests
+  Discovered:  Pzd.IntegrationTests
+  Starting:    Pzd.IntegrationTests
+[文案] VersionConflict=记录已被其他操作修改，请刷新后重试。 | InTrash=这条记录已被删除，如需修改请先恢复（RestoreAsync）。 | NotFound=记录不存在，或不属于当前租户。
+[行3] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[正路] failure=null（成功） 活跃记录=1 IsDeleted=False DeletedToken=0 Version=3
+[行4] Kind=RecordInTrash Http=409 Code=Persistence.Record.InTrash msg=这条记录已被删除，如需修改请先恢复（RestoreAsync）。
+[行5] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录没有处于软删除状态，无法恢复。 ← 09 若只接返回值，这条冒 500
+[行1] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录处于删除态，不能用 UpdateAsync 更新：删除态只能经 Persistenc…
+[行2] caught=InvalidOperationException msg=类型「ProbeUser」的这条记录仍在回收站里（DeletedToken 不为 0），不能通过 UpdateAsync…
+[行6] Kind=VersionConflict Http=409 Code=Persistence.Record.VersionConflict msg=记录已被其他操作修改，请刷新后重试。 库里IsDeleted=False Version=1
+  Finished:    Pzd.IntegrationTests (ID = 'f1ded703df648228e1363ec3264176bc77170d5df6d9e5d79b482261485ffde8')
+=== TEST EXECUTION SUMMARY ===
+   Pzd.IntegrationTests  Total: 8, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0, Time: 10.886s
